@@ -1,0 +1,49 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Player {
+  id          String   @id @default(uuid())
+  name        String
+  position    String
+  age         Int?
+  nationality String?
+
+  attributes  Json
+  archetype   Json
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  scoutReports ScoutReport[]
+
+  @@index([position])
+}
+
+model ScoutReport {
+  id          String   @id @default(uuid())
+  playerId    String
+  type        ScoutType
+
+  input       Json
+  output      Json
+  aiNarrative String?  @db.Text
+
+  createdAt   DateTime @default(now())
+
+  player Player @relation(fields: [playerId], references: [id], onDelete: Cascade)
+
+  @@index([playerId])
+  @@index([type])
+}
+
+enum ScoutType {
+  SINGLE
+  COMPARE
+  RANKING
+}
