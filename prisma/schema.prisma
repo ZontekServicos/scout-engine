@@ -8,11 +8,23 @@ datasource db {
 }
 
 model Player {
-  id          String   @id @default(uuid())
-  name        String
-  position    String
-  age         Int?
-  nationality String?
+  id              String   @id @default(uuid())
+  slug            String   @unique
+  name            String
+  nameNormalized  String
+
+  positions       String[]
+  age             Int
+  nationality     String
+
+  team            String?
+  league          String?
+
+  marketValue     Float?
+  contractEnd     DateTime?
+
+  overall         Int?
+  potential       Int?
 
   attributes  Json
   archetype   Json
@@ -22,7 +34,8 @@ model Player {
 
   scoutReports ScoutReport[]
 
-  @@index([position])
+  @@index([nameNormalized])
+  @@index([league])
 }
 
 model ScoutReport {
@@ -32,7 +45,21 @@ model ScoutReport {
 
   input       Json
   output      Json
+  risk        Json?
   aiNarrative String?  @db.Text
+
+  // 🔵 GOVERNANÇA & AUDITORIA
+  requestedBy     String?
+  decisionBy      String?
+  decisionReason  String? @db.Text
+  decisionDate    DateTime?
+  modelVersion    String?
+  riskVersion     String?
+  antiFlopVersion String?
+  engineVersion   String?
+  technicalReason String? @db.Text
+  decisionStatus  DecisionStatus @default(PENDING)
+  decisionAt      DateTime?
 
   createdAt   DateTime @default(now())
 
@@ -40,10 +67,18 @@ model ScoutReport {
 
   @@index([playerId])
   @@index([type])
+  @@index([createdAt])
+  @@index([decisionStatus])
 }
 
 enum ScoutType {
   SINGLE
   COMPARE
   RANKING
+}
+
+enum DecisionStatus {
+  PENDING
+  APPROVED
+  REJECTED
 }

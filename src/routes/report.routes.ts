@@ -1,5 +1,8 @@
-import { Router } from "express";
+import { Router, Request, Response, NextFunction } from "express";
 import { getReports, getReportById, deleteReport } from "../reports/reports.service";
+import { applyDecision } from "../scout/decision.service";
+import { decisionSchema } from "../validators/decision.validator";
+import { validate } from "../lib/validate";
 import { successResponse } from "../lib/apiResponse";
 
 const router = Router();
@@ -7,15 +10,18 @@ const router = Router();
 /**
  * GET /api/reports
  */
-router.get("/", async (req, res, next) => {
+router.get("/", async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { page, limit, type, playerId } = req.query;
+
+    // 🔒 Mantém compatibilidade com o reports.service
+    const validType = type === "COMPARE" || type === "RANKING" ? type : undefined;
 
     const result = await getReports({
       page: Number(page) || 1,
       limit: Number(limit) || 10,
-      type: type as "COMPARE" | "RANKING",
-      playerId: playerId as string,
+      type: validType,
+      playerId: typeof playerId === "string" ? playerId : undefined,
     });
 
     res.json(successResponse(result));
@@ -27,9 +33,61 @@ router.get("/", async (req, res, next) => {
 /**
  * GET /api/reports/:id
  */
-router.get("/:id", async (req, res, next) => {
+router.get("/:id", async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const result = await getReportById(req.params.id);
+    const reportId = typeof req.params.id === "string" ? req.params.id : req.params.id[0];
+
+    const result = await getReportById(reportId);
+    res.json(successResponse(result));
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * GET /api/reports/:id/explainability
+ */
+router.get("/:id/explainability", async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const reportId = typeof req.params.id === "string" ? req.params.id : req.params.id[0];
+    const report: any = await getReportById(reportId);
+
+    const explainability = report?.output?.explainability?.playerA ??
+      report?.output?.explainability ?? {
+        topFactors: [],
+        riskDrivers: [],
+        positiveSignals: [],
+        negativeSignals: [],
+      };
+
+    res.json(successResponse(explainability));
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.patch(
+  "/:id/decision",
+  validate(decisionSchema, "body"),
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const reportId = typeof req.params.id === "string" ? req.params.id : req.params.id[0];
+
+      const updated = await applyDecision(reportId, req.body);
+
+      res.json(successResponse(updated));
+    } catch (error) {
+      next(error);
+    }
+  },
+);
+
+router.delete("/:id", async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const reportId = typeof req.params.id === "string" ? req.params.id : req.params.id[0];
+
+    const result = await deleteReport(reportId);
+
     res.json(successResponse(result));
   } catch (error) {
     next(error);
@@ -37,15 +95,3 @@ router.get("/:id", async (req, res, next) => {
 });
 
 export default router;
-
-/**
- * DELETE /api/reports/:id
- */
-router.delete("/:id", async (req, res, next) => {
-  try {
-    const result = await deleteReport(req.params.id);
-    res.json(successResponse(result));
-  } catch (error) {
-    next(error);
-  }
-});

@@ -21,9 +21,18 @@ export async function getReports({ page = 1, limit = 10, type, playerId }: GetRe
       orderBy: { createdAt: "desc" },
       skip,
       take: limit,
+      include: {
+        player: true,
+      },
     }),
     prisma.scoutReport.count({ where }),
   ]);
+
+  const data = reports.map((report) => ({
+    ...report,
+    playerKey: report.player?.id ?? report.playerId,
+    nomeJogador: report.player?.name ?? null,
+  }));
 
   return {
     meta: {
@@ -32,20 +41,27 @@ export async function getReports({ page = 1, limit = 10, type, playerId }: GetRe
       total,
       totalPages: Math.ceil(total / limit),
     },
-    data: reports,
+    data,
   };
 }
 
 export async function getReportById(id: string) {
   const report = await prisma.scoutReport.findUnique({
     where: { id },
+    include: {
+      player: true,
+    },
   });
 
   if (!report) {
     throw new Error("Report not found");
   }
 
-  return report;
+  return {
+    ...report,
+    playerKey: report.player?.id ?? report.playerId,
+    nomeJogador: report.player?.name ?? null,
+  };
 }
 export async function deleteReport(id: string) {
   const report = await prisma.scoutReport.findUnique({

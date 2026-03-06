@@ -1,4 +1,5 @@
 import { prisma } from "../lib/prisma";
+import { getPrimaryPosition } from "../utils/positions";
 
 interface AnalyticsParams {
   from?: string;
@@ -54,7 +55,7 @@ export async function getAnalyticsOverview(params: AnalyticsParams) {
   const positionMap: Record<string, { count: number; totalDiff: number }> = {};
 
   reports.forEach((r: any) => {
-    const pos = r.player.position;
+    const pos = getPrimaryPosition(r.player as any);
     const diff = r.output?.quantitative?.difference ?? 0;
 
     if (!positionMap[pos]) {

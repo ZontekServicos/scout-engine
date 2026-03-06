@@ -6,21 +6,24 @@
   "type": "commonjs",
   "scripts": {
     "dev": "nodemon --watch src --exec ts-node ./src/server.ts",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "import:players": "ts-node scripts/importPlayers.ts",
+    "update:positions": "ts-node scripts/updatePlayerPositions.ts"
   },
   "dependencies": {
     "@prisma/client": "^6.19.2",
     "axios": "^1.13.4",
+    "csv-parser": "^3.2.0",
     "dotenv": "^17.2.4",
     "express": "^5.2.1",
     "openai": "^6.22.0",
+    "prisma": "^6.19.2",
     "zod": "^4.3.6"
   },
   "devDependencies": {
     "@types/express": "^5.0.6",
     "@types/node": "^25.2.1",
     "nodemon": "^3.1.11",
-    "prisma": "^6.19.2",
     "ts-node": "^10.9.2",
     "typescript": "^5.9.3"
   },

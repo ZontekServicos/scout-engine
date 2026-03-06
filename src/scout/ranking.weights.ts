@@ -57,6 +57,62 @@ export const POSITION_WEIGHTS: Record<string, Weights> = {
     passing: 0.2,
     dribbling: 0.2,
   },
+
+  GK: {
+    defending: 0.45,
+    passing: 0.2,
+    physical: 0.2,
+    pace: 0.1,
+    dribbling: 0.05,
+  },
+
+  LWB: {
+    pace: 0.3,
+    passing: 0.25,
+    dribbling: 0.2,
+    defending: 0.15,
+    physical: 0.1,
+  },
+
+  RWB: {
+    pace: 0.3,
+    passing: 0.25,
+    dribbling: 0.2,
+    defending: 0.15,
+    physical: 0.1,
+  },
+
+  CAM: {
+    passing: 0.3,
+    dribbling: 0.25,
+    shooting: 0.2,
+    pace: 0.15,
+    physical: 0.1,
+  },
+
+  LM: {
+    pace: 0.3,
+    passing: 0.25,
+    dribbling: 0.2,
+    shooting: 0.15,
+    defending: 0.1,
+  },
+
+  RM: {
+    pace: 0.3,
+    passing: 0.25,
+    dribbling: 0.2,
+    shooting: 0.15,
+    defending: 0.1,
+  },
+
+  CF: {
+    shooting: 0.3,
+    dribbling: 0.25,
+    passing: 0.2,
+    pace: 0.15,
+    physical: 0.1,
+  },
 };
 export const GLOBAL_WEIGHTS = {
   pace: 0.2,

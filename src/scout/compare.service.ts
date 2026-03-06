@@ -2,104 +2,602 @@ import { prisma } from "../lib/prisma";
 import { compareAttributes, CompareResult } from "./compare.engine";
 import { POSITION_WEIGHTS } from "./ranking.weights";
 import { calculateRankingScore, Attributes } from "./ranking.engine";
+import { calculateRiskScore } from "./risk.engine";
+import { buildExecutiveRiskSummary } from "./risk.summary";
+import { calculateAntiFlopIndex } from "./antiFlop.engine";
+import { calculateLiquidityScore } from "./liquidity.engine";
+import { calculateOverallRating } from "./overall.engine";
+import { calculateFinancialRisk } from "./financial-risk.engine";
+import { calculateCapitalEfficiency } from "./capital-efficiency.engine";
+import { buildFifaAttributes } from "./skill-tree.builder";
+import {
+  calculateMedicalRisk,
+  extractInjuryEventsFromAttributes,
+  loadLesionMapFromPath,
+} from "./injury-risk.engine";
+import { getLeagueDifficultyCoefficient } from "./league-difficulty.engine";
+import { calculateGrowthProjection } from "./growth-projection.engine";
+import { buildExplainability } from "./explainability.service";
+import { logger } from "../lib/logger";
+import { getPrimaryPosition } from "../utils/positions";
+
+//------------------Busca Segura----------------------------
+async function findPlayerByNameOrThrow(name: string) {
+  const player = await prisma.player.findFirst({
+    where: { name: { equals: name, mode: "insensitive" } },
+  });
+
+  if (player) {
+    return player;
+  }
+
+  const normalizedQuery = name
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/\p{Diacritic}/gu, "")
+    .trim();
+
+  const allPlayers = await prisma.player.findMany({
+    where: {
+      name: {
+        contains: name.trim(),
+        mode: "insensitive",
+      },
+    },
+  });
+
+  const fallback = allPlayers.find((item) => {
+    const normalizedName = item.name
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/\p{Diacritic}/gu, "")
+      .trim();
+    return normalizedName === normalizedQuery;
+  });
+
+  if (!fallback) {
+    throw new Error(`Player not found by name: ${name}`);
+  }
+
+  return fallback;
+}
+export async function compareByNames(nameA: string, nameB: string) {
+  const [playerA, playerB] = await Promise.all([
+    findPlayerByNameOrThrow(nameA),
+    findPlayerByNameOrThrow(nameB),
+  ]);
+
+  return compareByIds(playerA.id, playerB.id);
+}
+
+//---------------Atributos------------------------
+function resolveFifaAttributes(attributes: any) {
+  if (
+    typeof attributes?.pace === "number" &&
+    typeof attributes?.shooting === "number" &&
+    typeof attributes?.passing === "number" &&
+    typeof attributes?.dribbling === "number" &&
+    typeof attributes?.defending === "number" &&
+    typeof attributes?.physical === "number"
+  ) {
+    return {
+      pace: attributes.pace,
+      shooting: attributes.shooting,
+      passing: attributes.passing,
+      dribbling: attributes.dribbling,
+      defending: attributes.defending,
+      physical: attributes.physical,
+    };
+  }
+
+  return buildFifaAttributes(attributes);
+}
+
+/**
+ * Gera atributos principais realistas quando o jogador não possui atributos FIFA detalhados.
+ * A distribuição usa o overall como base e aplica ajustes por posição para evitar "todos iguais".
+ */
+function generateAttributesFromOverall(overall: number, position: string) {
+  const base = Math.round(overall);
+
+  // Garante limites consistentes para todas as engines consumidoras.
+  const clamp = (value: number) => Math.max(40, Math.min(99, Math.round(value)));
+
+  // Perfil de distribuição por posição (offsets relativos ao overall).
+  const presets: Record<
+    string,
+    {
+      pace: number;
+      shooting: number;
+      passing: number;
+      dribbling: number;
+      defending: number;
+      physical: number;
+    }
+  > = {
+    GK: { pace: -18, shooting: -20, passing: -8, dribbling: -12, defending: +4, physical: +2 },
+    CB: { pace: -8, shooting: -14, passing: -6, dribbling: -8, defending: +4, physical: +3 },
+    LB: { pace: +2, shooting: -8, passing: -2, dribbling: -1, defending: +1, physical: +2 },
+    RB: { pace: +2, shooting: -8, passing: -2, dribbling: -1, defending: +1, physical: +2 },
+    LWB: { pace: +3, shooting: -7, passing: -1, dribbling: +1, defending: 0, physical: +1 },
+    RWB: { pace: +3, shooting: -7, passing: -1, dribbling: +1, defending: 0, physical: +1 },
+    CDM: { pace: -5, shooting: -10, passing: -3, dribbling: -5, defending: +2, physical: +1 },
+    CM: { pace: -2, shooting: -3, passing: +1, dribbling: 0, defending: -1, physical: 0 },
+    CAM: { pace: -1, shooting: +1, passing: +2, dribbling: +2, defending: -7, physical: -3 },
+    LM: { pace: +1, shooting: -2, passing: +1, dribbling: +1, defending: -4, physical: -1 },
+    RM: { pace: +1, shooting: -2, passing: +1, dribbling: +1, defending: -4, physical: -1 },
+    LW: { pace: +2, shooting: 0, passing: -2, dribbling: +2, defending: -9, physical: -2 },
+    RW: { pace: +2, shooting: 0, passing: -2, dribbling: +2, defending: -9, physical: -2 },
+    CF: { pace: 0, shooting: +1, passing: -1, dribbling: +1, defending: -8, physical: -2 },
+    ST: { pace: -1, shooting: +2, passing: -4, dribbling: 0, defending: -10, physical: -2 },
+  };
+
+  const profile = presets[position] ?? presets.CM;
+
+  return {
+    pace: clamp(base + profile.pace),
+    shooting: clamp(base + profile.shooting),
+    passing: clamp(base + profile.passing),
+    dribbling: clamp(base + profile.dribbling),
+    defending: clamp(base + profile.defending),
+    physical: clamp(base + profile.physical),
+  };
+}
+
+function clampFifaCore(value: number) {
+  return Math.max(40, Math.min(99, Math.round(value)));
+}
+
+/**
+ * Resolve os atributos FIFA para o compare seguindo prioridade:
+
+ */
+function resolveFifaAttributesWithFallback(attributes: any, position: string) {
+  const resolved = resolveFifaAttributes(attributes);
+
+  // Se o adaptador devolveu valores válidos, usamos normalmente.
+  const hasValidCore =
+    typeof resolved?.pace === "number" &&
+    typeof resolved?.shooting === "number" &&
+    typeof resolved?.passing === "number" &&
+    typeof resolved?.dribbling === "number" &&
+    typeof resolved?.defending === "number" &&
+    typeof resolved?.physical === "number" &&
+    Number.isFinite(resolved.pace) &&
+    Number.isFinite(resolved.shooting) &&
+    Number.isFinite(resolved.passing) &&
+    Number.isFinite(resolved.dribbling) &&
+    Number.isFinite(resolved.defending) &&
+    Number.isFinite(resolved.physical);
+
+  if (hasValidCore) {
+    const normalized = {
+      pace: clampFifaCore(resolved.pace),
+      shooting: clampFifaCore(resolved.shooting),
+      passing: clampFifaCore(resolved.passing),
+      dribbling: clampFifaCore(resolved.dribbling),
+      defending: clampFifaCore(resolved.defending),
+      physical: clampFifaCore(resolved.physical),
+    };
+
+    const overallFromAttributes = Number(attributes?.overall);
+
+    const values = [
+      normalized.pace,
+      normalized.shooting,
+      normalized.passing,
+      normalized.dribbling,
+      normalized.defending,
+      normalized.physical,
+    ];
+
+    const uniqueValues = new Set(values);
+
+    // Quando os seis atributos estao iguais, tratamos como dado achatado
+    // e redistribuimos por posicao para evitar card irreal.
+    if (uniqueValues.size === 1) {
+      const fallbackOverall = Number.isFinite(overallFromAttributes)
+        ? overallFromAttributes
+        : normalized.pace;
+      return generateAttributesFromOverall(fallbackOverall, position);
+    }
+
+    return normalized;
+  }
+
+  const overallFromAttributes = Number(attributes?.overall);
+  if (Number.isFinite(overallFromAttributes) && overallFromAttributes > 0) {
+    return generateAttributesFromOverall(overallFromAttributes, position);
+  }
+
+  return generateAttributesFromOverall(60, position);
+}
+
+function buildCategoryIndex(fifa: any) {
+  return {
+    attacking: fifa.shooting ?? 50,
+    skill: fifa.dribbling ?? 50,
+    movement: fifa.pace ?? 50,
+    power: fifa.physical ?? 50,
+    mentality: 60,
+    defending: fifa.defending ?? 50,
+  };
+}
+
+function buildFifaCard(player: any, overall: any, fifa: any) {
+  const primaryPosition = getPrimaryPosition(player);
+  return {
+    player: {
+      id: player.id,
+      playerKey: player.id,
+      name: player.name,
+      nomeJogador: player.name,
+      position: primaryPosition,
+      age: player.age ?? null,
+      nationality: player.nationality ?? null,
+    },
+    overall: overall.fifaStyle?.overall ?? overall.overall,
+    tier: overall.tier,
+    rank: overall.positionRank,
+    core: overall.fifaStyle?.core ?? {
+      pace: fifa.pace ?? 50,
+      shooting: fifa.shooting ?? 50,
+      passing: fifa.passing ?? 50,
+      dribbling: fifa.dribbling ?? 50,
+      defending: fifa.defending ?? 50,
+      physical: fifa.physical ?? 50,
+    },
+    categories: overall.fifaStyle?.categories ?? null,
+    detailedStats: overall.fifaStyle?.detailedStats ?? null,
+  };
+}
+
+function resolvePlayerLeague(player: any): string {
+  return (
+    player?.league ??
+    player?.attributes?.league ??
+    player?.attributes?.clubLeague ??
+    process.env.DEFAULT_LEAGUE ??
+    "Brasileirao"
+  );
+}
 
 export async function compareByIds(idA: string, idB: string) {
+  const startedAt = Date.now();
   const [playerA, playerB] = await Promise.all([
     prisma.player.findUnique({ where: { id: idA } }),
     prisma.player.findUnique({ where: { id: idB } }),
   ]);
 
   if (!playerA || !playerB) {
+    logger.warn("Compare aborted: player not found", { idA, idB });
     throw new Error("Player not found");
   }
 
-  if (playerA.position !== playerB.position) {
+  const positionA = getPrimaryPosition(playerA);
+  const positionB = getPrimaryPosition(playerB);
+
+  if (positionA !== positionB) {
     throw new Error("Players must have the same position");
   }
 
-  const weights = POSITION_WEIGHTS[playerA.position];
+  const weights = POSITION_WEIGHTS[positionA];
   if (!weights) {
-    throw new Error(`No weights for position ${playerA.position}`);
+    throw new Error(`No weights for position ${positionA}`);
   }
 
-  // 🔹 QUALITATIVE
+  // ---------------- QUALITATIVE ----------------
   const qualitative: CompareResult = compareAttributes(
     playerA.attributes as Attributes,
     playerB.attributes as Attributes,
   );
 
-  // 🔹 QUANTITATIVE
+  // ---------------- QUANTITATIVE ----------------
   const scoreA = calculateRankingScore(playerA.attributes as Attributes, weights);
 
   const scoreB = calculateRankingScore(playerB.attributes as Attributes, weights);
 
   const difference = Number(Math.abs(scoreA - scoreB).toFixed(2));
-
   const winner = scoreA > scoreB ? "A" : scoreB > scoreA ? "B" : "DRAW";
+  const averagePositionScore = (scoreA + scoreB) / 2;
 
-  // 🔹 CREATE REPORT
+  // ---------------- FIFA + CATEGORY ----------------
+  const fifaA = resolveFifaAttributesWithFallback(playerA.attributes, positionA);
+  const fifaB = resolveFifaAttributesWithFallback(playerB.attributes, positionB);
+
+  const categoryA = buildCategoryIndex(fifaA);
+  const categoryB = buildCategoryIndex(fifaB);
+
+  // ---------------- RISK ----------------
+  const riskA = calculateRiskScore({
+    age: playerA.age ?? 25,
+    position: positionA,
+    performanceScore: scoreA,
+    averagePositionScore,
+    categoryIndex: categoryA,
+  });
+
+  const riskB = calculateRiskScore({
+    age: playerB.age ?? 25,
+    position: positionB,
+    performanceScore: scoreB,
+    averagePositionScore,
+    categoryIndex: categoryB,
+  });
+
+  const executiveSummaryA = buildExecutiveRiskSummary(playerA.name, riskA);
+  const executiveSummaryB = buildExecutiveRiskSummary(playerB.name, riskB);
+
+  // ---------------- MEDICAL RISK (LESION MAP) ----------------
+  const lesionMap = loadLesionMapFromPath(process.env.LESION_MAP_PATH);
+
+  const injuriesA = extractInjuryEventsFromAttributes(playerA.attributes);
+  const injuriesB = extractInjuryEventsFromAttributes(playerB.attributes);
+
+  const medicalRiskA = calculateMedicalRisk({
+    injuries: injuriesA,
+    lesionMap,
+  });
+
+  const medicalRiskB = calculateMedicalRisk({
+    injuries: injuriesB,
+    lesionMap,
+  });
+
+  // ---------------- ANTI FLOP ----------------
+  const antiFlopA = calculateAntiFlopIndex({
+    risk: riskA,
+    age: playerA.age ?? 25,
+    performanceScore: scoreA,
+    averagePositionScore,
+    medicalRisk: medicalRiskA,
+    leagueDifficultyCoefficient: getLeagueDifficultyCoefficient(resolvePlayerLeague(playerA)),
+  });
+
+  const antiFlopB = calculateAntiFlopIndex({
+    risk: riskB,
+    age: playerB.age ?? 25,
+    performanceScore: scoreB,
+    averagePositionScore,
+    medicalRisk: medicalRiskB,
+    leagueDifficultyCoefficient: getLeagueDifficultyCoefficient(resolvePlayerLeague(playerB)),
+  });
+
+  // ---------------- LIQUIDITY ----------------
+  const liquidityA = calculateLiquidityScore({
+    age: playerA.age ?? 25,
+    performanceScore: scoreA,
+    averagePositionScore,
+    risk: riskA,
+    antiFlop: antiFlopA,
+  });
+
+  const liquidityB = calculateLiquidityScore({
+    age: playerB.age ?? 25,
+    performanceScore: scoreB,
+    averagePositionScore,
+    risk: riskB,
+    antiFlop: antiFlopB,
+  });
+
+  // ---------------- MACRO OVERALL ----------------
+  const macroOverallA =
+    Object.values(categoryA).reduce((a, b) => a + b, 0) / Object.values(categoryA).length;
+
+  const macroOverallB =
+    Object.values(categoryB).reduce((a, b) => a + b, 0) / Object.values(categoryB).length;
+
+  // ---------------- OVERALL ----------------
+  const overallA = calculateOverallRating({
+    position: positionA,
+    performanceScore: scoreA,
+    categoryIndex: categoryA,
+    macroOverall: macroOverallA,
+    fifaAttributes: fifaA,
+    rawAttributes: playerA.attributes,
+  });
+  const fifaCardA = buildFifaCard(playerA, overallA, fifaA);
+
+  const overallB = calculateOverallRating({
+    position: positionB,
+    performanceScore: scoreB,
+    categoryIndex: categoryB,
+    macroOverall: macroOverallB,
+    fifaAttributes: fifaB,
+    rawAttributes: playerB.attributes,
+  });
+  const fifaCardB = buildFifaCard(playerB, overallB, fifaB);
+
+  // ---------------- FINANCIAL RISK ----------------
+  const financialRiskA = calculateFinancialRisk({
+    structuralRisk: riskA.totalRisk,
+    flopProbability: antiFlopA.flopProbability,
+    liquidityScore: liquidityA.liquidityScore,
+    age: playerA.age ?? 25,
+    overall: overallA.overall,
+  });
+
+  const financialRiskB = calculateFinancialRisk({
+    structuralRisk: riskB.totalRisk,
+    flopProbability: antiFlopB.flopProbability,
+    liquidityScore: liquidityB.liquidityScore,
+    age: playerB.age ?? 25,
+    overall: overallB.overall,
+  });
+
+  // ---------------- CAPITAL EFFICIENCY  ----------------
+  const capitalEfficiencyA = calculateCapitalEfficiency({
+    performanceScore: scoreA,
+    flopProbability: antiFlopA.flopProbability,
+    liquidityScore: liquidityA.liquidityScore,
+    financialRiskIndex: financialRiskA.riskIndex,
+  });
+
+  const capitalEfficiencyB = calculateCapitalEfficiency({
+    performanceScore: scoreB,
+    flopProbability: antiFlopB.flopProbability,
+    liquidityScore: liquidityB.liquidityScore,
+    financialRiskIndex: financialRiskB.riskIndex,
+  });
+
+  const growthProjectionA = calculateGrowthProjection({
+    age: playerA.age ?? 25,
+    position: positionA,
+    currentOverall: overallA.overall,
+    performanceHistory: [scoreA],
+    physicalLoad: Number((playerA.attributes as any)?.physicalLoad ?? 55),
+    performanceStability: Number((playerA.attributes as any)?.stability ?? 60),
+    leagueDifficultyCoefficient: getLeagueDifficultyCoefficient(resolvePlayerLeague(playerA)),
+  });
+
+  const growthProjectionB = calculateGrowthProjection({
+    age: playerB.age ?? 25,
+    position: positionB,
+    currentOverall: overallB.overall,
+    performanceHistory: [scoreB],
+    physicalLoad: Number((playerB.attributes as any)?.physicalLoad ?? 55),
+    performanceStability: Number((playerB.attributes as any)?.stability ?? 60),
+    leagueDifficultyCoefficient: getLeagueDifficultyCoefficient(resolvePlayerLeague(playerB)),
+  });
+
+  const explainabilityA = buildExplainability({
+    risk: riskA,
+    antiFlop: antiFlopA,
+    financialRisk: financialRiskA,
+    growthProjection: growthProjectionA,
+  });
+
+  const explainabilityB = buildExplainability({
+    risk: riskB,
+    antiFlop: antiFlopB,
+    financialRisk: financialRiskB,
+    growthProjection: growthProjectionB,
+  });
+  // ---------------- PERSIST REPORT ----------------
   const report = await prisma.scoutReport.create({
     data: {
       type: "COMPARE",
       playerId: playerA.id,
-      input: {
-        playerA: playerA.id,
-        playerB: playerB.id,
-      },
+      input: { playerA: playerA.id, playerB: playerB.id },
       output: {
         qualitative,
-        quantitative: {
-          scoreA,
-          scoreB,
-          difference,
-          winner,
+        quantitative: { scoreA, scoreB, difference, winner },
+        playerDetails: {
+          playerA: {
+            id: playerA.id,
+            playerKey: playerA.id,
+            name: playerA.name,
+            nomeJogador: playerA.name,
+            position: positionA,
+            age: playerA.age ?? null,
+            nationality: playerA.nationality ?? null,
+          },
+          playerB: {
+            id: playerB.id,
+            playerKey: playerB.id,
+            name: playerB.name,
+            nomeJogador: playerB.name,
+            position: positionB,
+            age: playerB.age ?? null,
+            nationality: playerB.nationality ?? null,
+          },
         },
-      },
+        overallRating: { playerA: overallA, playerB: overallB },
+        antiFlop: { playerA: antiFlopA, playerB: antiFlopB },
+        liquidity: { playerA: liquidityA, playerB: liquidityB },
+        financialRisk: { playerA: financialRiskA, playerB: financialRiskB },
+        capitalEfficiency: {
+          playerA: capitalEfficiencyA,
+          playerB: capitalEfficiencyB,
+        },
+        growthProjection: {
+          playerA: growthProjectionA,
+          playerB: growthProjectionB,
+        },
+        explainability: {
+          playerA: explainabilityA,
+          playerB: explainabilityB,
+        },
+        fifaCards: {
+          playerA: fifaCardA,
+          playerB: fifaCardB,
+        },
+      } as any,
     },
   });
 
-  // 🔹 SIMPLE AI NARRATIVE (mock inteligente)
   const aiNarrative = `
-Comparison Report
-
-${playerA.name} vs ${playerB.name}
-
-${playerA.name} scored ${scoreA} points,
-while ${playerB.name} scored ${scoreB} points.
-
-Performance difference: ${difference}.
-
-Overall Winner: ${winner === "A" ? playerA.name : winner === "B" ? playerB.name : "Draw"}.
+${playerA.name} scored ${scoreA}.
+${playerB.name} scored ${scoreB}.
+Difference: ${difference}.
+Winner: ${winner === "A" ? playerA.name : winner === "B" ? playerB.name : "Draw"}.
 `.trim();
 
-  // 🔹 UPDATE REPORT WITH NARRATIVE
   await prisma.scoutReport.update({
     where: { id: report.id },
-    data: {
-      aiNarrative,
-    },
+    data: { aiNarrative },
+  });
+
+  logger.info("Compare completed", {
+    reportId: report.id,
+    idA,
+    idB,
+    durationMs: Date.now() - startedAt,
   });
 
   return {
     reportId: report.id,
-    position: playerA.position,
-    playerA: {
-      id: playerA.id,
-      name: playerA.name,
-      archetype: playerA.archetype,
-    },
-    playerB: {
-      id: playerB.id,
-      name: playerB.name,
-      archetype: playerB.archetype,
+    position: positionA,
+    players: {
+      playerA: {
+        id: playerA.id,
+        playerKey: playerA.id,
+        name: playerA.name,
+        nomeJogador: playerA.name,
+        position: positionA,
+        age: playerA.age ?? null,
+        nationality: playerA.nationality ?? null,
+      },
+      playerB: {
+        id: playerB.id,
+        playerKey: playerB.id,
+        name: playerB.name,
+        nomeJogador: playerB.name,
+        position: positionB,
+        age: playerB.age ?? null,
+        nationality: playerB.nationality ?? null,
+      },
     },
     qualitative,
-    quantitative: {
-      scoreA,
-      scoreB,
-      difference,
-      winner,
+    quantitative: { scoreA, scoreB, difference, winner },
+    overallRating: { playerA: overallA, playerB: overallB },
+    fifaAttributes: { playerA: fifaA, playerB: fifaB },
+
+    fifaCards: {
+      playerA: fifaCardA,
+      playerB: fifaCardB,
     },
+
+    risk: {
+      playerA: { ...riskA, executiveSummary: executiveSummaryA },
+      playerB: { ...riskB, executiveSummary: executiveSummaryB },
+    },
+    antiFlop: { playerA: antiFlopA, playerB: antiFlopB },
+    liquidity: { playerA: liquidityA, playerB: liquidityB },
+    financialRisk: { playerA: financialRiskA, playerB: financialRiskB },
+    capitalEfficiency: {
+      playerA: capitalEfficiencyA,
+      playerB: capitalEfficiencyB,
+    },
+    growthProjection: {
+      playerA: growthProjectionA,
+      playerB: growthProjectionB,
+    },
+    explainability: {
+      playerA: explainabilityA,
+      playerB: explainabilityB,
+    },
+    medicalRisk: { playerA: medicalRiskA, playerB: medicalRiskB },
     aiNarrative,
   };
 }

@@ -1,24 +1,30 @@
 import { Router } from "express";
-import { compareByIds } from "../scout/compare.service";
+import { compareByIds, compareByNames } from "../scout/compare.service";
 import { successResponse } from "../lib/apiResponse";
-import { compareParamsSchema } from "../validators/compare.validators";
+import { compareByNameParamsSchema, compareParamsSchema } from "../validators/compare.validators";
 
 const router = Router();
+router.get("/by-name/:nameA/:nameB", async (req, res, next) => {
+  try {
+    const { nameA, nameB } = compareByNameParamsSchema.parse(req.params);
 
-/**
- * GET /api/compare/:idA/:idB
- * Compara dois jogadores da mesma posição
- */
+    const result = await compareByNames(nameA, nameB);
+
+    return res.json(successResponse(result));
+  } catch (error) {
+    next(error);
+  }
+});
+
 router.get("/:idA/:idB", async (req, res, next) => {
   try {
-    // 🔒 Validação profissional
     const { idA, idB } = compareParamsSchema.parse(req.params);
 
     const result = await compareByIds(idA, idB);
 
     return res.json(successResponse(result));
   } catch (error) {
-    next(error); // delega para middleware global
+    next(error);
   }
 });
 
