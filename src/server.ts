@@ -51,6 +51,7 @@ if (process.env.NODE_ENV === "development") {
 app.use(errorMiddleware);
 
 const port = Number(process.env.PORT ?? 3000);
+
 app.listen(port, () => {
-  logger.info("Scout Engine running", { port, baseUrl: `http://localhost:${port}` });
+  console.log(`Server running on port ${port}`);
 });
