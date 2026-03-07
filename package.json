@@ -2,7 +2,7 @@
   "name": "scout-engine",
   "version": "1.0.0",
   "description": "",
-  "main": "index.js",
+  "main": "dist/server.js",
   "type": "commonjs",
   "scripts": {
     "dev": "nodemon --watch src --exec ts-node ./src/server.ts",
