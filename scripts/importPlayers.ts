@@ -1,8 +1,7 @@
 import "dotenv/config";
 
 /**
- * Desativa validação de certificado TLS
- * Necessário devido ao certificado atual da API SportsMonks
+ * Desativa verificação TLS por causa do certificado atual da API
  */
 process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
 
@@ -13,24 +12,24 @@ import { nameToSlug, normalizeName } from "../src/utils/normalizeName";
 const prisma = new PrismaClient();
 
 /**
- * Chave da API SportsMonks
+ * Chave da API carregada do .env
  */
-const API_KEY = process.env.ESPORTSMONKS_API_KEY;
+const API_KEY = process.env.ESPORTSMONKS;
 
 /**
- * Endpoint correto da API
+ * Endpoint oficial
  */
-const BASE_URL = "https://api.sportmonks.com/v3/football/players";
+const BASE_URL = "https://api.sportsmonks.com/v3/football/players";
 
 /**
- * Delay entre requisições para evitar rate limit
+ * Delay para evitar rate limit
  */
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 /**
- * Busca jogadores paginados
+ * Busca jogadores da API
  */
 async function fetchPlayers(page: number) {
   const response = await axios.get(BASE_URL, {
@@ -38,7 +37,7 @@ async function fetchPlayers(page: number) {
       api_token: API_KEY,
       per_page: 100,
       page,
-      include: "team;country;position",
+      include: "country;position",
     },
   });
 
@@ -46,30 +45,31 @@ async function fetchPlayers(page: number) {
 }
 
 async function main() {
-  console.log("========================================");
-  console.log("INICIANDO IMPORTAÇÃO DE JOGADORES");
-  console.log("Fonte: SportsMonks API");
-  console.log("========================================");
-
-  console.log("API KEY carregada:", API_KEY ? "OK" : "NÃO ENCONTRADA");
+  console.log("=====================================");
+  console.log("IMPORTAÇÃO DE JOGADORES - SPORTSMONKS");
+  console.log("=====================================");
 
   if (!API_KEY) {
-    throw new Error("SPORTSMONKS_API_KEY não encontrada no .env");
+    throw new Error("Variável ESPORTSMONKS não encontrada no .env");
   }
 
+  console.log("API KEY carregada com sucesso");
+
   /**
-   * Limpa jogadores existentes
+   * Limpa banco atual
    */
   console.log("Limpando tabela Player...");
 
   await prisma.player.deleteMany({});
 
-  console.log("Tabela limpa com sucesso.");
-  console.log("Iniciando ingestão de dados...");
+  console.log("Tabela limpa");
 
   let page = 1;
   let totalInserted = 0;
 
+  /**
+   * Loop de paginação
+   */
   while (true) {
     const players = await fetchPlayers(page);
 
@@ -80,11 +80,13 @@ async function main() {
     console.log(`Processando página ${page} (${players.length} jogadores)`);
 
     for (const p of players) {
-      const name = p.name;
+      const name = p.name ?? "Unknown";
 
       const playerData = {
         slug: nameToSlug(name),
+
         name,
+
         nameNormalized: normalizeName(name),
 
         positions: [p.position?.name ?? "CM"],
@@ -93,7 +95,7 @@ async function main() {
 
         nationality: p.country?.name ?? "Unknown",
 
-        team: p.team?.name ?? null,
+        team: null,
 
         league: null,
 
@@ -119,9 +121,16 @@ async function main() {
         },
       };
 
+      /**
+       * Evita duplicação
+       */
       await prisma.player.upsert({
-        where: { slug: playerData.slug },
+        where: {
+          slug: playerData.slug,
+        },
+
         update: playerData,
+
         create: playerData,
       });
 
@@ -131,20 +140,21 @@ async function main() {
     page++;
 
     /**
-     * Delay para evitar limite da API
+     * Delay para evitar bloqueio da API
      */
     await sleep(300);
   }
 
-  console.log("========================================");
+  console.log("=====================================");
   console.log("IMPORTAÇÃO FINALIZADA");
-  console.log(`Total de jogadores inseridos: ${totalInserted}`);
-  console.log("========================================");
+  console.log("Jogadores inseridos:", totalInserted);
+  console.log("=====================================");
 
   await prisma.$disconnect();
 }
 
 main().catch((error) => {
-  console.error("Erro durante a importação:", error);
+  console.error("Erro durante importação:", error);
+
   process.exit(1);
 });
