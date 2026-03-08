@@ -15,7 +15,7 @@ const prisma = new PrismaClient();
 /**
  * Chave da API SportsMonks
  */
-const API_KEY = process.env.SPORTSMONKS_API_KEY;
+const API_KEY = process.env.ESPORTSMONKS_API_KEY;
 
 /**
  * Endpoint correto da API
