@@ -76,13 +76,8 @@ export async function importPlayersFromCsv(
   let skipped = 0;
   let batches = 0;
 
-  await prisma.player.deleteMany({
-    where: {
-      name: {
-        startsWith: "Player ",
-      },
-    },
-  });
+  // 🧹 LIMPA COMPLETAMENTE A TABELA PLAYER
+  await prisma.player.deleteMany();
 
   let buffer: any[] = [];
 
