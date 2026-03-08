@@ -6,7 +6,8 @@ import { nameToSlug, normalizeName } from "../src/utils/normalizeName";
 const prisma = new PrismaClient();
 
 const API_KEY = process.env.ESPORTSMONKS;
-const API = "https://api.sportmonks.com/v3/football";
+const API =
+  "https://api.sportmonks.com/v3/football/players?api_token=dVY9sQN0tVh77MUmWcwpGU7ZUaQT4fHJ1YfQrpoOnLU1YI23AY30k1j7k32g&include=nationality;teams";
 
 /*
 GERADOR DE NÚMEROS
