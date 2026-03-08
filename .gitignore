@@ -4,4 +4,4 @@ dist
 coverage
 *.log
 .prisma
-data/*.csv
+data/players.csv
