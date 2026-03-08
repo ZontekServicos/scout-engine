@@ -6,8 +6,7 @@ import { nameToSlug, normalizeName } from "../src/utils/normalizeName";
 const prisma = new PrismaClient();
 
 const API_KEY = process.env.ESPORTSMONKS;
-const API =
-  "https://api.sportmonks.com/v3/football/players?api_token=dVY9sQN0tVh77MUmWcwpGU7ZUaQT4fHJ1YfQrpoOnLU1YI23AY30k1j7k32g&include=nationality;teams";
+const API = "https://api.sportmonks.com/v3/football";
 
 /*
 GERADOR DE NÚMEROS
@@ -17,7 +16,7 @@ function rand(min: number, max: number) {
 }
 
 /*
-GERAR ATRIBUTOS ESTILO FIFA
+ATRIBUTOS ESTILO FIFA
 */
 function generateAttributes() {
   const pace = rand(60, 90);
@@ -41,9 +40,9 @@ function generateAttributes() {
 }
 
 /*
-MAPEAMENTO COMPLETO DE POSIÇÕES
+MAPEAMENTO DE POSIÇÕES
 */
-function mapPosition(position: string): string {
+function mapPosition(name: string) {
   const map: Record<string, string> = {
     Goalkeeper: "GK",
 
@@ -57,12 +56,10 @@ function mapPosition(position: string): string {
     "Right Wing Back": "RWB",
 
     "Defensive Midfielder": "CDM",
-    "Central Defensive Midfielder": "CDM",
 
     "Central Midfielder": "CM",
 
     "Attacking Midfielder": "CAM",
-    "Central Attacking Midfielder": "CAM",
 
     "Left Midfielder": "LM",
     "Right Midfielder": "RM",
@@ -70,26 +67,13 @@ function mapPosition(position: string): string {
     "Left Winger": "LW",
     "Right Winger": "RW",
 
-    "Second Striker": "CF",
     "Centre Forward": "CF",
-    "Center Forward": "CF",
 
     Striker: "ST",
     Forward: "ST",
   };
 
-  return map[position] ?? "CM";
-}
-
-/*
-EXTRAI POSIÇÕES
-*/
-function extractPositions(row: any): string[] {
-  const rawPosition = row.position?.data?.name ?? "Central Midfielder";
-
-  const mapped = mapPosition(rawPosition);
-
-  return [mapped];
+  return map[name] ?? "CM";
 }
 
 /*
@@ -107,7 +91,7 @@ async function fetchLeagues() {
 }
 
 /*
-BUSCAR TIMES
+BUSCAR TIMES DA LIGA
 */
 async function fetchTeams(leagueId: number) {
   const res = await axios.get(`${API}/teams`, {
@@ -121,7 +105,7 @@ async function fetchTeams(leagueId: number) {
 }
 
 /*
-BUSCAR ELENCO
+BUSCAR ELENCO DO TIME
 */
 async function fetchSquad(teamId: number) {
   const res = await axios.get(`${API}/squads/teams/${teamId}`, {
@@ -139,7 +123,7 @@ SCRIPT PRINCIPAL
 */
 async function main() {
   console.log("=================================");
-  console.log("IMPORTAÇÃO COMPLETA DE JOGADORES");
+  console.log("IMPORTAÇÃO COMPLETA SPORTSMONKS");
   console.log("=================================");
 
   if (!API_KEY) {
@@ -167,14 +151,16 @@ async function main() {
 
       const squad = await fetchSquad(team.id);
 
-      for (const s of squad) {
-        const player = s.player?.data;
+      for (const row of squad) {
+        const player = row.player?.data;
 
         if (!player) continue;
 
-        const positions = extractPositions(s);
+        const positionName = row.position?.data?.name ?? "Central Midfielder";
 
-        const nationality = s.nationality?.data?.name ?? "Unknown";
+        const position = mapPosition(positionName);
+
+        const nationality = row.nationality?.data?.name ?? "Unknown";
 
         const attributes = generateAttributes();
 
@@ -185,7 +171,7 @@ async function main() {
 
           nameNormalized: normalizeName(player.name),
 
-          positions,
+          positions: [position],
 
           age: player.age ?? rand(18, 35),
 
@@ -206,7 +192,7 @@ async function main() {
           attributes,
 
           archetype: {
-            role: `Imported ${positions[0]}`,
+            role: `Imported ${position}`,
           },
         };
 
@@ -230,6 +216,6 @@ async function main() {
 }
 
 main().catch((error) => {
-  console.error(error);
+  console.error("Erro na importação:", error);
   process.exit(1);
 });
