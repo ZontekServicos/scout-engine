@@ -5,189 +5,138 @@ import { nameToSlug, normalizeName } from "../src/utils/normalizeName";
 
 const prisma = new PrismaClient();
 
+/*
+CHAVE DA API
+*/
 const API_KEY = process.env.ESPORTSMONKS;
 
+/*
+ENDPOINT CORRETO
+*/
 const BASE_URL = "https://api.sportmonks.com/v3/football/players";
 
 /*
-Função utilitária para gerar valor entre min e max
+FUNÇÃO RANDOM
 */
 function rand(min: number, max: number) {
   return Math.floor(Math.random() * (max - min) + min);
 }
 
 /*
-Gerador completo de atributos estilo FIFA
+GERADOR DE ATRIBUTOS ESTILO FIFA
 */
 function generateAttributes(position: string) {
-  const attacking = {
-    finishing: rand(55, 90),
-    headingAccuracy: rand(50, 85),
-    volleys: rand(50, 85),
-    shortPassing: rand(60, 90),
-  };
+  const pace = rand(60, 90);
+  const shooting = rand(50, 90);
+  const passing = rand(50, 90);
+  const dribbling = rand(50, 90);
+  const defending = rand(40, 85);
+  const physical = rand(50, 90);
 
-  const skill = {
-    dribbling: rand(60, 92),
-    curve: rand(55, 85),
-    fkAccuracy: rand(50, 88),
-    ballControl: rand(65, 92),
-  };
-
-  const movement = {
-    acceleration: rand(60, 92),
-    sprintSpeed: rand(60, 92),
-    agility: rand(60, 92),
-    balance: rand(60, 90),
-    reactions: rand(65, 92),
-  };
-
-  const power = {
-    shotPower: rand(60, 90),
-    jumping: rand(60, 90),
-    stamina: rand(60, 95),
-    strength: rand(55, 92),
-    longShots: rand(60, 90),
-  };
-
-  const mentality = {
-    aggression: rand(50, 90),
-    interceptions: rand(50, 90),
-    positioning: rand(55, 92),
-    vision: rand(60, 92),
-    penalties: rand(50, 88),
-    composure: rand(60, 92),
-  };
-
-  const defending = {
-    defensiveAwareness: rand(50, 90),
-    standingTackle: rand(50, 90),
-    slidingTackle: rand(50, 90),
-  };
-
-  /*
-  Cálculo de médias por categoria
-  */
-
-  const attackingAvg =
-    (attacking.finishing + attacking.headingAccuracy + attacking.volleys + attacking.shortPassing) /
-    4;
-
-  const skillAvg = (skill.dribbling + skill.curve + skill.fkAccuracy + skill.ballControl) / 4;
-
-  const movementAvg =
-    (movement.acceleration +
-      movement.sprintSpeed +
-      movement.agility +
-      movement.balance +
-      movement.reactions) /
-    5;
-
-  const powerAvg =
-    (power.shotPower + power.jumping + power.stamina + power.strength + power.longShots) / 5;
-
-  const mentalityAvg =
-    (mentality.aggression +
-      mentality.interceptions +
-      mentality.positioning +
-      mentality.vision +
-      mentality.penalties +
-      mentality.composure) /
-    6;
-
-  const defendingAvg =
-    (defending.defensiveAwareness + defending.standingTackle + defending.slidingTackle) / 3;
-
-  /*
-  Pesos por posição
-  */
-
-  let overall = 0;
-
-  if (position.includes("Forward")) {
-    overall =
-      attackingAvg * 0.3 +
-      skillAvg * 0.25 +
-      movementAvg * 0.2 +
-      powerAvg * 0.15 +
-      mentalityAvg * 0.05 +
-      defendingAvg * 0.05;
-  } else if (position.includes("Midfielder")) {
-    overall =
-      attackingAvg * 0.15 +
-      skillAvg * 0.25 +
-      movementAvg * 0.2 +
-      powerAvg * 0.15 +
-      mentalityAvg * 0.2 +
-      defendingAvg * 0.05;
-  } else if (position.includes("Defender")) {
-    overall =
-      defendingAvg * 0.35 +
-      powerAvg * 0.2 +
-      movementAvg * 0.15 +
-      mentalityAvg * 0.15 +
-      attackingAvg * 0.05 +
-      skillAvg * 0.1;
-  } else {
-    overall = (attackingAvg + skillAvg + movementAvg + powerAvg + mentalityAvg + defendingAvg) / 6;
-  }
+  const overall = Math.round((pace + shooting + passing + dribbling + defending + physical) / 6);
 
   return {
-    attacking,
-    skill,
-    movement,
-    power,
-    mentality,
+    pace,
+    shooting,
+    passing,
+    dribbling,
     defending,
-    overall: Math.round(overall),
+    physical,
+    overall,
   };
 }
 
+/*
+BUSCAR JOGADORES
+*/
 async function fetchPlayers(page: number) {
   const response = await axios.get(BASE_URL, {
     params: {
       api_token: API_KEY,
       per_page: 100,
       page,
-      include: "nationality;position",
+      include: "nationality;teams;position",
     },
   });
 
   return response.data.data;
 }
 
+/*
+SCRIPT PRINCIPAL
+*/
 async function main() {
   console.log("=====================================");
-  console.log("IMPORTAÇÃO DE JOGADORES - SPORTSMONKS");
+  console.log("IMPORTAÇÃO DE JOGADORES - SPORTMONKS");
   console.log("=====================================");
 
   if (!API_KEY) {
-    console.error("API KEY não encontrada no .env");
+    console.log("❌ API KEY não encontrada no .env");
     process.exit(1);
   }
 
   console.log("API KEY carregada com sucesso");
 
+  /*
+  LIMPAR BANCO
+  */
+
   console.log("Limpando tabela Player...");
+
   await prisma.player.deleteMany({});
+
   console.log("Tabela limpa");
 
   let page = 1;
-  let totalInserted = 0;
+  let total = 0;
 
   while (true) {
     const players = await fetchPlayers(page);
 
-    if (!players || players.length === 0) break;
+    if (!players || players.length === 0) {
+      break;
+    }
 
-    console.log(`Processando página ${page}`);
+    console.log(`Processando página ${page} (${players.length} jogadores)`);
 
     for (const p of players) {
-      const name = p.name ?? "Unknown Player";
+      const name = p.name;
 
-      const position = p.position?.data?.name ?? "Midfielder";
+      if (!name) continue;
+
+      /*
+      NACIONALIDADE
+      */
+
+      const nationality = p.nationality?.data?.name ?? "Unknown";
+
+      /*
+      TIME
+      */
+
+      const team = p.teams?.data?.[0]?.name ?? null;
+
+      /*
+      LIGA
+      */
+
+      const league = p.teams?.data?.[0]?.league?.name ?? null;
+
+      /*
+      POSIÇÃO
+      */
+
+      const position = p.position?.data?.name ?? "CM";
+
+      /*
+      ATRIBUTOS
+      */
 
       const attributes = generateAttributes(position);
+
+      /*
+      PLAYER DATA
+      */
 
       const playerData = {
         slug: nameToSlug(name),
@@ -198,13 +147,13 @@ async function main() {
 
         positions: [position],
 
-        age: p.age ?? 25,
+        age: p.age ?? rand(18, 35),
 
-        nationality: p.nationality?.data?.name ?? "Unknown",
+        nationality,
 
-        team: null,
+        team,
 
-        league: null,
+        league,
 
         marketValue: null,
 
@@ -223,20 +172,19 @@ async function main() {
 
       await prisma.player.upsert({
         where: { slug: playerData.slug },
-
         update: playerData,
-
         create: playerData,
       });
 
-      totalInserted++;
+      total++;
     }
 
     page++;
   }
 
   console.log("=====================================");
-  console.log(`Jogadores inseridos: ${totalInserted}`);
+  console.log("IMPORTAÇÃO FINALIZADA");
+  console.log(`Jogadores importados: ${total}`);
   console.log("=====================================");
 
   await prisma.$disconnect();
