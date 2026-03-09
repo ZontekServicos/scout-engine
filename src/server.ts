@@ -37,11 +37,11 @@ app.use(secureHeaders);
 app.use(
   cors({
     origin: "*",
-    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization"],
   }),
 );
-app.options("*", cors());
+app.options(/.*/, cors());
 app.use(limiter);
 
 app.use("/api/scout", scoutRoutes);
