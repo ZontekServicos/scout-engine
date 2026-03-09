@@ -64,6 +64,8 @@ type SportmonksPlayer = {
   teams?: Array<
     SportmonksEntity & {
       team_id?: number;
+      position_id?: number | string | null;
+      detailed_position_id?: number | string | null;
       team?: SportmonksEntity | { data?: SportmonksEntity };
       league?: SportmonksEntity | { data?: SportmonksEntity };
       current_league?: SportmonksEntity | { data?: SportmonksEntity };
@@ -72,6 +74,8 @@ type SportmonksPlayer = {
     data?: Array<
       SportmonksEntity & {
         team_id?: number;
+        position_id?: number | string | null;
+        detailed_position_id?: number | string | null;
         team?: SportmonksEntity | { data?: SportmonksEntity };
         league?: SportmonksEntity | { data?: SportmonksEntity };
         current_league?: SportmonksEntity | { data?: SportmonksEntity };
@@ -288,6 +292,14 @@ function readLeagueNameFromTeamUnknown(teamValue: unknown): string | null {
   );
 }
 
+function normalizePositionLabel(value: string): string {
+  return value
+    .trim()
+    .toUpperCase()
+    .replace(/[_-]+/g, " ")
+    .replace(/\s+/g, " ");
+}
+
 function mapPositionFromApi(input: {
   positionName?: string | null;
   detailedPositionName?: string | null;
@@ -306,9 +318,14 @@ function mapPositionFromApi(input: {
   const aliases: Record<string, string> = {
     "CENTRE BACK": "CB",
     "CENTER BACK": "CB",
+    "CENTRAL DEFENDER": "CB",
+    "LEFT CENTRAL DEFENDER": "CB",
+    "RIGHT CENTRAL DEFENDER": "CB",
     DEFENDER: "CB",
     "LEFT BACK": "LB",
+    "LEFT DEFENDER": "LB",
     "RIGHT BACK": "RB",
+    "RIGHT DEFENDER": "RB",
     "LEFT WING BACK": "LWB",
     "RIGHT WING BACK": "RWB",
     "DEFENSIVE MIDFIELD": "CDM",
@@ -320,6 +337,8 @@ function mapPositionFromApi(input: {
     "ATTACKING MIDFIELD": "CAM",
     "LEFT MIDFIELDER": "LM",
     "RIGHT MIDFIELDER": "RM",
+    "LEFT ATTACKING MIDFIELD": "LM",
+    "RIGHT ATTACKING MIDFIELD": "RM",
     "LEFT WING": "LW",
     "LEFT WINGER": "LW",
     "RIGHT WING": "RW",
@@ -333,7 +352,7 @@ function mapPositionFromApi(input: {
 
   for (const candidate of directCandidates) {
     if (!candidate || !candidate.trim()) continue;
-    const alias = aliases[candidate.trim().toUpperCase()];
+    const alias = aliases[normalizePositionLabel(candidate)];
     if (alias) return alias;
   }
 
@@ -368,6 +387,61 @@ function mapPositionFromApi(input: {
   }
 
   return "CM";
+}
+
+function leagueRatingBonus(league?: string | null): number {
+  if (!league) return 0;
+  const normalized = normalizePositionLabel(league);
+  const top = new Set(["PREMIER LEAGUE", "LALIGA", "LA LIGA", "SERIE A", "BUNDESLIGA", "LIGUE 1"]);
+  const strong = new Set(["EREDIVISIE", "PRIMEIRA LIGA", "CHAMPIONSHIP", "PRO LEAGUE"]);
+  if (top.has(normalized)) return 4;
+  if (strong.has(normalized)) return 2;
+  return 0;
+}
+
+function deterministicUnit(seed: number, salt: number): number {
+  const value = ((seed ^ (salt * 2654435761)) >>> 0) / 0xffffffff;
+  return Math.max(0, Math.min(1, value));
+}
+
+function estimateOverallAnchor(input: {
+  seed: number;
+  age: number;
+  marketValue: number | null;
+  league: string | null;
+  position: string;
+}): number {
+  const { seed, age, marketValue, league, position } = input;
+
+  let anchor: number;
+  if (marketValue && marketValue > 0) {
+    // Escala aproximada: 1M ~ 65, 10M ~ 78, 50M ~ 88, 100M ~ 94.
+    const valueInMillions = marketValue / 1_000_000;
+    anchor = 60 + 17 * Math.log10(valueInMillions + 1);
+  } else {
+    // Distribuição determinística pseudo-normal para evitar massa em 65-67.
+    const u1 = deterministicUnit(seed, 101);
+    const u2 = deterministicUnit(seed, 211);
+    const u3 = deterministicUnit(seed, 307);
+    const bell = (u1 + u2 + u3) / 3; // [0..1], concentrado no meio
+    anchor = 56 + bell * 34; // ~56..90
+  }
+
+  const ageAdj =
+    age <= 18 ? -3 :
+    age <= 21 ? 1 :
+    age <= 24 ? 3 :
+    age <= 28 ? 2 :
+    age <= 31 ? 0 :
+    age <= 34 ? -2 : -4;
+
+  const posAdj =
+    position === "GK" ? 1 :
+    ["CB", "CDM", "CM"].includes(position) ? 0 :
+    ["CAM", "CF", "ST", "LW", "RW"].includes(position) ? 1 : 0;
+
+  const leagueAdj = leagueRatingBonus(league);
+  return clamp(anchor + ageAdj + posAdj + leagueAdj, 52, 95);
 }
 
 function clamp(value: number, min = 1, max = 99) {
@@ -613,7 +687,7 @@ function buildRawStats(position: string, age: number, anchorOverall: number | nu
   const shift = targetOverall ? targetOverall - baseMean : 0;
 
   const apply = (value: number, salt: number) => {
-    const jitter = seededOffset(seed, salt, 5);
+    const jitter = seededOffset(seed, salt, 9);
     return clamp(value + shift + agePenalty + jitter, 25, 95);
   };
 
@@ -880,11 +954,21 @@ async function main() {
 
       const position = unwrapEntity(rawPlayer.position);
       const detailedPosition = unwrapEntity(rawPlayer.detailedPosition ?? rawPlayer.detailed_position);
+      const relationPositionId = parseOptionalInt(
+        teamRelation && typeof teamRelation === "object"
+          ? (teamRelation as { position_id?: unknown }).position_id
+          : null,
+      );
+      const relationDetailedPositionId = parseOptionalInt(
+        teamRelation && typeof teamRelation === "object"
+          ? (teamRelation as { detailed_position_id?: unknown }).detailed_position_id
+          : null,
+      );
       const mappedPosition = mapPositionFromApi({
         positionName: position?.name,
         detailedPositionName: detailedPosition?.name,
-        positionId: parseOptionalInt(rawPlayer.position_id),
-        detailedPositionId: parseOptionalInt(rawPlayer.detailed_position_id),
+        positionId: relationPositionId ?? parseOptionalInt(rawPlayer.position_id),
+        detailedPositionId: relationDetailedPositionId ?? parseOptionalInt(rawPlayer.detailed_position_id),
       });
       const inputOverall = parseOptionalInt(rawPlayer.overall ?? rawPlayer.rating);
 
@@ -892,7 +976,15 @@ async function main() {
       const safeAge = Number.isFinite(age) && age > 0 ? Math.round(age) : 24;
 
       const seed = hashSeed(`${rawPlayer.id ?? slug}`);
-      const rawStats = buildRawStats(mappedPosition, safeAge, inputOverall, seed);
+      const estimatedAnchor = estimateOverallAnchor({
+        seed,
+        age: safeAge,
+        marketValue: resolvedMarketValue,
+        league: resolvedLeague,
+        position: mappedPosition,
+      });
+      const anchorOverall = inputOverall ?? estimatedAnchor;
+      const rawStats = buildRawStats(mappedPosition, safeAge, anchorOverall, seed);
       const normalizedRawStats = normalizeRawStats(rawStats);
 
       // 1) stats-normalizer + 2) skill-tree.builder
@@ -954,7 +1046,8 @@ async function main() {
         rawAttributes: detailedFlat,
       });
 
-      const computedOverall = overallResult.overall;
+      // Mistura score do engine com o anchor para abrir distribuição sem perder coerência posicional.
+      const computedOverall = clamp(Math.round(overallResult.overall * 0.65 + anchorOverall * 0.35), 52, 95);
       const computedPotential = computePotential(computedOverall, safeAge);
 
       const attributes = {
