@@ -38,7 +38,7 @@ app.use("/api/alerts", alertsRoutes);
 app.use("/api/simulation", simulationRoutes);
 app.use("/api/team", teamRoutes);
 app.use("/api/validation", validationRoutes);
-app.use("/api/player", playerRoutes);
+app.use("/api", playerRoutes);
 app.use("/api/watchlist", watchlistRoutes);
 app.use("/api/health", healthRoutes);
 app.use("/api/docs", docsRoutes);

@@ -9,6 +9,14 @@ import { POSITION_WEIGHTS } from "./ranking.weights";
 import { calculateRiskScore } from "./risk.engine";
 import { getPrimaryPosition } from "../utils/positions";
 
+type ListPlayersParams = {
+  position?: string;
+  league?: string;
+  minOverall?: number;
+  page?: number;
+  limit?: number;
+};
+
 function clampFifaCore(value: number) {
   return Math.max(40, Math.min(99, Math.round(value)));
 }
@@ -227,4 +235,78 @@ export async function getSimilarPlayers(id: string) {
     position: getPrimaryPosition(player as any),
     overall: Number((player.attributes as any)?.overall ?? 65),
   }));
+}
+
+export async function listPlayers(params: ListPlayersParams = {}) {
+  const page = Math.max(1, Number(params.page ?? 1));
+  const limit = Math.min(100, Math.max(1, Number(params.limit ?? 20)));
+  const skip = (page - 1) * limit;
+
+  const where: any = {};
+
+  if (params.position && params.position.trim()) {
+    where.positions = { has: params.position.trim().toUpperCase() };
+  }
+
+  if (params.league && params.league.trim()) {
+    where.league = { contains: params.league.trim(), mode: "insensitive" };
+  }
+
+  if (Number.isFinite(params.minOverall)) {
+    where.overall = { gte: Number(params.minOverall) };
+  }
+
+  const [total, players] = await Promise.all([
+    prisma.player.count({ where }),
+    prisma.player.findMany({
+      where,
+      skip,
+      take: limit,
+      orderBy: [{ overall: "desc" }, { name: "asc" }],
+      select: {
+        id: true,
+        name: true,
+        team: true,
+        league: true,
+        positions: true,
+        age: true,
+        nationality: true,
+        overall: true,
+        potential: true,
+        marketValue: true,
+        imagePath: true,
+        attributes: true,
+      },
+    }),
+  ]);
+
+  const items = players.map((player) => ({
+    id: player.id,
+    name: player.name,
+    team: player.team,
+    league: player.league,
+    positions: player.positions,
+    age: player.age,
+    nationality: player.nationality,
+    overall: player.overall,
+    potential: player.potential,
+    marketValue: player.marketValue,
+    image_path: player.imagePath,
+    attributes: player.attributes,
+  }));
+
+  return {
+    items,
+    pagination: {
+      page,
+      limit,
+      total,
+      totalPages: Math.max(1, Math.ceil(total / limit)),
+    },
+    filters: {
+      position: params.position ?? null,
+      league: params.league ?? null,
+      minOverall: Number.isFinite(params.minOverall) ? Number(params.minOverall) : null,
+    },
+  };
 }
