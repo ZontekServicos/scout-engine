@@ -1,16 +1,8 @@
 import { Router } from "express";
-import { successResponse } from "../lib/apiResponse";
+import { getHealthController } from "../controllers/health.controller";
 const router = Router();
 
-router.get("/", (_req, res) => {
-  const payload = {
-    status: "ok",
-    uptime: process.uptime(),
-    timestamp: new Date().toISOString(),
-  };
-
-  res.json(successResponse(payload));
-});
+router.get("/", getHealthController);
 
 export default router;
 

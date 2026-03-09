@@ -119,6 +119,42 @@ export const openApiDocument = {
         },
       },
     },
+    "/api/players/search": {
+      get: {
+        summary: "Search players with advanced filters",
+        parameters: [
+          { name: "page", in: "query", schema: { type: "integer", minimum: 1 } },
+          { name: "limit", in: "query", schema: { type: "integer", minimum: 1, maximum: 100 } },
+          { name: "position", in: "query", schema: { type: "string" } },
+          { name: "team", in: "query", schema: { type: "string" } },
+          { name: "league", in: "query", schema: { type: "string" } },
+          { name: "ageMin", in: "query", schema: { type: "integer", minimum: 1 } },
+          { name: "ageMax", in: "query", schema: { type: "integer", minimum: 1 } },
+          { name: "overallMin", in: "query", schema: { type: "integer", minimum: 1, maximum: 99 } },
+          { name: "overallMax", in: "query", schema: { type: "integer", minimum: 1, maximum: 99 } },
+        ],
+        responses: {
+          200: {
+            description: "Advanced search result",
+            content: {
+              "application/json": {
+                schema: {
+                  allOf: [
+                    { $ref: "#/components/schemas/ApiEnvelope" },
+                    {
+                      type: "object",
+                      properties: {
+                        data: { type: "array", items: { $ref: "#/components/schemas/Player" } },
+                      },
+                    },
+                  ],
+                },
+              },
+            },
+          },
+        },
+      },
+    },
     "/api/player/{id}": {
       get: {
         summary: "Get player profile",

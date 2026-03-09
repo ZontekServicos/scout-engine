@@ -1,17 +1,10 @@
 import { Router } from "express";
-import { successResponse } from "../lib/apiResponse";
-import { getMarketAlerts } from "../scout/alerts.service";
+import { asyncHandler } from "../lib/asyncHandler";
+import { getAlertsController } from "../controllers/alerts.controller";
 
 const router = Router();
 
-router.get("/", async (_req, res, next) => {
-  try {
-    const alerts = await getMarketAlerts();
-    res.json(successResponse(alerts));
-  } catch (error) {
-    next(error);
-  }
-});
+router.get("/", asyncHandler(getAlertsController));
 
 export default router;
 
