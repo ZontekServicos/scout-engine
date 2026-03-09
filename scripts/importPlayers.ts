@@ -16,6 +16,12 @@ const API_KEY = process.env.ESPORTSMONKS;
 const API_BASE = "https://api.sportmonks.com/v3/football";
 const PAGE_SIZE = 100;
 const INCLUDE_CANDIDATES = [
+  "country;position;team.league;market_value;teams.team;teams.team.league",
+  "country;position;team;market_value;teams.team;teams.team.league",
+  "country;position;team.league;market_value;teams.team",
+  "country;position;team;market_value;teams.team",
+  "country;position;team.league;market_value",
+  "country;position;team;market_value",
   "country;position;teams.team;teams.team.league",
   "country;position;team;teams.team",
   "country;position;teams.team",
@@ -35,6 +41,20 @@ type SportmonksPlayer = {
   id?: number;
   name?: string;
   age?: number;
+  image_path?: string | null;
+  market_value?:
+    | number
+    | string
+    | {
+      amount?: number | string;
+      value?: number | string;
+      market_value?: number | string;
+      data?: {
+        amount?: number | string;
+        value?: number | string;
+        market_value?: number | string;
+      };
+    };
   country?: SportmonksEntity | { data?: SportmonksEntity };
   team?: SportmonksEntity | { data?: SportmonksEntity };
   teams?: Array<
@@ -146,6 +166,48 @@ function parseOptionalInt(value: unknown): number | null {
   return Number.isFinite(parsed) ? Math.round(parsed) : null;
 }
 
+function parseOptionalFloat(value: unknown): number | null {
+  const parsed =
+    typeof value === "number" ? value : typeof value === "string" ? Number(value) : Number.NaN;
+  return Number.isFinite(parsed) ? Number(parsed) : null;
+}
+
+function parseMarketValue(value: unknown): number | null {
+  const direct = parseOptionalFloat(value);
+  if (direct != null) {
+    return direct;
+  }
+
+  if (!value || typeof value !== "object") {
+    return null;
+  }
+
+  const asRecord = value as {
+    amount?: unknown;
+    value?: unknown;
+    market_value?: unknown;
+    data?: { amount?: unknown; value?: unknown; market_value?: unknown };
+  };
+
+  const nestedCandidates = [
+    asRecord.amount,
+    asRecord.value,
+    asRecord.market_value,
+    asRecord.data?.amount,
+    asRecord.data?.value,
+    asRecord.data?.market_value,
+  ];
+
+  for (const candidate of nestedCandidates) {
+    const parsed = parseOptionalFloat(candidate);
+    if (parsed != null) {
+      return parsed;
+    }
+  }
+
+  return null;
+}
+
 function pickBestTeamRelation(
   relations: Array<
     SportmonksEntity & {
@@ -197,6 +259,29 @@ function readLeagueNameFromUnknown(value: unknown): string | null {
   const list = unwrapEntityList(value);
   const first = list.find((item) => typeof item?.name === "string" && item.name.trim());
   return first?.name?.trim() ?? null;
+}
+
+function readLeagueNameFromTeamUnknown(teamValue: unknown): string | null {
+  if (!teamValue || typeof teamValue !== "object") {
+    return null;
+  }
+
+  const asRecord = teamValue as {
+    league?: unknown;
+    current_league?: unknown;
+    data?: {
+      league?: unknown;
+      current_league?: unknown;
+    };
+  };
+
+  return (
+    readLeagueNameFromUnknown(asRecord.league) ??
+    readLeagueNameFromUnknown(asRecord.current_league) ??
+    readLeagueNameFromUnknown(asRecord.data?.league) ??
+    readLeagueNameFromUnknown(asRecord.data?.current_league) ??
+    null
+  );
 }
 
 function mapPositionFromApi(positionName?: string): string {
@@ -704,7 +789,15 @@ async function main() {
           ? (teamRelation as { team?: unknown }).team
           : null,
       );
-      const teamFromCache = teamIdFromRelation ? teamsCache.get(teamIdFromRelation) : null;
+      const teamIdFromDirect = parseOptionalInt(
+        rawPlayer.team && typeof rawPlayer.team === "object"
+          ? (rawPlayer.team as { id?: unknown; data?: { id?: unknown } }).id ??
+            (rawPlayer.team as { data?: { id?: unknown } }).data?.id
+          : null,
+      );
+      const teamFromCache =
+        (teamIdFromRelation ? teamsCache.get(teamIdFromRelation) : null) ??
+        (teamIdFromDirect ? teamsCache.get(teamIdFromDirect) : null);
       const resolvedTeamName =
         teamDirect?.name?.trim() ||
         teamFromNestedTeam?.name?.trim() ||
@@ -722,11 +815,15 @@ async function main() {
           ? (teamRelation as { current_league?: unknown }).current_league
           : null,
       );
+      const leagueFromDirectTeam = readLeagueNameFromTeamUnknown(rawPlayer.team);
       const resolvedLeague =
         leagueFromRelation ??
         currentLeagueFromRelation ??
+        leagueFromDirectTeam ??
         teamFromCache?.league ??
         null;
+      const resolvedMarketValue = parseMarketValue(rawPlayer.market_value);
+      const resolvedImagePath = rawPlayer.image_path?.trim() || null;
 
       const position = unwrapEntity(rawPlayer.position);
       const mappedPosition = mapPositionFromApi(position?.name);
@@ -860,7 +957,8 @@ async function main() {
         nationality: country?.name?.trim() || "Unknown",
         team: resolvedTeamName,
         league: resolvedLeague,
-        marketValue: null as number | null,
+        imagePath: resolvedImagePath,
+        marketValue: resolvedMarketValue,
         contractEnd: null as Date | null,
         overall: computedOverall,
         potential: computedPotential,

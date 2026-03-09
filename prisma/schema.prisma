@@ -19,6 +19,7 @@ model Player {
 
   team            String?
   league          String?
+  imagePath       String?  @map("image_path")
 
   marketValue     Float?
   contractEnd     DateTime?
