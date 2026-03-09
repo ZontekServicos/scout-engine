@@ -140,6 +140,48 @@ function parseOptionalInt(value: unknown): number | null {
   return Number.isFinite(parsed) ? Math.round(parsed) : null;
 }
 
+function pickBestTeamRelation(
+  relations: Array<
+    SportmonksEntity & {
+      team_id?: number;
+      start?: string | null;
+      end?: string | null;
+      team?: SportmonksEntity | { data?: SportmonksEntity };
+      league?: SportmonksEntity | { data?: SportmonksEntity };
+      current_league?: SportmonksEntity | { data?: SportmonksEntity };
+    }
+  >,
+) {
+  if (!relations.length) {
+    return null;
+  }
+
+  const parsed = relations.map((relation) => {
+    const startTs = relation.start ? Date.parse(relation.start) : Number.NaN;
+    const endTs = relation.end ? Date.parse(relation.end) : Number.NaN;
+    const isCurrent = relation.end == null || relation.end === "";
+
+    return {
+      relation,
+      isCurrent,
+      startTs: Number.isFinite(startTs) ? startTs : Number.NEGATIVE_INFINITY,
+      endTs: Number.isFinite(endTs) ? endTs : Number.NEGATIVE_INFINITY,
+    };
+  });
+
+  parsed.sort((a, b) => {
+    if (a.isCurrent !== b.isCurrent) {
+      return a.isCurrent ? -1 : 1;
+    }
+    if (a.endTs !== b.endTs) {
+      return b.endTs - a.endTs;
+    }
+    return b.startTs - a.startTs;
+  });
+
+  return parsed[0]?.relation ?? null;
+}
+
 function readLeagueNameFromUnknown(value: unknown): string | null {
   const asEntity = unwrapEntity(value);
   if (asEntity?.name?.trim()) {
@@ -343,7 +385,7 @@ async function main() {
           : Array.isArray(rawPlayer.teams.data)
             ? rawPlayer.teams.data
             : [];
-        return list[0] ?? null;
+        return pickBestTeamRelation(list);
       })();
       const teamIdFromRelation = parseOptionalInt(
         teamRelation && typeof teamRelation === "object"
@@ -399,9 +441,7 @@ async function main() {
         contractEnd: null as Date | null,
         overall,
         potential: null as number | null,
-        attributes: {
-          overall: overall ?? 65,
-        },
+        attributes: overall != null ? { overall } : {},
         archetype: { role: `Imported ${mappedPosition}` },
       };
 
