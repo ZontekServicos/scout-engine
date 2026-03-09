@@ -2,220 +2,198 @@ import "dotenv/config";
 import axios from "axios";
 import { PrismaClient } from "@prisma/client";
 import { nameToSlug, normalizeName } from "../src/utils/normalizeName";
+import { normalizePosition } from "../src/utils/positions";
 
 const prisma = new PrismaClient();
 
 const API_KEY = process.env.ESPORTSMONKS;
-const API = "https://api.sportmonks.com/v3/football";
+const API_BASE = "https://api.sportmonks.com/v3/football";
+const PAGE_SIZE = 100;
 
-/*
-GERADOR DE NÚMEROS
-*/
-function rand(min: number, max: number) {
-  return Math.floor(Math.random() * (max - min) + min);
-}
+type SportmonksEntity = {
+  id?: number;
+  name?: string;
+};
 
-/*
-ATRIBUTOS ESTILO FIFA
-*/
-function generateAttributes() {
-  const pace = rand(60, 90);
-  const shooting = rand(50, 90);
-  const passing = rand(50, 90);
-  const dribbling = rand(50, 90);
-  const defending = rand(40, 85);
-  const physical = rand(50, 90);
+type SportmonksPlayer = {
+  id?: number;
+  name?: string;
+  age?: number;
+  country?: SportmonksEntity | { data?: SportmonksEntity };
+  team?: SportmonksEntity | { data?: SportmonksEntity };
+  position?: SportmonksEntity | { data?: SportmonksEntity };
+};
 
-  const overall = Math.round((pace + shooting + passing + dribbling + defending + physical) / 6);
-
-  return {
-    pace,
-    shooting,
-    passing,
-    dribbling,
-    defending,
-    physical,
-    overall,
+type SportmonksPlayersResponse = {
+  data?: SportmonksPlayer[];
+  pagination?: {
+    current_page?: number;
+    has_more?: boolean;
+    next_page?: number | null;
+    total?: number;
   };
-}
-
-/*
-MAPEAMENTO DE POSIÇÕES
-*/
-function mapPosition(name: string) {
-  const map: Record<string, string> = {
-    Goalkeeper: "GK",
-
-    "Centre Back": "CB",
-    "Center Back": "CB",
-
-    "Left Back": "LB",
-    "Right Back": "RB",
-
-    "Left Wing Back": "LWB",
-    "Right Wing Back": "RWB",
-
-    "Defensive Midfielder": "CDM",
-
-    "Central Midfielder": "CM",
-
-    "Attacking Midfielder": "CAM",
-
-    "Left Midfielder": "LM",
-    "Right Midfielder": "RM",
-
-    "Left Winger": "LW",
-    "Right Winger": "RW",
-
-    "Centre Forward": "CF",
-
-    Striker: "ST",
-    Forward: "ST",
+  meta?: {
+    pagination?: {
+      current_page?: number;
+      has_more?: boolean;
+      next_page?: number | null;
+      total?: number;
+    };
   };
+};
 
-  return map[name] ?? "CM";
-}
-
-/*
-BUSCAR LIGAS
-*/
-async function fetchLeagues() {
-  const res = await axios.get(`${API}/leagues`, {
-    params: {
-      api_token: API_KEY,
-      per_page: 50,
-    },
-  });
-
-  return res.data.data;
-}
-
-/*
-BUSCAR TIMES DA LIGA
-*/
-async function fetchTeams(leagueId: number) {
-  const res = await axios.get(`${API}/teams`, {
-    params: {
-      api_token: API_KEY,
-      filters: `leagueId:${leagueId}`,
-    },
-  });
-
-  return res.data.data;
-}
-
-/*
-BUSCAR ELENCO DO TIME
-*/
-async function fetchSquad(teamId: number) {
-  const res = await axios.get(`${API}/squads/teams/${teamId}`, {
-    params: {
-      api_token: API_KEY,
-      include: "player;position;nationality",
-    },
-  });
-
-  return res.data.data;
-}
-
-/*
-SCRIPT PRINCIPAL
-*/
-async function main() {
-  console.log("=================================");
-  console.log("IMPORTAÇÃO COMPLETA SPORTSMONKS");
-  console.log("=================================");
-
-  if (!API_KEY) {
-    console.log("❌ API KEY não encontrada");
-    process.exit(1);
+function unwrapEntity(value: unknown): SportmonksEntity | null {
+  if (!value || typeof value !== "object") {
+    return null;
   }
 
-  console.log("Limpando banco...");
+  const asEntity = value as SportmonksEntity;
+  if (typeof asEntity.name === "string") {
+    return asEntity;
+  }
 
-  await prisma.player.deleteMany({});
+  const data = (value as { data?: SportmonksEntity }).data;
+  if (data && typeof data.name === "string") {
+    return data;
+  }
 
-  console.log("Banco limpo");
+  return null;
+}
 
-  const leagues = await fetchLeagues();
+function mapPositionFromApi(positionName?: string): string {
+  if (!positionName || !positionName.trim()) {
+    return "CM";
+  }
 
-  let totalPlayers = 0;
+  const direct = normalizePosition(positionName);
+  if (direct) {
+    return direct;
+  }
 
-  for (const league of leagues) {
-    console.log(`Liga: ${league.name}`);
+  const aliases: Record<string, string> = {
+    "CENTRE BACK": "CB",
+    "CENTER BACK": "CB",
+    "LEFT BACK": "LB",
+    "RIGHT BACK": "RB",
+    "LEFT WING BACK": "LWB",
+    "RIGHT WING BACK": "RWB",
+    "DEFENSIVE MIDFIELDER": "CDM",
+    "CENTRAL MIDFIELDER": "CM",
+    "ATTACKING MIDFIELDER": "CAM",
+    "LEFT MIDFIELDER": "LM",
+    "RIGHT MIDFIELDER": "RM",
+    "LEFT WINGER": "LW",
+    "RIGHT WINGER": "RW",
+    "CENTRE FORWARD": "CF",
+    FORWARD: "CF",
+    STRIKER: "ST",
+    GOALKEEPER: "GK",
+  };
 
-    const teams = await fetchTeams(league.id);
+  return aliases[positionName.trim().toUpperCase()] ?? "CM";
+}
 
-    for (const team of teams) {
-      console.log(`  Time: ${team.name}`);
+async function fetchPlayersPage(page: number): Promise<SportmonksPlayersResponse> {
+  const response = await axios.get<SportmonksPlayersResponse>(`${API_BASE}/players`, {
+    params: {
+      api_token: API_KEY,
+      include: "country;team;position",
+      page,
+      per_page: PAGE_SIZE,
+    },
+    timeout: 30_000,
+  });
 
-      const squad = await fetchSquad(team.id);
+  return response.data;
+}
 
-      for (const row of squad) {
-        const player = row.player?.data;
+function readPagination(payload: SportmonksPlayersResponse) {
+  return payload.pagination ?? payload.meta?.pagination ?? {};
+}
 
-        if (!player) continue;
+async function main() {
+  if (!API_KEY) {
+    throw new Error("Variável ESPORTSMONKS não encontrada no .env");
+  }
 
-        const positionName = row.position?.data?.name ?? "Central Midfielder";
+  console.log("IMPORTANDO JOGADORES SPORTMONKS");
 
-        const position = mapPosition(positionName);
+  await prisma.player.deleteMany();
 
-        const nationality = row.nationality?.data?.name ?? "Unknown";
+  let page = 1;
+  let totalImported = 0;
+  let hasMore = true;
 
-        const attributes = generateAttributes();
+  while (hasMore) {
+    const payload = await fetchPlayersPage(page);
+    const players = Array.isArray(payload.data) ? payload.data : [];
 
-        const playerData = {
-          slug: nameToSlug(player.name),
+    console.log(`Página ${page} | jogadores ${players.length}`);
 
-          name: player.name,
-
-          nameNormalized: normalizeName(player.name),
-
-          positions: [position],
-
-          age: player.age ?? rand(18, 35),
-
-          nationality,
-
-          team: team.name,
-
-          league: league.name,
-
-          marketValue: null,
-
-          contractEnd: null,
-
-          overall: attributes.overall,
-
-          potential: attributes.overall + rand(1, 5),
-
-          attributes,
-
-          archetype: {
-            role: `Imported ${position}`,
-          },
-        };
-
-        await prisma.player.upsert({
-          where: { slug: playerData.slug },
-          update: playerData,
-          create: playerData,
-        });
-
-        totalPlayers++;
+    for (const rawPlayer of players) {
+      const name = rawPlayer.name?.trim();
+      if (!name) {
+        continue;
       }
+
+      const slug = nameToSlug(name);
+      const nameNormalized = normalizeName(name);
+
+      const country = unwrapEntity(rawPlayer.country);
+      const team = unwrapEntity(rawPlayer.team);
+      const position = unwrapEntity(rawPlayer.position);
+      const mappedPosition = mapPositionFromApi(position?.name);
+
+      const age = Number(rawPlayer.age ?? 0);
+      const safeAge = Number.isFinite(age) && age > 0 ? Math.round(age) : 24;
+
+      const playerPayload = {
+        slug,
+        name,
+        nameNormalized,
+        positions: [mappedPosition],
+        age: safeAge,
+        nationality: country?.name?.trim() || "Unknown",
+        team: team?.name?.trim() || null,
+        league: null as string | null,
+        marketValue: null as number | null,
+        contractEnd: null as Date | null,
+        overall: null as number | null,
+        potential: null as number | null,
+        attributes: {},
+        archetype: { role: `Imported ${mappedPosition}` },
+      };
+
+      await prisma.player.upsert({
+        where: { slug },
+        update: playerPayload,
+        create: playerPayload,
+      });
+
+      totalImported += 1;
+    }
+
+    const pagination = readPagination(payload);
+    const nextPage = Number(pagination.next_page ?? 0);
+    const explicitHasMore = Boolean(pagination.has_more);
+
+    hasMore = explicitHasMore || nextPage > page || players.length === PAGE_SIZE;
+    page = nextPage > page ? nextPage : page + 1;
+
+    if (!players.length && !explicitHasMore && nextPage <= 0) {
+      hasMore = false;
     }
   }
 
-  console.log("=================================");
   console.log("IMPORTAÇÃO FINALIZADA");
-  console.log(`Total jogadores: ${totalPlayers}`);
-  console.log("=================================");
-
-  await prisma.$disconnect();
+  console.log(`TOTAL JOGADORES: ${totalImported}`);
 }
 
-main().catch((error) => {
-  console.error("Erro na importação:", error);
-  process.exit(1);
-});
+main()
+  .catch((error) => {
+    console.error("Erro na importação:", error);
+    process.exitCode = 1;
+  })
+  .finally(async () => {
+    await prisma.$disconnect();
+  });
