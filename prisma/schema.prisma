@@ -37,6 +37,10 @@ model Player {
 
   @@index([nameNormalized])
   @@index([league])
+  @@index([team])
+  @@index([overall(sort: Desc)])
+  @@index([potential(sort: Desc)])
+  @@index([positions], type: Gin)
 }
 
 model ScoutReport {

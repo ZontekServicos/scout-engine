@@ -8,11 +8,14 @@ import { calculateRankingScore } from "./ranking.engine";
 import { POSITION_WEIGHTS } from "./ranking.weights";
 import { calculateRiskScore } from "./risk.engine";
 import { getPrimaryPosition } from "../utils/positions";
+import { mapPlayerRecord, mapPlayerRecords } from "../mappers/player.mapper";
 
 type ListPlayersParams = {
   position?: string;
   team?: string;
   league?: string;
+  overallMin?: number;
+  overallMax?: number;
   minOverall?: number;
   ageMin?: number;
   ageMax?: number;
@@ -203,19 +206,20 @@ export async function getPlayerProfile(id: string) {
     positioning: raw.positioning ?? 60,
   };
 
-  const profile = {
+  const profile = mapPlayerRecord({
     id: player.id,
     name: player.name,
+    positions: player.positions ?? [playerPosition],
     team: player.team ?? null,
     league: player.league ?? null,
-    position: playerPosition,
-    nationality: player.nationality ?? null,
-    age: player.age ?? null,
+    nationality: player.nationality ?? "Unknown",
+    age: player.age ?? 0,
     overall: overall.overall,
     potential: Math.max(overall.overall, Math.min(99, overall.overall + 5)),
     marketValue: player.marketValue ?? null,
-    image: player.imagePath ?? null,
-  };
+    imagePath: player.imagePath ?? null,
+    attributes: player.attributes ?? {},
+  });
 
   return {
     player: profile,
@@ -269,17 +273,32 @@ export async function getSimilarPlayers(id: string) {
       NOT: { id: base.id },
     },
     take: 6,
+    select: {
+      id: true,
+      name: true,
+      positions: true,
+      team: true,
+      league: true,
+      nationality: true,
+      age: true,
+      overall: true,
+      potential: true,
+      marketValue: true,
+      imagePath: true,
+      attributes: true,
+    },
   });
 
-  return peers.map((player) => ({
-    id: player.id,
-    playerKey: player.id,
-    name: player.name,
-    nomeJogador: player.name,
-    age: player.age ?? null,
-    position: getPrimaryPosition(player as any),
-    overall: Number((player.attributes as any)?.overall ?? 65),
-  }));
+  return mapPlayerRecords(
+    peers.map((player) => ({
+      ...player,
+      overall:
+        player.overall ??
+        (Number.isFinite(Number((player.attributes as any)?.overall))
+          ? Number((player.attributes as any).overall)
+          : null),
+    })),
+  );
 }
 
 export async function listPlayers(params: ListPlayersParams = {}) {
@@ -301,8 +320,17 @@ export async function listPlayers(params: ListPlayersParams = {}) {
     where.team = { contains: params.team.trim(), mode: "insensitive" };
   }
 
-  if (Number.isFinite(params.minOverall)) {
-    where.overall = { gte: Number(params.minOverall) };
+  const normalizedOverallMin = Number.isFinite(params.overallMin)
+    ? Number(params.overallMin)
+    : Number.isFinite(params.minOverall)
+      ? Number(params.minOverall)
+      : undefined;
+
+  if (Number.isFinite(normalizedOverallMin) || Number.isFinite(params.overallMax)) {
+    where.overall = {
+      ...(Number.isFinite(normalizedOverallMin) ? { gte: Number(normalizedOverallMin) } : {}),
+      ...(Number.isFinite(params.overallMax) ? { lte: Number(params.overallMax) } : {}),
+    };
   }
 
   if (Number.isFinite(params.ageMin) || Number.isFinite(params.ageMax)) {
@@ -337,24 +365,16 @@ export async function listPlayers(params: ListPlayersParams = {}) {
   ]);
 
   const items = players.map((player) => ({
-    id: player.id,
-    name: player.name,
-    position: player.positions?.[0] ?? "CM",
-    team: player.team,
-    league: player.league,
-    positions: player.positions,
-    age: player.age,
-    nationality: player.nationality,
-    overall: player.overall,
-    potential: player.potential,
-    marketValue: player.marketValue,
-    image: player.imagePath,
-    image_path: player.imagePath,
-    attributes: player.attributes,
+    ...player,
+    overall:
+      player.overall ??
+      (Number.isFinite(Number((player.attributes as any)?.overall))
+        ? Number((player.attributes as any).overall)
+        : null),
   }));
 
   return {
-    items,
+    items: mapPlayerRecords(items),
     pagination: {
       page,
       limit,
@@ -365,7 +385,9 @@ export async function listPlayers(params: ListPlayersParams = {}) {
       position: params.position ?? null,
       team: params.team ?? null,
       league: params.league ?? null,
-      minOverall: Number.isFinite(params.minOverall) ? Number(params.minOverall) : null,
+      minOverall: Number.isFinite(normalizedOverallMin) ? Number(normalizedOverallMin) : null,
+      overallMin: Number.isFinite(normalizedOverallMin) ? Number(normalizedOverallMin) : null,
+      overallMax: Number.isFinite(params.overallMax) ? Number(params.overallMax) : null,
       ageMin: Number.isFinite(params.ageMin) ? Number(params.ageMin) : null,
       ageMax: Number.isFinite(params.ageMax) ? Number(params.ageMax) : null,
     },

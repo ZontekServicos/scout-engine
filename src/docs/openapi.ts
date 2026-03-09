@@ -5,7 +5,10 @@ export const openApiDocument = {
     version: "2.1.0",
     description: "Institutional scouting, risk and transfer decision platform",
   },
-  servers: [{ url: "http://localhost:3000" }],
+  servers: [
+    { url: "https://scout-engine-production.up.railway.app" },
+    { url: "http://localhost:3000" },
+  ],
   components: {
     schemas: {
       ApiEnvelope: {
@@ -23,20 +26,36 @@ export const openApiDocument = {
         properties: {
           id: { type: "string" },
           name: { type: "string" },
-          position: { type: "string", example: "ST" },
-          team: { type: ["string", "null"] },
-          league: { type: ["string", "null"] },
-          positions: { type: "array", items: { type: "string" } },
-          nationality: { type: "string" },
-          age: { type: "integer" },
-          overall: { type: ["integer", "null"] },
-          potential: { type: ["integer", "null"] },
-          marketValue: { type: ["number", "null"] },
-          image: { type: ["string", "null"] },
-          image_path: { type: ["string", "null"] },
+          position: { type: ["string", "null"], example: "ST" },
+          positions: { type: "array", items: { type: "string" }, example: ["ST", "RW"] },
+          team: { type: ["string", "null"], example: "Manchester City" },
+          league: { type: ["string", "null"], example: "Premier League" },
+          nationality: { type: "string", example: "England" },
+          age: { type: "integer", example: 24 },
+          overall: { type: ["integer", "null"], example: 88 },
+          potential: { type: ["integer", "null"], example: 92 },
+          marketValue: { type: ["number", "null"], example: 120000000 },
+          image: {
+            type: ["string", "null"],
+            example: "https://cdn.sportmonks.com/images/soccer/players/10/10.png",
+          },
           attributes: { type: "object", additionalProperties: true },
         },
-        required: ["id", "name", "position", "nationality", "age"],
+        required: [
+          "id",
+          "name",
+          "position",
+          "positions",
+          "team",
+          "league",
+          "nationality",
+          "age",
+          "overall",
+          "potential",
+          "marketValue",
+          "image",
+          "attributes",
+        ],
       },
       PlayerProfile: {
         type: "object",
@@ -50,23 +69,16 @@ export const openApiDocument = {
       },
       PlayerComparison: {
         type: "object",
-        properties: {
-          players: { type: "object", additionalProperties: true },
-          overallRating: { type: "object", additionalProperties: true },
-          quantitative: { type: "object", additionalProperties: true },
-          risk: { type: "object", additionalProperties: true },
-          financialRisk: { type: "object", additionalProperties: true },
-        },
+        additionalProperties: true,
       },
       Alert: {
         type: "object",
         properties: {
-          type: { type: "string" },
-          severity: { type: "string" },
+          type: { type: "string", example: "GROWTH_SPIKE" },
           playerId: { type: "string" },
           playerName: { type: "string" },
-          message: { type: "string" },
-          createdAt: { type: "string", format: "date-time" },
+          nomeJogador: { type: "string" },
+          description: { type: "string" },
         },
       },
       WatchlistItem: {
@@ -74,10 +86,39 @@ export const openApiDocument = {
         properties: {
           id: { type: "string" },
           playerId: { type: "string" },
-          nomeJogador: { type: "string" },
+          playerName: { type: ["string", "null"] },
+          nomeJogador: { type: ["string", "null"] },
           createdAt: { type: "string", format: "date-time" },
         },
       },
+      ScoutNote: {
+        type: "object",
+        properties: {
+          id: { type: "string" },
+          playerId: { type: "string" },
+          note: { type: "string" },
+          createdBy: { type: "string" },
+          createdAt: { type: "string", format: "date-time" },
+        },
+      },
+      PaginationMeta: {
+        type: "object",
+        properties: {
+          page: { type: "integer", example: 1 },
+          limit: { type: "integer", example: 20 },
+          total: { type: "integer", example: 500 },
+          totalPages: { type: "integer", example: 25 },
+        },
+      },
+    },
+    parameters: {
+      Page: { name: "page", in: "query", schema: { type: "integer", minimum: 1 } },
+      Limit: {
+        name: "limit",
+        in: "query",
+        schema: { type: "integer", minimum: 1, maximum: 100, default: 20 },
+      },
+      PlayerId: { name: "id", in: "path", required: true, schema: { type: "string" } },
     },
   },
   paths: {
@@ -85,14 +126,16 @@ export const openApiDocument = {
       get: {
         summary: "List players with filtering and pagination",
         parameters: [
-          { name: "page", in: "query", schema: { type: "integer", minimum: 1 } },
-          { name: "limit", in: "query", schema: { type: "integer", minimum: 1, maximum: 100 } },
+          { $ref: "#/components/parameters/Page" },
+          { $ref: "#/components/parameters/Limit" },
           { name: "position", in: "query", schema: { type: "string" } },
           { name: "team", in: "query", schema: { type: "string" } },
           { name: "league", in: "query", schema: { type: "string" } },
-          { name: "minOverall", in: "query", schema: { type: "integer", minimum: 1, maximum: 99 } },
           { name: "ageMin", in: "query", schema: { type: "integer", minimum: 1 } },
           { name: "ageMax", in: "query", schema: { type: "integer", minimum: 1 } },
+          { name: "overallMin", in: "query", schema: { type: "integer", minimum: 1, maximum: 99 } },
+          { name: "overallMax", in: "query", schema: { type: "integer", minimum: 1, maximum: 99 } },
+          { name: "minOverall", in: "query", schema: { type: "integer", minimum: 1, maximum: 99 } },
         ],
         responses: {
           200: {
@@ -105,13 +148,45 @@ export const openApiDocument = {
                     {
                       type: "object",
                       properties: {
-                        data: {
-                          type: "array",
-                          items: { $ref: "#/components/schemas/Player" },
-                        },
+                        data: { type: "array", items: { $ref: "#/components/schemas/Player" } },
+                        meta: { $ref: "#/components/schemas/PaginationMeta" },
                       },
                     },
                   ],
+                },
+                examples: {
+                  default: {
+                    value: {
+                      success: true,
+                      data: [
+                        {
+                          id: "player-1",
+                          name: "Kylian Mbappe",
+                          position: "ST",
+                          positions: ["ST"],
+                          team: "Paris Saint-Germain",
+                          league: "Ligue 1",
+                          nationality: "France",
+                          age: 25,
+                          overall: 91,
+                          potential: 94,
+                          marketValue: 180000000,
+                          image:
+                            "https://cdn.sportmonks.com/images/soccer/players/10/10.png",
+                          attributes: {
+                            pace: 97,
+                            shooting: 92,
+                            passing: 85,
+                            dribbling: 94,
+                            defending: 40,
+                            physical: 78,
+                          },
+                        },
+                      ],
+                      error: null,
+                      meta: { page: 1, limit: 20, total: 500, totalPages: 25 },
+                    },
+                  },
                 },
               },
             },
@@ -123,8 +198,8 @@ export const openApiDocument = {
       get: {
         summary: "Search players with advanced filters",
         parameters: [
-          { name: "page", in: "query", schema: { type: "integer", minimum: 1 } },
-          { name: "limit", in: "query", schema: { type: "integer", minimum: 1, maximum: 100 } },
+          { $ref: "#/components/parameters/Page" },
+          { $ref: "#/components/parameters/Limit" },
           { name: "position", in: "query", schema: { type: "string" } },
           { name: "team", in: "query", schema: { type: "string" } },
           { name: "league", in: "query", schema: { type: "string" } },
@@ -132,6 +207,7 @@ export const openApiDocument = {
           { name: "ageMax", in: "query", schema: { type: "integer", minimum: 1 } },
           { name: "overallMin", in: "query", schema: { type: "integer", minimum: 1, maximum: 99 } },
           { name: "overallMax", in: "query", schema: { type: "integer", minimum: 1, maximum: 99 } },
+          { name: "minOverall", in: "query", schema: { type: "integer", minimum: 1, maximum: 99 } },
         ],
         responses: {
           200: {
@@ -145,6 +221,7 @@ export const openApiDocument = {
                       type: "object",
                       properties: {
                         data: { type: "array", items: { $ref: "#/components/schemas/Player" } },
+                        meta: { $ref: "#/components/schemas/PaginationMeta" },
                       },
                     },
                   ],
@@ -158,7 +235,7 @@ export const openApiDocument = {
     "/api/player/{id}": {
       get: {
         summary: "Get player profile",
-        parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" } }],
+        parameters: [{ $ref: "#/components/parameters/PlayerId" }],
         responses: {
           200: {
             description: "Player profile",
@@ -167,12 +244,7 @@ export const openApiDocument = {
                 schema: {
                   allOf: [
                     { $ref: "#/components/schemas/ApiEnvelope" },
-                    {
-                      type: "object",
-                      properties: {
-                        data: { $ref: "#/components/schemas/PlayerProfile" },
-                      },
-                    },
+                    { type: "object", properties: { data: { $ref: "#/components/schemas/PlayerProfile" } } },
                   ],
                 },
               },
@@ -181,15 +253,114 @@ export const openApiDocument = {
         },
       },
     },
-    "/api/player/{id}/projection": { get: { summary: "Get career projection" } },
-    "/api/player/{id}/similar": { get: { summary: "Get similar players" } },
+    "/api/player/{id}/projection": {
+      get: {
+        summary: "Get player projection curve",
+        parameters: [{ $ref: "#/components/parameters/PlayerId" }],
+        responses: {
+          200: {
+            description: "Projection data",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/ApiEnvelope" },
+                examples: {
+                  default: {
+                    value: {
+                      success: true,
+                      data: {
+                        currentOverall: 78,
+                        projectedPeak: 85,
+                        ageCurve: [
+                          { age: 20, overall: 76 },
+                          { age: 21, overall: 78 },
+                          { age: 22, overall: 80 },
+                        ],
+                      },
+                      error: null,
+                      meta: {},
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+    "/api/player/{id}/similar": {
+      get: {
+        summary: "Get similar players",
+        parameters: [{ $ref: "#/components/parameters/PlayerId" }],
+        responses: {
+          200: {
+            description: "Similar players list",
+            content: {
+              "application/json": {
+                schema: {
+                  allOf: [
+                    { $ref: "#/components/schemas/ApiEnvelope" },
+                    { type: "object", properties: { data: { type: "array", items: { $ref: "#/components/schemas/Player" } } } },
+                  ],
+                },
+              },
+            },
+          },
+        },
+      },
+    },
     "/api/player/{id}/notes": {
-      get: { summary: "List player notes" },
-      post: { summary: "Create player note" },
+      get: {
+        summary: "List player notes",
+        parameters: [{ $ref: "#/components/parameters/PlayerId" }],
+        responses: {
+          200: {
+            description: "Notes list",
+            content: {
+              "application/json": {
+                schema: {
+                  allOf: [
+                    { $ref: "#/components/schemas/ApiEnvelope" },
+                    { type: "object", properties: { data: { type: "array", items: { $ref: "#/components/schemas/ScoutNote" } } } },
+                  ],
+                },
+              },
+            },
+          },
+        },
+      },
+      post: {
+        summary: "Create player note",
+        parameters: [{ $ref: "#/components/parameters/PlayerId" }],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  note: { type: "string", minLength: 1 },
+                  createdBy: { type: "string", default: "analyst" },
+                },
+                required: ["note"],
+              },
+            },
+          },
+        },
+        responses: {
+          200: {
+            description: "Note created",
+            content: { "application/json": { schema: { $ref: "#/components/schemas/ApiEnvelope" } } },
+          },
+        },
+      },
     },
     "/api/compare/{idA}/{idB}": {
       get: {
         summary: "Compare players by id",
+        parameters: [
+          { name: "idA", in: "path", required: true, schema: { type: "string" } },
+          { name: "idB", in: "path", required: true, schema: { type: "string" } },
+        ],
         responses: {
           200: {
             description: "Comparison payload",
@@ -198,12 +369,7 @@ export const openApiDocument = {
                 schema: {
                   allOf: [
                     { $ref: "#/components/schemas/ApiEnvelope" },
-                    {
-                      type: "object",
-                      properties: {
-                        data: { $ref: "#/components/schemas/PlayerComparison" },
-                      },
-                    },
+                    { type: "object", properties: { data: { $ref: "#/components/schemas/PlayerComparison" } } },
                   ],
                 },
               },
@@ -212,9 +378,68 @@ export const openApiDocument = {
         },
       },
     },
-    "/api/compare/by-name/{nameA}/{nameB}": { get: { summary: "Compare players by name" } },
-    "/api/simulation/transfer": { post: { summary: "Simulate transfer impact" } },
-    "/api/team/analysis": { get: { summary: "Analyze full squad by player ids" } },
+    "/api/compare/by-name/{nameA}/{nameB}": {
+      get: {
+        summary: "Compare players by name",
+        parameters: [
+          { name: "nameA", in: "path", required: true, schema: { type: "string" } },
+          { name: "nameB", in: "path", required: true, schema: { type: "string" } },
+        ],
+        responses: {
+          200: {
+            description: "Comparison payload",
+            content: { "application/json": { schema: { $ref: "#/components/schemas/ApiEnvelope" } } },
+          },
+        },
+      },
+    },
+    "/api/simulation/transfer": {
+      post: {
+        summary: "Simulate transfer impact",
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  playerId: { type: "string", format: "uuid" },
+                  transferCost: { type: "number", minimum: 0 },
+                  salary: { type: "number", minimum: 0 },
+                  contractYears: { type: "integer", minimum: 1, maximum: 8 },
+                },
+                required: ["playerId", "transferCost", "salary", "contractYears"],
+              },
+            },
+          },
+        },
+        responses: {
+          200: {
+            description: "Transfer simulation",
+            content: { "application/json": { schema: { $ref: "#/components/schemas/ApiEnvelope" } } },
+          },
+        },
+      },
+    },
+    "/api/team/analysis": {
+      get: {
+        summary: "Analyze squad by player ids",
+        parameters: [
+          {
+            name: "playerIds",
+            in: "query",
+            required: true,
+            schema: { type: "string", example: "id1,id2,id3" },
+          },
+        ],
+        responses: {
+          200: {
+            description: "Team analysis",
+            content: { "application/json": { schema: { $ref: "#/components/schemas/ApiEnvelope" } } },
+          },
+        },
+      },
+    },
     "/api/watchlist": {
       get: {
         summary: "List watchlist",
@@ -226,15 +451,7 @@ export const openApiDocument = {
                 schema: {
                   allOf: [
                     { $ref: "#/components/schemas/ApiEnvelope" },
-                    {
-                      type: "object",
-                      properties: {
-                        data: {
-                          type: "array",
-                          items: { $ref: "#/components/schemas/WatchlistItem" },
-                        },
-                      },
-                    },
+                    { type: "object", properties: { data: { type: "array", items: { $ref: "#/components/schemas/WatchlistItem" } } } },
                   ],
                 },
               },
@@ -242,9 +459,44 @@ export const openApiDocument = {
           },
         },
       },
-      post: { summary: "Add watchlist item" },
+      post: {
+        summary: "Add watchlist item",
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  playerId: { type: "string", minLength: 1 },
+                  playerName: { type: "string" },
+                  nomeJogador: { type: "string" },
+                },
+                required: ["playerId"],
+              },
+            },
+          },
+        },
+        responses: {
+          200: {
+            description: "Watchlist item upserted",
+            content: { "application/json": { schema: { $ref: "#/components/schemas/ApiEnvelope" } } },
+          },
+        },
+      },
     },
-    "/api/watchlist/{id}": { delete: { summary: "Remove watchlist item" } },
+    "/api/watchlist/{id}": {
+      delete: {
+        summary: "Remove watchlist item",
+        parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" } }],
+        responses: {
+          200: {
+            description: "Delete status",
+            content: { "application/json": { schema: { $ref: "#/components/schemas/ApiEnvelope" } } },
+          },
+        },
+      },
+    },
     "/api/alerts": {
       get: {
         summary: "Market alerts feed",
@@ -256,15 +508,7 @@ export const openApiDocument = {
                 schema: {
                   allOf: [
                     { $ref: "#/components/schemas/ApiEnvelope" },
-                    {
-                      type: "object",
-                      properties: {
-                        data: {
-                          type: "array",
-                          items: { $ref: "#/components/schemas/Alert" },
-                        },
-                      },
-                    },
+                    { type: "object", properties: { data: { type: "array", items: { $ref: "#/components/schemas/Alert" } } } },
                   ],
                 },
               },
@@ -273,8 +517,100 @@ export const openApiDocument = {
         },
       },
     },
-    "/api/reports/{id}/explainability": { get: { summary: "Explainability payload for report" } },
-    "/api/health": { get: { summary: "Health and uptime status" } },
-    "/api/validation/model": { post: { summary: "Run historical model validation" } },
+    "/api/reports/{id}/explainability": {
+      get: {
+        summary: "Explainability payload for report",
+        parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" } }],
+        responses: {
+          200: {
+            description: "Explainability payload",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/ApiEnvelope" },
+                examples: {
+                  default: {
+                    value: {
+                      success: true,
+                      data: {
+                        topFactors: [],
+                        riskDrivers: [],
+                        positiveSignals: [],
+                        negativeSignals: [],
+                      },
+                      error: null,
+                      meta: {},
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+    "/api/validation/model": {
+      post: {
+        summary: "Run historical model validation",
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  records: {
+                    type: "array",
+                    items: {
+                      type: "object",
+                      properties: {
+                        predictedSuccess: { type: "boolean" },
+                        actualSuccess: { type: "boolean" },
+                      },
+                      required: ["predictedSuccess", "actualSuccess"],
+                    },
+                  },
+                },
+                required: ["records"],
+              },
+            },
+          },
+        },
+        responses: {
+          200: {
+            description: "Validation result",
+            content: { "application/json": { schema: { $ref: "#/components/schemas/ApiEnvelope" } } },
+          },
+        },
+      },
+    },
+    "/api/health": {
+      get: {
+        summary: "Health and uptime status",
+        responses: {
+          200: {
+            description: "API health",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/ApiEnvelope" },
+                examples: {
+                  ok: {
+                    value: {
+                      success: true,
+                      data: {
+                        status: "ok",
+                        uptime: 12345.67,
+                        timestamp: "2026-03-09T12:00:00.000Z",
+                      },
+                      error: null,
+                      meta: {},
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
   },
 };

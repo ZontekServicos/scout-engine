@@ -4,6 +4,7 @@ import { successResponse } from "../lib/apiResponse";
 import { withCache } from "../lib/cache";
 import { getPlayerProfile, getPlayerProjection, getSimilarPlayers, listPlayers } from "../scout/player.service";
 import { addScoutNote, getScoutNotes } from "../scout/scout-notes.store";
+import { mapPlayerRecords } from "../mappers/player.mapper";
 
 function getParam(value: string | string[] | undefined): string {
   if (Array.isArray(value)) return value[0] ?? "";
@@ -17,11 +18,16 @@ function asNumber(value: unknown): number | undefined {
 }
 
 export async function listPlayersController(req: Request, res: Response) {
+  const overallMin = asNumber(req.query.overallMin);
+  const minOverall = asNumber(req.query.minOverall);
+
   const result = await listPlayers({
     position: typeof req.query.position === "string" ? req.query.position : undefined,
     team: typeof req.query.team === "string" ? req.query.team : undefined,
     league: typeof req.query.league === "string" ? req.query.league : undefined,
-    minOverall: asNumber(req.query.minOverall),
+    overallMin: Number.isFinite(overallMin) ? overallMin : minOverall,
+    overallMax: asNumber(req.query.overallMax),
+    minOverall,
     ageMin: asNumber(req.query.ageMin),
     ageMax: asNumber(req.query.ageMax),
     page: asNumber(req.query.page),
@@ -41,7 +47,7 @@ export async function searchPlayersController(req: Request, res: Response) {
   const league = typeof req.query.league === "string" ? req.query.league.trim() : undefined;
   const ageMin = asNumber(req.query.ageMin);
   const ageMax = asNumber(req.query.ageMax);
-  const overallMin = asNumber(req.query.overallMin);
+  const overallMin = asNumber(req.query.overallMin) ?? asNumber(req.query.minOverall);
   const overallMax = asNumber(req.query.overallMax);
 
   const where: any = {};
@@ -73,26 +79,28 @@ export async function searchPlayersController(req: Request, res: Response) {
         name: true,
         positions: true,
         team: true,
+        league: true,
         nationality: true,
         age: true,
         overall: true,
         potential: true,
+        marketValue: true,
         imagePath: true,
+        attributes: true,
       },
     }),
   ]);
 
-  const items = players.map((player) => ({
-    id: player.id,
-    name: player.name,
-    position: player.positions?.[0] ?? "CM",
-    team: player.team ?? null,
-    nationality: player.nationality ?? null,
-    age: player.age ?? null,
-    overall: player.overall ?? null,
-    potential: player.potential ?? null,
-    image: player.imagePath ?? null,
-  }));
+  const items = mapPlayerRecords(
+    players.map((player) => ({
+      ...player,
+      overall:
+        player.overall ??
+        (Number.isFinite(Number((player.attributes as any)?.overall))
+          ? Number((player.attributes as any).overall)
+          : null),
+    })),
+  );
 
   return res.json(
     successResponse(items, {
