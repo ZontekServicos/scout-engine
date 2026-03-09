@@ -1,4 +1,6 @@
 import express from "express";
+import cors from "cors";
+import rateLimit from "express-rate-limit";
 import "dotenv/config";
 import analyticsRoutes from "./routes/analytics.routes";
 import alertsRoutes from "./routes/alerts.routes";
@@ -18,15 +20,29 @@ import watchlistRoutes from "./routes/watchlist.routes";
 import { logger } from "./lib/logger";
 import { errorMiddleware } from "./middleware/error.middleware";
 import { requestLogger } from "./middleware/request-logger.middleware";
-import { corsControl, rateLimiter, secureHeaders } from "./middleware/security.middleware";
+import { secureHeaders } from "./middleware/security.middleware";
 
 const app = express();
+
+const limiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: Number(process.env.RATE_LIMIT_MAX ?? 200),
+  standardHeaders: true,
+  legacyHeaders: false,
+});
 
 app.use(express.json({ limit: "1mb" }));
 app.use(requestLogger);
 app.use(secureHeaders);
-app.use(corsControl);
-app.use(rateLimiter);
+app.use(
+  cors({
+    origin: "*",
+    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization"],
+  }),
+);
+app.options("*", cors());
+app.use(limiter);
 
 app.use("/api/scout", scoutRoutes);
 app.use("/api/compare", compareRoutes);

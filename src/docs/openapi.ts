@@ -14,6 +14,16 @@ export const openApiDocument = {
     "/api/players": {
       get: {
         summary: "List players with filtering and pagination",
+        parameters: [
+          { name: "page", in: "query", schema: { type: "integer", minimum: 1 } },
+          { name: "limit", in: "query", schema: { type: "integer", minimum: 1, maximum: 100 } },
+          { name: "position", in: "query", schema: { type: "string" } },
+          { name: "team", in: "query", schema: { type: "string" } },
+          { name: "league", in: "query", schema: { type: "string" } },
+          { name: "minOverall", in: "query", schema: { type: "integer", minimum: 1, maximum: 99 } },
+          { name: "ageMin", in: "query", schema: { type: "integer", minimum: 1 } },
+          { name: "ageMax", in: "query", schema: { type: "integer", minimum: 1 } },
+        ],
       },
     },
     "/api/player/{id}": { get: { summary: "Get player profile" } },

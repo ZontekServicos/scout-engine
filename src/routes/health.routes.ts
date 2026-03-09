@@ -17,6 +17,7 @@ router.get("/", async (_req, res) => {
 
   const payload = {
     status: databaseStatus === "up" ? "ok" : "degraded",
+    uptime: process.uptime(),
     database: databaseStatus,
     engines: "up",
     uptimeSeconds: Math.floor((Date.now() - startedAt) / 1000),

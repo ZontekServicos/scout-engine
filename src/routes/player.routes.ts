@@ -9,12 +9,15 @@ router.get("/players", async (req, res, next) => {
   try {
     const result = await listPlayers({
       position: typeof req.query.position === "string" ? req.query.position : undefined,
+      team: typeof req.query.team === "string" ? req.query.team : undefined,
       league: typeof req.query.league === "string" ? req.query.league : undefined,
       minOverall: typeof req.query.minOverall === "string" ? Number(req.query.minOverall) : undefined,
+      ageMin: typeof req.query.ageMin === "string" ? Number(req.query.ageMin) : undefined,
+      ageMax: typeof req.query.ageMax === "string" ? Number(req.query.ageMax) : undefined,
       page: typeof req.query.page === "string" ? Number(req.query.page) : undefined,
       limit: typeof req.query.limit === "string" ? Number(req.query.limit) : undefined,
     });
-    return res.json(successResponse(result));
+    return res.json(successResponse(result.items, { ...result.pagination, filters: result.filters }));
   } catch (error) {
     next(error);
   }

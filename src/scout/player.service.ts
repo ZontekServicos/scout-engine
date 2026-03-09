@@ -11,8 +11,11 @@ import { getPrimaryPosition } from "../utils/positions";
 
 type ListPlayersParams = {
   position?: string;
+  team?: string;
   league?: string;
   minOverall?: number;
+  ageMin?: number;
+  ageMax?: number;
   page?: number;
   limit?: number;
 };
@@ -178,17 +181,60 @@ export async function getPlayerProfile(id: string) {
     financialRiskIndex: financialRisk.riskIndex,
   });
 
+  const raw = (player.attributes as any) ?? {};
+  const technical = raw.skill ?? {
+    dribbling: fifa.dribbling,
+    ballControl: fifa.dribbling,
+    shortPassing: fifa.passing,
+    longPassing: fifa.passing,
+  };
+
+  const physical = raw.power ?? {
+    strength: fifa.physical,
+    stamina: fifa.physical,
+    acceleration: fifa.pace,
+    sprintSpeed: fifa.pace,
+  };
+
+  const mental = raw.mentality ?? {
+    vision: raw.vision ?? 60,
+    composure: raw.composure ?? 60,
+    aggression: raw.aggression ?? 60,
+    positioning: raw.positioning ?? 60,
+  };
+
+  const profile = {
+    id: player.id,
+    name: player.name,
+    team: player.team ?? null,
+    league: player.league ?? null,
+    position: playerPosition,
+    nationality: player.nationality ?? null,
+    age: player.age ?? null,
+    overall: overall.overall,
+    potential: Math.max(overall.overall, Math.min(99, overall.overall + 5)),
+    marketValue: player.marketValue ?? null,
+    image: player.imagePath ?? null,
+  };
+
   return {
+    player: profile,
+    attributes: fifa,
+    technical,
+    physical,
+    mental,
+
+    // Campos legados para manter compatibilidade retroativa.
     id: player.id,
     playerKey: player.id,
     name: player.name,
     nomeJogador: player.name,
     age: player.age ?? null,
     position: playerPosition,
-    team: (player as any).team ?? null,
-    league: (player as any).league ?? null,
-    marketValue: (player as any).marketValue ?? null,
-    contractEnd: (player as any).contractEnd ? String((player as any).contractEnd) : null,
+    team: player.team ?? null,
+    league: player.league ?? null,
+    marketValue: player.marketValue ?? null,
+    contractEnd: player.contractEnd ? String(player.contractEnd) : null,
     overall: overall.overall,
     fifaStyle: overall.fifaStyle,
     potential: Math.max(overall.overall, Math.min(99, overall.overall + 5)),
@@ -196,8 +242,7 @@ export async function getPlayerProfile(id: string) {
     liquidityScore: liquidity.liquidityScore,
     structuralRisk: risk.totalRisk,
     financialRisk: financialRisk.riskIndex,
-    technical: fifa,
-    photoUrl: null,
+    image: player.imagePath ?? null,
   };
 }
 
@@ -252,8 +297,19 @@ export async function listPlayers(params: ListPlayersParams = {}) {
     where.league = { contains: params.league.trim(), mode: "insensitive" };
   }
 
+  if (params.team && params.team.trim()) {
+    where.team = { contains: params.team.trim(), mode: "insensitive" };
+  }
+
   if (Number.isFinite(params.minOverall)) {
     where.overall = { gte: Number(params.minOverall) };
+  }
+
+  if (Number.isFinite(params.ageMin) || Number.isFinite(params.ageMax)) {
+    where.age = {
+      ...(Number.isFinite(params.ageMin) ? { gte: Number(params.ageMin) } : {}),
+      ...(Number.isFinite(params.ageMax) ? { lte: Number(params.ageMax) } : {}),
+    };
   }
 
   const [total, players] = await Promise.all([
@@ -283,6 +339,7 @@ export async function listPlayers(params: ListPlayersParams = {}) {
   const items = players.map((player) => ({
     id: player.id,
     name: player.name,
+    position: player.positions?.[0] ?? "CM",
     team: player.team,
     league: player.league,
     positions: player.positions,
@@ -291,6 +348,7 @@ export async function listPlayers(params: ListPlayersParams = {}) {
     overall: player.overall,
     potential: player.potential,
     marketValue: player.marketValue,
+    image: player.imagePath,
     image_path: player.imagePath,
     attributes: player.attributes,
   }));
@@ -305,8 +363,11 @@ export async function listPlayers(params: ListPlayersParams = {}) {
     },
     filters: {
       position: params.position ?? null,
+      team: params.team ?? null,
       league: params.league ?? null,
       minOverall: Number.isFinite(params.minOverall) ? Number(params.minOverall) : null,
+      ageMin: Number.isFinite(params.ageMin) ? Number(params.ageMin) : null,
+      ageMax: Number.isFinite(params.ageMax) ? Number(params.ageMax) : null,
     },
   };
 }

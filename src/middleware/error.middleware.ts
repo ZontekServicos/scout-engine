@@ -1,5 +1,6 @@
 import { NextFunction, Request, Response } from "express";
 import { logger } from "../lib/logger";
+import { errorResponse } from "../lib/apiResponse";
 
 export function errorMiddleware(error: any, req: Request, res: Response, _next: NextFunction) {
   logger.error("Global error", {
@@ -10,9 +11,6 @@ export function errorMiddleware(error: any, req: Request, res: Response, _next: 
 
   const statusCode = error?.statusCode || 500;
 
-  res.status(statusCode).json({
-    success: false,
-    error: error?.message || "Internal Server Error",
-  });
+  res.status(statusCode).json(errorResponse(error?.message || "Internal Server Error"));
 }
 
