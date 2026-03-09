@@ -41,6 +41,8 @@ type SportmonksPlayer = {
   id?: number;
   name?: string;
   age?: number;
+  position_id?: number | string | null;
+  detailed_position_id?: number | string | null;
   image_path?: string | null;
   market_value?:
     | number
@@ -57,6 +59,8 @@ type SportmonksPlayer = {
     };
   country?: SportmonksEntity | { data?: SportmonksEntity };
   team?: SportmonksEntity | { data?: SportmonksEntity };
+  detailedPosition?: SportmonksEntity | { data?: SportmonksEntity };
+  detailed_position?: SportmonksEntity | { data?: SportmonksEntity };
   teams?: Array<
     SportmonksEntity & {
       team_id?: number;
@@ -284,37 +288,86 @@ function readLeagueNameFromTeamUnknown(teamValue: unknown): string | null {
   );
 }
 
-function mapPositionFromApi(positionName?: string): string {
-  if (!positionName || !positionName.trim()) {
-    return "CM";
-  }
+function mapPositionFromApi(input: {
+  positionName?: string | null;
+  detailedPositionName?: string | null;
+  positionId?: number | null;
+  detailedPositionId?: number | null;
+}): string {
+  const { positionName, detailedPositionName, positionId, detailedPositionId } = input;
 
-  const direct = normalizePosition(positionName);
-  if (direct) {
-    return direct;
+  const directCandidates = [detailedPositionName, positionName];
+  for (const candidate of directCandidates) {
+    if (!candidate || !candidate.trim()) continue;
+    const normalized = normalizePosition(candidate);
+    if (normalized) return normalized;
   }
 
   const aliases: Record<string, string> = {
     "CENTRE BACK": "CB",
     "CENTER BACK": "CB",
+    DEFENDER: "CB",
     "LEFT BACK": "LB",
     "RIGHT BACK": "RB",
     "LEFT WING BACK": "LWB",
     "RIGHT WING BACK": "RWB",
+    "DEFENSIVE MIDFIELD": "CDM",
     "DEFENSIVE MIDFIELDER": "CDM",
+    MIDFIELDER: "CM",
     "CENTRAL MIDFIELDER": "CM",
+    "CENTRAL MIDFIELD": "CM",
     "ATTACKING MIDFIELDER": "CAM",
+    "ATTACKING MIDFIELD": "CAM",
     "LEFT MIDFIELDER": "LM",
     "RIGHT MIDFIELDER": "RM",
+    "LEFT WING": "LW",
     "LEFT WINGER": "LW",
+    "RIGHT WING": "RW",
     "RIGHT WINGER": "RW",
     "CENTRE FORWARD": "CF",
+    ATTACKER: "ST",
     FORWARD: "CF",
     STRIKER: "ST",
     GOALKEEPER: "GK",
   };
 
-  return aliases[positionName.trim().toUpperCase()] ?? "CM";
+  for (const candidate of directCandidates) {
+    if (!candidate || !candidate.trim()) continue;
+    const alias = aliases[candidate.trim().toUpperCase()];
+    if (alias) return alias;
+  }
+
+  const detailedPositionMap: Record<number, string> = {
+    24: "GK",
+    148: "CB",
+    149: "CDM",
+    150: "CM",
+    151: "ST",
+    152: "RW",
+    153: "CM",
+    154: "LB",
+    155: "RB",
+    156: "LW",
+    157: "CAM",
+    158: "CF",
+  };
+
+  if (detailedPositionId != null && detailedPositionMap[detailedPositionId]) {
+    return detailedPositionMap[detailedPositionId];
+  }
+
+  const positionMap: Record<number, string> = {
+    24: "GK",
+    25: "CB",
+    26: "CM",
+    27: "ST",
+  };
+
+  if (positionId != null && positionMap[positionId]) {
+    return positionMap[positionId];
+  }
+
+  return "CM";
 }
 
 function clamp(value: number, min = 1, max = 99) {
@@ -826,7 +879,13 @@ async function main() {
       const resolvedImagePath = rawPlayer.image_path?.trim() || null;
 
       const position = unwrapEntity(rawPlayer.position);
-      const mappedPosition = mapPositionFromApi(position?.name);
+      const detailedPosition = unwrapEntity(rawPlayer.detailedPosition ?? rawPlayer.detailed_position);
+      const mappedPosition = mapPositionFromApi({
+        positionName: position?.name,
+        detailedPositionName: detailedPosition?.name,
+        positionId: parseOptionalInt(rawPlayer.position_id),
+        detailedPositionId: parseOptionalInt(rawPlayer.detailed_position_id),
+      });
       const inputOverall = parseOptionalInt(rawPlayer.overall ?? rawPlayer.rating);
 
       const age = Number(rawPlayer.age ?? 0);
