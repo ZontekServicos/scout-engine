@@ -3,6 +3,12 @@ import axios from "axios";
 import { PrismaClient } from "@prisma/client";
 import { nameToSlug, normalizeName } from "../src/utils/normalizeName";
 import { normalizePosition } from "../src/utils/positions";
+import { normalizeStat } from "../src/scout/stats-normalizer";
+import { buildFifaAttributes } from "../src/scout/skill-tree.builder";
+import { buildMacroSkills } from "../src/scout/macroSkill.engine";
+import { calculateOverallRating } from "../src/scout/overall.engine";
+import { calculateRankingScore } from "../src/scout/ranking.engine";
+import { GLOBAL_WEIGHTS, POSITION_WEIGHTS } from "../src/scout/ranking.weights";
 
 const prisma = new PrismaClient();
 
@@ -226,6 +232,307 @@ function mapPositionFromApi(positionName?: string): string {
   return aliases[positionName.trim().toUpperCase()] ?? "CM";
 }
 
+function clamp(value: number, min = 1, max = 99) {
+  return Math.max(min, Math.min(max, Math.round(value)));
+}
+
+function average(values: number[]): number {
+  if (!values.length) return 0;
+  return values.reduce((acc, value) => acc + value, 0) / values.length;
+}
+
+function hashSeed(input: string): number {
+  let hash = 0;
+  for (let i = 0; i < input.length; i += 1) {
+    hash = (hash * 31 + input.charCodeAt(i)) >>> 0;
+  }
+  return hash || 1;
+}
+
+function seededOffset(seed: number, salt: number, range = 6): number {
+  const value = ((seed + salt * 1103515245) >>> 0) % (range * 2 + 1);
+  return value - range;
+}
+
+type RawStats = {
+  speed: number;
+  acceleration: number;
+  finishing: number;
+  shotPower: number;
+  shortPass: number;
+  longPass: number;
+  dribble: number;
+  ballControl: number;
+  tackle: number;
+  strength: number;
+  stamina: number;
+};
+
+const RAW_STATS_PRESETS: Record<string, RawStats> = {
+  GK: {
+    speed: 48,
+    acceleration: 50,
+    finishing: 35,
+    shotPower: 48,
+    shortPass: 56,
+    longPass: 59,
+    dribble: 44,
+    ballControl: 52,
+    tackle: 54,
+    strength: 66,
+    stamina: 62,
+  },
+  CB: {
+    speed: 58,
+    acceleration: 56,
+    finishing: 42,
+    shotPower: 60,
+    shortPass: 60,
+    longPass: 61,
+    dribble: 54,
+    ballControl: 58,
+    tackle: 76,
+    strength: 76,
+    stamina: 70,
+  },
+  LB: {
+    speed: 70,
+    acceleration: 72,
+    finishing: 50,
+    shotPower: 61,
+    shortPass: 66,
+    longPass: 64,
+    dribble: 66,
+    ballControl: 67,
+    tackle: 68,
+    strength: 68,
+    stamina: 73,
+  },
+  RB: {
+    speed: 70,
+    acceleration: 72,
+    finishing: 50,
+    shotPower: 61,
+    shortPass: 66,
+    longPass: 64,
+    dribble: 66,
+    ballControl: 67,
+    tackle: 68,
+    strength: 68,
+    stamina: 73,
+  },
+  LWB: {
+    speed: 72,
+    acceleration: 74,
+    finishing: 52,
+    shotPower: 62,
+    shortPass: 67,
+    longPass: 65,
+    dribble: 68,
+    ballControl: 69,
+    tackle: 66,
+    strength: 67,
+    stamina: 76,
+  },
+  RWB: {
+    speed: 72,
+    acceleration: 74,
+    finishing: 52,
+    shotPower: 62,
+    shortPass: 67,
+    longPass: 65,
+    dribble: 68,
+    ballControl: 69,
+    tackle: 66,
+    strength: 67,
+    stamina: 76,
+  },
+  CDM: {
+    speed: 62,
+    acceleration: 61,
+    finishing: 53,
+    shotPower: 62,
+    shortPass: 69,
+    longPass: 67,
+    dribble: 63,
+    ballControl: 65,
+    tackle: 72,
+    strength: 73,
+    stamina: 73,
+  },
+  CM: {
+    speed: 64,
+    acceleration: 65,
+    finishing: 58,
+    shotPower: 64,
+    shortPass: 72,
+    longPass: 70,
+    dribble: 69,
+    ballControl: 71,
+    tackle: 64,
+    strength: 66,
+    stamina: 72,
+  },
+  CAM: {
+    speed: 66,
+    acceleration: 68,
+    finishing: 67,
+    shotPower: 69,
+    shortPass: 74,
+    longPass: 72,
+    dribble: 74,
+    ballControl: 76,
+    tackle: 56,
+    strength: 61,
+    stamina: 69,
+  },
+  LM: {
+    speed: 71,
+    acceleration: 72,
+    finishing: 60,
+    shotPower: 65,
+    shortPass: 70,
+    longPass: 67,
+    dribble: 72,
+    ballControl: 72,
+    tackle: 57,
+    strength: 61,
+    stamina: 71,
+  },
+  RM: {
+    speed: 71,
+    acceleration: 72,
+    finishing: 60,
+    shotPower: 65,
+    shortPass: 70,
+    longPass: 67,
+    dribble: 72,
+    ballControl: 72,
+    tackle: 57,
+    strength: 61,
+    stamina: 71,
+  },
+  LW: {
+    speed: 74,
+    acceleration: 76,
+    finishing: 68,
+    shotPower: 70,
+    shortPass: 67,
+    longPass: 63,
+    dribble: 78,
+    ballControl: 78,
+    tackle: 46,
+    strength: 58,
+    stamina: 69,
+  },
+  RW: {
+    speed: 74,
+    acceleration: 76,
+    finishing: 68,
+    shotPower: 70,
+    shortPass: 67,
+    longPass: 63,
+    dribble: 78,
+    ballControl: 78,
+    tackle: 46,
+    strength: 58,
+    stamina: 69,
+  },
+  CF: {
+    speed: 69,
+    acceleration: 70,
+    finishing: 71,
+    shotPower: 72,
+    shortPass: 68,
+    longPass: 64,
+    dribble: 73,
+    ballControl: 74,
+    tackle: 45,
+    strength: 60,
+    stamina: 67,
+  },
+  ST: {
+    speed: 67,
+    acceleration: 68,
+    finishing: 74,
+    shotPower: 74,
+    shortPass: 62,
+    longPass: 58,
+    dribble: 70,
+    ballControl: 71,
+    tackle: 41,
+    strength: 66,
+    stamina: 67,
+  },
+};
+
+function buildRawStats(position: string, age: number, anchorOverall: number | null, seed: number): RawStats {
+  const base = RAW_STATS_PRESETS[position] ?? RAW_STATS_PRESETS.CM;
+  const agePenalty = age >= 33 ? -4 : age >= 30 ? -2 : age <= 20 ? 3 : age <= 23 ? 2 : 0;
+
+  const targetOverall = anchorOverall ? clamp(anchorOverall, 45, 92) : null;
+  const baseMean = average(Object.values(base));
+  const shift = targetOverall ? targetOverall - baseMean : 0;
+
+  const apply = (value: number, salt: number) => {
+    const jitter = seededOffset(seed, salt, 5);
+    return clamp(value + shift + agePenalty + jitter, 25, 95);
+  };
+
+  return {
+    speed: apply(base.speed, 1),
+    acceleration: apply(base.acceleration, 2),
+    finishing: apply(base.finishing, 3),
+    shotPower: apply(base.shotPower, 4),
+    shortPass: apply(base.shortPass, 5),
+    longPass: apply(base.longPass, 6),
+    dribble: apply(base.dribble, 7),
+    ballControl: apply(base.ballControl, 8),
+    tackle: apply(base.tackle, 9),
+    strength: apply(base.strength, 10),
+    stamina: apply(base.stamina, 11),
+  };
+}
+
+function normalizeRawStats(raw: RawStats): RawStats {
+  return {
+    speed: normalizeStat(raw.speed),
+    acceleration: normalizeStat(raw.acceleration),
+    finishing: normalizeStat(raw.finishing),
+    shotPower: normalizeStat(raw.shotPower),
+    shortPass: normalizeStat(raw.shortPass),
+    longPass: normalizeStat(raw.longPass),
+    dribble: normalizeStat(raw.dribble),
+    ballControl: normalizeStat(raw.ballControl),
+    tackle: normalizeStat(raw.tackle),
+    strength: normalizeStat(raw.strength),
+    stamina: normalizeStat(raw.stamina),
+  };
+}
+
+function buildCategoryIndex(fifa: {
+  pace: number;
+  shooting: number;
+  passing: number;
+  dribbling: number;
+  defending: number;
+  physical: number;
+}) {
+  return {
+    attacking: fifa.shooting,
+    skill: fifa.dribbling,
+    movement: fifa.pace,
+    power: fifa.physical,
+    mentality: clamp((fifa.passing + fifa.physical) / 2, 1, 99),
+    defending: fifa.defending,
+  };
+}
+
+function computePotential(overall: number, age: number): number {
+  const boost = age <= 20 ? 9 : age <= 23 ? 7 : age <= 27 ? 5 : age <= 30 ? 3 : 1;
+  return clamp(Math.max(overall, overall + boost), 1, 99);
+}
+
 async function fetchPlayersPage(
   page: number,
   include: string,
@@ -423,10 +730,126 @@ async function main() {
 
       const position = unwrapEntity(rawPlayer.position);
       const mappedPosition = mapPositionFromApi(position?.name);
-      const overall = parseOptionalInt(rawPlayer.overall ?? rawPlayer.rating);
+      const inputOverall = parseOptionalInt(rawPlayer.overall ?? rawPlayer.rating);
 
       const age = Number(rawPlayer.age ?? 0);
       const safeAge = Number.isFinite(age) && age > 0 ? Math.round(age) : 24;
+
+      const seed = hashSeed(`${rawPlayer.id ?? slug}`);
+      const rawStats = buildRawStats(mappedPosition, safeAge, inputOverall, seed);
+      const normalizedRawStats = normalizeRawStats(rawStats);
+
+      // 1) stats-normalizer + 2) skill-tree.builder
+      const fifaCore = buildFifaAttributes(normalizedRawStats);
+
+      const detailedFlat = {
+        crossing: clamp((normalizedRawStats.shortPass + normalizedRawStats.longPass) / 2),
+        finishing: normalizedRawStats.finishing,
+        headingAccuracy: clamp((normalizedRawStats.strength + normalizedRawStats.tackle) / 2),
+        shortPassing: normalizedRawStats.shortPass,
+        longPassing: normalizedRawStats.longPass,
+        volleys: clamp((normalizedRawStats.finishing + normalizedRawStats.shotPower) / 2),
+        dribbling: normalizedRawStats.dribble,
+        curve: clamp((normalizedRawStats.shortPass + normalizedRawStats.dribble) / 2),
+        fkAccuracy: clamp((normalizedRawStats.shortPass + normalizedRawStats.shotPower) / 2),
+        ballControl: normalizedRawStats.ballControl,
+        acceleration: normalizedRawStats.acceleration,
+        sprintSpeed: normalizedRawStats.speed,
+        agility: clamp((normalizedRawStats.acceleration + normalizedRawStats.dribble) / 2),
+        reactions: clamp((normalizedRawStats.acceleration + normalizedRawStats.shortPass) / 2),
+        balance: clamp((normalizedRawStats.acceleration + normalizedRawStats.ballControl) / 2),
+        shotPower: normalizedRawStats.shotPower,
+        jumping: clamp((normalizedRawStats.strength + normalizedRawStats.stamina) / 2),
+        stamina: normalizedRawStats.stamina,
+        strength: normalizedRawStats.strength,
+        longShots: clamp((normalizedRawStats.shotPower + normalizedRawStats.finishing) / 2),
+        aggression: clamp((normalizedRawStats.strength + normalizedRawStats.tackle) / 2),
+        interceptions: clamp((normalizedRawStats.tackle + normalizedRawStats.shortPass) / 2),
+        positioning: clamp((normalizedRawStats.finishing + normalizedRawStats.shortPass) / 2),
+        vision: clamp((normalizedRawStats.longPass + normalizedRawStats.shortPass) / 2),
+        penalties: clamp((normalizedRawStats.finishing + normalizedRawStats.ballControl) / 2),
+        composure: clamp((normalizedRawStats.ballControl + normalizedRawStats.shortPass) / 2),
+        defensiveAwareness: normalizedRawStats.tackle,
+        standingTackle: normalizedRawStats.tackle,
+        slidingTackle: clamp(normalizedRawStats.tackle - 2, 1, 99),
+        marking: normalizedRawStats.tackle,
+        tackling: normalizedRawStats.tackle,
+        pace: fifaCore.pace,
+        shooting: fifaCore.shooting,
+        passing: fifaCore.passing,
+        dribblingCore: fifaCore.dribbling,
+        defending: fifaCore.defending,
+        physical: fifaCore.physical,
+      };
+
+      // 3) macroSkill.engine
+      const macro = buildMacroSkills(detailedFlat);
+      const categoryIndex = buildCategoryIndex(fifaCore);
+      const weights = POSITION_WEIGHTS[mappedPosition] ?? GLOBAL_WEIGHTS;
+      const performanceScore = calculateRankingScore(fifaCore, weights);
+
+      // 4) overall.engine
+      const overallResult = calculateOverallRating({
+        position: mappedPosition,
+        performanceScore,
+        categoryIndex,
+        macroOverall: macro.overallProfile,
+        fifaAttributes: fifaCore,
+        rawAttributes: detailedFlat,
+      });
+
+      const computedOverall = overallResult.overall;
+      const computedPotential = computePotential(computedOverall, safeAge);
+
+      const attributes = {
+        attacking: {
+          crossing: detailedFlat.crossing,
+          finishing: detailedFlat.finishing,
+          headingAccuracy: detailedFlat.headingAccuracy,
+          shortPassing: detailedFlat.shortPassing,
+          volleys: detailedFlat.volleys,
+          positioning: detailedFlat.positioning,
+        },
+        skill: {
+          dribbling: detailedFlat.dribbling,
+          curve: detailedFlat.curve,
+          fkAccuracy: detailedFlat.fkAccuracy,
+          longPassing: detailedFlat.longPassing,
+          ballControl: detailedFlat.ballControl,
+        },
+        movement: {
+          acceleration: detailedFlat.acceleration,
+          sprintSpeed: detailedFlat.sprintSpeed,
+          agility: detailedFlat.agility,
+          reactions: detailedFlat.reactions,
+          balance: detailedFlat.balance,
+        },
+        power: {
+          shotPower: detailedFlat.shotPower,
+          jumping: detailedFlat.jumping,
+          stamina: detailedFlat.stamina,
+          strength: detailedFlat.strength,
+          longShots: detailedFlat.longShots,
+        },
+        mentality: {
+          aggression: detailedFlat.aggression,
+          interceptions: detailedFlat.interceptions,
+          attackPosition: detailedFlat.positioning,
+          vision: detailedFlat.vision,
+          penalties: detailedFlat.penalties,
+          composure: detailedFlat.composure,
+        },
+        defending: {
+          defensiveAwareness: detailedFlat.defensiveAwareness,
+          standingTackle: detailedFlat.standingTackle,
+          slidingTackle: detailedFlat.slidingTackle,
+          marking: detailedFlat.marking,
+          tackling: detailedFlat.tackling,
+        },
+        core: fifaCore,
+        macro,
+        overall: computedOverall,
+      };
 
       const playerPayload = {
         slug,
@@ -439,10 +862,14 @@ async function main() {
         league: resolvedLeague,
         marketValue: null as number | null,
         contractEnd: null as Date | null,
-        overall,
-        potential: null as number | null,
-        attributes: overall != null ? { overall } : {},
-        archetype: { role: `Imported ${mappedPosition}` },
+        overall: computedOverall,
+        potential: computedPotential,
+        attributes,
+        archetype: {
+          role: `Imported ${mappedPosition}`,
+          tier: overallResult.tier,
+          performanceScore,
+        },
       };
 
       await prisma.player.upsert({
