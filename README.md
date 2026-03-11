@@ -1,4 +1,4 @@
-AI Scout Intelligence Module
+[AI Scout Intelligence Module
 
 Scout Engine – SoccerMind
 
@@ -400,3 +400,4 @@ Engenharia de Backend – Módulo de Inteligência Artificial
 Scout Engine – SoccerMinding README.md PT.txt…]()
 [README.md PT.txt](https://github.com/user-attachments/files/25372734/README.md.PT.txt)
 
+](https://github.com/ZontekServicos/scout-engine)
