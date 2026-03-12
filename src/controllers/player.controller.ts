@@ -1,10 +1,8 @@
 import { Request, Response } from "express";
-import { prisma } from "../lib/prisma";
 import { successResponse } from "../lib/apiResponse";
 import { withCache } from "../lib/cache";
 import { getPlayerProfile, getPlayerProjection, getSimilarPlayers, listPlayers } from "../scout/player.service";
 import { addScoutNote, getScoutNotes } from "../scout/scout-notes.store";
-import { mapPlayerRecords } from "../mappers/player.mapper";
 
 function getParam(value: string | string[] | undefined): string {
   if (Array.isArray(value)) return value[0] ?? "";
@@ -38,78 +36,24 @@ export async function listPlayersController(req: Request, res: Response) {
 }
 
 export async function searchPlayersController(req: Request, res: Response) {
-  const page = Math.max(1, asNumber(req.query.page) ?? 1);
-  const limit = Math.min(100, Math.max(1, asNumber(req.query.limit) ?? 20));
-  const skip = (page - 1) * limit;
+  const overallMin = asNumber(req.query.overallMin);
+  const minOverall = asNumber(req.query.minOverall);
 
-  const position = typeof req.query.position === "string" ? req.query.position.trim().toUpperCase() : undefined;
-  const team = typeof req.query.team === "string" ? req.query.team.trim() : undefined;
-  const league = typeof req.query.league === "string" ? req.query.league.trim() : undefined;
-  const ageMin = asNumber(req.query.ageMin);
-  const ageMax = asNumber(req.query.ageMax);
-  const overallMin = asNumber(req.query.overallMin) ?? asNumber(req.query.minOverall);
-  const overallMax = asNumber(req.query.overallMax);
-
-  const where: any = {};
-  if (position) where.positions = { has: position };
-  if (team) where.team = { contains: team, mode: "insensitive" };
-  if (league) where.league = { contains: league, mode: "insensitive" };
-  if (Number.isFinite(ageMin) || Number.isFinite(ageMax)) {
-    where.age = {
-      ...(Number.isFinite(ageMin) ? { gte: ageMin } : {}),
-      ...(Number.isFinite(ageMax) ? { lte: ageMax } : {}),
-    };
-  }
-  if (Number.isFinite(overallMin) || Number.isFinite(overallMax)) {
-    where.overall = {
-      ...(Number.isFinite(overallMin) ? { gte: overallMin } : {}),
-      ...(Number.isFinite(overallMax) ? { lte: overallMax } : {}),
-    };
-  }
-
-  const [total, players] = await Promise.all([
-    prisma.player.count({ where }),
-    prisma.player.findMany({
-      where,
-      skip,
-      take: limit,
-      orderBy: [{ overall: "desc" }, { name: "asc" }],
-      select: {
-        id: true,
-        name: true,
-        positions: true,
-        team: true,
-        league: true,
-        nationality: true,
-        age: true,
-        overall: true,
-        potential: true,
-        marketValue: true,
-        imagePath: true,
-        attributes: true,
-      },
-    }),
-  ]);
-
-  const items = mapPlayerRecords(
-    players.map((player) => ({
-      ...player,
-      overall:
-        player.overall ??
-        (Number.isFinite(Number((player.attributes as any)?.overall))
-          ? Number((player.attributes as any).overall)
-          : null),
-    })),
-  );
+  const result = await listPlayers({
+    position: typeof req.query.position === "string" ? req.query.position : undefined,
+    team: typeof req.query.team === "string" ? req.query.team : undefined,
+    league: typeof req.query.league === "string" ? req.query.league : undefined,
+    overallMin: Number.isFinite(overallMin) ? overallMin : minOverall,
+    overallMax: asNumber(req.query.overallMax),
+    minOverall,
+    ageMin: asNumber(req.query.ageMin),
+    ageMax: asNumber(req.query.ageMax),
+    page: asNumber(req.query.page),
+    limit: asNumber(req.query.limit),
+  });
 
   return res.json(
-    successResponse(items, {
-      page,
-      limit,
-      total,
-      totalPages: Math.max(1, Math.ceil(total / limit)),
-      filters: { position: position ?? null, team: team ?? null, league: league ?? null, ageMin: ageMin ?? null, ageMax: ageMax ?? null, overallMin: overallMin ?? null, overallMax: overallMax ?? null },
-    }),
+    successResponse(result.items, { ...result.pagination, filters: result.filters }),
   );
 }
 

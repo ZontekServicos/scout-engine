@@ -8,7 +8,7 @@ import { calculateRankingScore } from "./ranking.engine";
 import { POSITION_WEIGHTS } from "./ranking.weights";
 import { calculateRiskScore } from "./risk.engine";
 import { getPrimaryPosition } from "../utils/positions";
-import { mapPlayerRecord, mapPlayerRecords } from "../mappers/player.mapper";
+import { mapPlayerRecord } from "../mappers/player.mapper";
 
 type ListPlayersParams = {
   position?: string;
@@ -21,6 +21,22 @@ type ListPlayersParams = {
   ageMax?: number;
   page?: number;
   limit?: number;
+};
+
+type PlayerSummarySource = {
+  id: string;
+  name: string;
+  positions: string[] | null;
+  team: string | null;
+  league: string | null;
+  nationality: string | null;
+  age: number | null;
+  overall: number | null;
+  potential: number | null;
+  marketValue: number | null;
+  imagePath: string | null;
+  attributes: any;
+  contractEnd?: Date | null;
 };
 
 function clampFifaCore(value: number) {
@@ -115,30 +131,119 @@ function buildCategoryIndex(fifa: any) {
   };
 }
 
+function resolvePlayerPosition(player: { positions?: string[] | null }) {
+  const primaryPosition = getPrimaryPosition(player as any);
+  return POSITION_WEIGHTS[primaryPosition] ? primaryPosition : "CM";
+}
+
+function flattenDetailedStats(detailedStats: ReturnType<typeof calculateOverallRating>["fifaStyle"]["detailedStats"]) {
+  return {
+    crossing: detailedStats.attacking.crossing,
+    finishing: detailedStats.attacking.finishing,
+    headingAccuracy: detailedStats.attacking.headingAccuracy,
+    shortPassing: detailedStats.attacking.shortPassing,
+    volleys: detailedStats.attacking.volleys,
+    dribbling: detailedStats.skill.dribbling,
+    curve: detailedStats.skill.curve,
+    fkAccuracy: detailedStats.skill.fkAccuracy,
+    longPassing: detailedStats.skill.longPassing,
+    ballControl: detailedStats.skill.ballControl,
+    acceleration: detailedStats.movement.acceleration,
+    sprintSpeed: detailedStats.movement.sprintSpeed,
+    agility: detailedStats.movement.agility,
+    reactions: detailedStats.movement.reactions,
+    balance: detailedStats.movement.balance,
+    shotPower: detailedStats.power.shotPower,
+    jumping: detailedStats.power.jumping,
+    stamina: detailedStats.power.stamina,
+    strength: detailedStats.power.strength,
+    longShots: detailedStats.power.longShots,
+    aggression: detailedStats.mentality.aggression,
+    interceptions: detailedStats.mentality.interceptions,
+    attackPosition: detailedStats.mentality.attackPosition,
+    vision: detailedStats.mentality.vision,
+    penalties: detailedStats.mentality.penalties,
+    composure: detailedStats.mentality.composure,
+    defensiveAwareness: detailedStats.defending.defensiveAwareness,
+    standingTackle: detailedStats.defending.standingTackle,
+    slidingTackle: detailedStats.defending.slidingTackle,
+    gkDiving: detailedStats.goalkeeping.diving,
+    gkHandling: detailedStats.goalkeeping.handling,
+    gkKicking: detailedStats.goalkeeping.kicking,
+    gkPositioning: detailedStats.goalkeeping.positioning,
+    gkReflexes: detailedStats.goalkeeping.reflexes,
+  };
+}
+
+function resolvePotential(overall: number) {
+  return Math.max(overall, Math.min(99, overall + 5));
+}
+
+export function buildPlayerSummary(player: PlayerSummarySource) {
+  const playerPosition = resolvePlayerPosition(player);
+  const weights = POSITION_WEIGHTS[playerPosition];
+  const rawAttributes = player.attributes ?? {};
+  const fifa = resolveFifa(rawAttributes, playerPosition);
+  const categoryIndex = buildCategoryIndex(fifa);
+  const performanceScore = calculateRankingScore(rawAttributes as any, weights);
+  const overall = calculateOverallRating({
+    position: playerPosition,
+    performanceScore,
+    categoryIndex,
+    macroOverall: Object.values(categoryIndex).reduce((total, value) => total + value, 0) / 6,
+    fifaAttributes: fifa,
+    rawAttributes,
+  });
+  const detailedStats = flattenDetailedStats(overall.fifaStyle.detailedStats);
+  const potential = resolvePotential(overall.overall);
+
+  const profile = mapPlayerRecord({
+    id: player.id,
+    name: player.name,
+    positions: player.positions ?? [playerPosition],
+    team: player.team ?? null,
+    league: player.league ?? null,
+    nationality: player.nationality ?? "Unknown",
+    age: player.age ?? 0,
+    overall: overall.overall,
+    potential,
+    marketValue: player.marketValue ?? null,
+    imagePath: player.imagePath ?? null,
+    attributes: {
+      ...overall.fifaStyle.core,
+      ...detailedStats,
+    },
+  });
+
+  return {
+    player: profile,
+    position: playerPosition,
+    overall,
+    potential,
+    fifa,
+    categoryIndex,
+    performanceScore,
+    detailedStats,
+  };
+}
+
 export async function getPlayerProfile(id: string) {
   const player = await prisma.player.findUnique({ where: { id } });
   if (!player) throw new Error("Player not found");
-  const playerPosition = getPrimaryPosition(player as any);
-
-  const weights = POSITION_WEIGHTS[playerPosition];
-  if (!weights) throw new Error("Invalid player position");
-
-  const fifa = resolveFifa(player.attributes, playerPosition);
-  const categoryIndex = buildCategoryIndex(fifa);
-  const performanceScore = calculateRankingScore(player.attributes as any, weights);
+  const summary = buildPlayerSummary(player as PlayerSummarySource);
 
   const risk = calculateRiskScore({
     age: player.age ?? 25,
-    position: playerPosition,
-    performanceScore,
-    averagePositionScore: performanceScore,
-    categoryIndex,
+    position: summary.position,
+    performanceScore: summary.performanceScore,
+    averagePositionScore: summary.performanceScore,
+    categoryIndex: summary.categoryIndex,
   });
 
   const liquidity = calculateLiquidityScore({
     age: player.age ?? 25,
-    performanceScore,
-    averagePositionScore: performanceScore,
+    performanceScore: summary.performanceScore,
+    averagePositionScore: summary.performanceScore,
     risk,
     antiFlop: {
       flopProbability: risk.totalRisk,
@@ -158,27 +263,16 @@ export async function getPlayerProfile(id: string) {
     },
   });
 
-  // Reutilizamos a mesma engine de overall do fluxo de compare para manter
-  // consistência matemática entre os endpoints e evitar lógica duplicada.
-  const overall = calculateOverallRating({
-    position: playerPosition,
-    performanceScore,
-    categoryIndex,
-    macroOverall: Object.values(categoryIndex).reduce((a, b) => a + b, 0) / 6,
-    fifaAttributes: fifa,
-    rawAttributes: player.attributes,
-  });
-
   const financialRisk = calculateFinancialRisk({
     structuralRisk: risk.totalRisk,
     flopProbability: risk.totalRisk,
     liquidityScore: liquidity.liquidityScore,
     age: player.age ?? 25,
-    overall: overall.overall,
+    overall: summary.overall.overall,
   });
 
   const capitalEfficiency = calculateCapitalEfficiency({
-    performanceScore,
+    performanceScore: summary.performanceScore,
     flopProbability: risk.totalRisk,
     liquidityScore: liquidity.liquidityScore,
     financialRiskIndex: financialRisk.riskIndex,
@@ -186,44 +280,29 @@ export async function getPlayerProfile(id: string) {
 
   const raw = (player.attributes as any) ?? {};
   const technical = raw.skill ?? {
-    dribbling: fifa.dribbling,
-    ballControl: fifa.dribbling,
-    shortPassing: fifa.passing,
-    longPassing: fifa.passing,
+    dribbling: summary.detailedStats.dribbling,
+    ballControl: summary.detailedStats.ballControl,
+    shortPassing: summary.detailedStats.shortPassing,
+    longPassing: summary.detailedStats.longPassing,
   };
 
   const physical = raw.power ?? {
-    strength: fifa.physical,
-    stamina: fifa.physical,
-    acceleration: fifa.pace,
-    sprintSpeed: fifa.pace,
+    strength: summary.detailedStats.strength,
+    stamina: summary.detailedStats.stamina,
+    acceleration: summary.detailedStats.acceleration,
+    sprintSpeed: summary.detailedStats.sprintSpeed,
   };
 
   const mental = raw.mentality ?? {
-    vision: raw.vision ?? 60,
-    composure: raw.composure ?? 60,
-    aggression: raw.aggression ?? 60,
-    positioning: raw.positioning ?? 60,
+    vision: raw.vision ?? summary.detailedStats.vision,
+    composure: raw.composure ?? summary.detailedStats.composure,
+    aggression: raw.aggression ?? summary.detailedStats.aggression,
+    positioning: raw.positioning ?? summary.detailedStats.attackPosition,
   };
 
-  const profile = mapPlayerRecord({
-    id: player.id,
-    name: player.name,
-    positions: player.positions ?? [playerPosition],
-    team: player.team ?? null,
-    league: player.league ?? null,
-    nationality: player.nationality ?? "Unknown",
-    age: player.age ?? 0,
-    overall: overall.overall,
-    potential: Math.max(overall.overall, Math.min(99, overall.overall + 5)),
-    marketValue: player.marketValue ?? null,
-    imagePath: player.imagePath ?? null,
-    attributes: player.attributes ?? {},
-  });
-
   return {
-    player: profile,
-    attributes: fifa,
+    player: summary.player,
+    attributes: summary.fifa,
     technical,
     physical,
     mental,
@@ -234,14 +313,14 @@ export async function getPlayerProfile(id: string) {
     name: player.name,
     nomeJogador: player.name,
     age: player.age ?? null,
-    position: playerPosition,
+    position: summary.position,
     team: player.team ?? null,
     league: player.league ?? null,
     marketValue: player.marketValue ?? null,
     contractEnd: player.contractEnd ? String(player.contractEnd) : null,
-    overall: overall.overall,
-    fifaStyle: overall.fifaStyle,
-    potential: Math.max(overall.overall, Math.min(99, overall.overall + 5)),
+    overall: summary.overall.overall,
+    fifaStyle: summary.overall.fifaStyle,
+    potential: summary.potential,
     capitalEfficiency: capitalEfficiency.index,
     liquidityScore: liquidity.liquidityScore,
     structuralRisk: risk.totalRisk,
@@ -269,7 +348,7 @@ export async function getSimilarPlayers(id: string) {
 
   const peers = await prisma.player.findMany({
     where: {
-      positions: { has: getPrimaryPosition(base as any) },
+      positions: { has: resolvePlayerPosition(base as any) },
       NOT: { id: base.id },
     },
     take: 6,
@@ -289,16 +368,15 @@ export async function getSimilarPlayers(id: string) {
     },
   });
 
-  return mapPlayerRecords(
-    peers.map((player) => ({
-      ...player,
-      overall:
-        player.overall ??
-        (Number.isFinite(Number((player.attributes as any)?.overall))
-          ? Number((player.attributes as any).overall)
-          : null),
-    })),
-  );
+  return peers
+    .map((player) => buildPlayerSummary(player as PlayerSummarySource).player)
+    .sort((left, right) => {
+      const overallDiff = (right.overall ?? -1) - (left.overall ?? -1);
+      if (overallDiff !== 0) {
+        return overallDiff;
+      }
+      return left.name.localeCompare(right.name);
+    });
 }
 
 export async function listPlayers(params: ListPlayersParams = {}) {
@@ -326,13 +404,6 @@ export async function listPlayers(params: ListPlayersParams = {}) {
       ? Number(params.minOverall)
       : undefined;
 
-  if (Number.isFinite(normalizedOverallMin) || Number.isFinite(params.overallMax)) {
-    where.overall = {
-      ...(Number.isFinite(normalizedOverallMin) ? { gte: Number(normalizedOverallMin) } : {}),
-      ...(Number.isFinite(params.overallMax) ? { lte: Number(params.overallMax) } : {}),
-    };
-  }
-
   if (Number.isFinite(params.ageMin) || Number.isFinite(params.ageMax)) {
     where.age = {
       ...(Number.isFinite(params.ageMin) ? { gte: Number(params.ageMin) } : {}),
@@ -340,41 +411,55 @@ export async function listPlayers(params: ListPlayersParams = {}) {
     };
   }
 
-  const [total, players] = await Promise.all([
-    prisma.player.count({ where }),
-    prisma.player.findMany({
-      where,
-      skip,
-      take: limit,
-      orderBy: [{ overall: "desc" }, { name: "asc" }],
-      select: {
-        id: true,
-        name: true,
-        team: true,
-        league: true,
-        positions: true,
-        age: true,
-        nationality: true,
-        overall: true,
-        potential: true,
-        marketValue: true,
-        imagePath: true,
-        attributes: true,
-      },
-    }),
-  ]);
+  const players = await prisma.player.findMany({
+    where,
+    select: {
+      id: true,
+      name: true,
+      team: true,
+      league: true,
+      positions: true,
+      age: true,
+      nationality: true,
+      overall: true,
+      potential: true,
+      marketValue: true,
+      imagePath: true,
+      attributes: true,
+    },
+  });
 
-  const items = players.map((player) => ({
-    ...player,
-    overall:
-      player.overall ??
-      (Number.isFinite(Number((player.attributes as any)?.overall))
-        ? Number((player.attributes as any).overall)
-        : null),
-  }));
+  const summaries = players
+    .map((player) => buildPlayerSummary(player as PlayerSummarySource).player)
+    .filter((player) => {
+      const overall = player.overall;
+      if (overall === null) {
+        return !Number.isFinite(normalizedOverallMin) && !Number.isFinite(params.overallMax);
+      }
+
+      if (Number.isFinite(normalizedOverallMin) && overall < Number(normalizedOverallMin)) {
+        return false;
+      }
+
+      if (Number.isFinite(params.overallMax) && overall > Number(params.overallMax)) {
+        return false;
+      }
+
+      return true;
+    })
+    .sort((left, right) => {
+      const overallDiff = (right.overall ?? -1) - (left.overall ?? -1);
+      if (overallDiff !== 0) {
+        return overallDiff;
+      }
+      return left.name.localeCompare(right.name);
+    });
+
+  const total = summaries.length;
+  const items = summaries.slice(skip, skip + limit);
 
   return {
-    items: mapPlayerRecords(items),
+    items,
     pagination: {
       page,
       limit,
