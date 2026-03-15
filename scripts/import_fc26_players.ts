@@ -146,7 +146,9 @@ function buildAttributes(row: Fc26CsvRow, overall: number | null, potential: num
     pace: clampRating(parseOptionalInt(row.pace)),
     shooting: clampRating(parseOptionalInt(row.shooting)),
     passing: clampRating(parseOptionalInt(row.passing)),
-    dribbling: clampRating(parseOptionalInt(row.dribbling) ?? parseOptionalInt(row.skill_dribbling)),
+    dribbling: clampRating(
+      parseOptionalInt(row.dribbling) ?? parseOptionalInt(row.skill_dribbling),
+    ),
     defending: clampRating(parseOptionalInt(row.defending)),
     physical: clampRating(parseOptionalInt(row.physic)),
     crossing: clampRating(parseOptionalInt(row.attacking_crossing)),
@@ -296,10 +298,7 @@ async function upsertPlayer(row: Fc26CsvRow, stats: ImportStats) {
 
   const existing = await prisma.player.findFirst({
     where: {
-      OR: [
-        { source: SOURCE, externalId },
-        { slug: payload.slug },
-      ],
+      OR: [{ source: SOURCE, externalId }, { slug: payload.slug }],
     },
     select: { id: true },
   });
