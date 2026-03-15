@@ -5,3 +5,4 @@ coverage
 *.log
 .prisma
 data/players.csv
+dataset

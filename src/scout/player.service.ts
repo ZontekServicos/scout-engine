@@ -26,6 +26,7 @@ type ListPlayersParams = {
 type PlayerSummarySource = {
   id: string;
   name: string;
+  source?: string | null;
   positions: string[] | null;
   team: string | null;
   league: string | null;
@@ -39,8 +40,58 @@ type PlayerSummarySource = {
   contractEnd?: Date | null;
 };
 
+type FifaCore = {
+  pace: number;
+  shooting: number;
+  passing: number;
+  dribbling: number;
+  defending: number;
+  physical: number;
+};
+
+type DetailedStats = {
+  crossing: number;
+  finishing: number;
+  headingAccuracy: number;
+  shortPassing: number;
+  volleys: number;
+  dribbling: number;
+  curve: number;
+  fkAccuracy: number;
+  longPassing: number;
+  ballControl: number;
+  acceleration: number;
+  sprintSpeed: number;
+  agility: number;
+  reactions: number;
+  balance: number;
+  shotPower: number;
+  jumping: number;
+  stamina: number;
+  strength: number;
+  longShots: number;
+  aggression: number;
+  interceptions: number;
+  attackPosition: number;
+  vision: number;
+  penalties: number;
+  composure: number;
+  defensiveAwareness: number;
+  standingTackle: number;
+  slidingTackle: number;
+  gkDiving: number;
+  gkHandling: number;
+  gkKicking: number;
+  gkPositioning: number;
+  gkReflexes: number;
+};
+
 function clampFifaCore(value: number) {
   return Math.max(40, Math.min(99, Math.round(value)));
+}
+
+function hasFiniteNumber(value: unknown): value is number {
+  return typeof value === "number" && Number.isFinite(value);
 }
 
 function generateAttributesFromOverall(overall: number, position: string) {
@@ -80,36 +131,34 @@ function generateAttributesFromOverall(overall: number, position: string) {
   };
 }
 
+function resolveStoredFifaCore(attributes: any): FifaCore | null {
+  const candidate = attributes?.core && typeof attributes.core === "object" ? attributes.core : attributes;
+
+  if (
+    !hasFiniteNumber(candidate?.pace) ||
+    !hasFiniteNumber(candidate?.shooting) ||
+    !hasFiniteNumber(candidate?.passing) ||
+    !hasFiniteNumber(candidate?.dribbling) ||
+    !hasFiniteNumber(candidate?.defending) ||
+    !hasFiniteNumber(candidate?.physical)
+  ) {
+    return null;
+  }
+
+  return {
+    pace: clampFifaCore(candidate.pace),
+    shooting: clampFifaCore(candidate.shooting),
+    passing: clampFifaCore(candidate.passing),
+    dribbling: clampFifaCore(candidate.dribbling),
+    defending: clampFifaCore(candidate.defending),
+    physical: clampFifaCore(candidate.physical),
+  };
+}
+
 function resolveFifa(attributes: any, position: string) {
-  const hasValidCore =
-    typeof attributes?.pace === "number" &&
-    typeof attributes?.shooting === "number" &&
-    typeof attributes?.passing === "number" &&
-    typeof attributes?.dribbling === "number" &&
-    typeof attributes?.defending === "number" &&
-    typeof attributes?.physical === "number" &&
-    Number.isFinite(attributes?.pace) &&
-    Number.isFinite(attributes?.shooting) &&
-    Number.isFinite(attributes?.passing) &&
-    Number.isFinite(attributes?.dribbling) &&
-    Number.isFinite(attributes?.defending) &&
-    Number.isFinite(attributes?.physical);
-
-  if (hasValidCore) {
-    const normalized = {
-      pace: clampFifaCore(attributes.pace),
-      shooting: clampFifaCore(attributes.shooting),
-      passing: clampFifaCore(attributes.passing),
-      dribbling: clampFifaCore(attributes.dribbling),
-      defending: clampFifaCore(attributes.defending),
-      physical: clampFifaCore(attributes.physical),
-    };
-
-    const values = Object.values(normalized);
-    const uniqueValues = new Set(values);
-    if (uniqueValues.size > 1) {
-      return normalized;
-    }
+  const storedCore = resolveStoredFifaCore(attributes);
+  if (storedCore) {
+    return storedCore;
   }
 
   const fallbackOverall = Number(attributes?.overall);
@@ -175,8 +224,61 @@ function flattenDetailedStats(detailedStats: ReturnType<typeof calculateOverallR
   };
 }
 
+function resolveStoredDetailedStats(attributes: any): DetailedStats | null {
+  const candidate = attributes && typeof attributes === "object" ? attributes : null;
+  if (!candidate) return null;
+
+  const values: DetailedStats = {
+    crossing: Number(candidate.crossing),
+    finishing: Number(candidate.finishing),
+    headingAccuracy: Number(candidate.headingAccuracy),
+    shortPassing: Number(candidate.shortPassing),
+    volleys: Number(candidate.volleys),
+    dribbling: Number(candidate.dribbling),
+    curve: Number(candidate.curve),
+    fkAccuracy: Number(candidate.fkAccuracy),
+    longPassing: Number(candidate.longPassing),
+    ballControl: Number(candidate.ballControl),
+    acceleration: Number(candidate.acceleration),
+    sprintSpeed: Number(candidate.sprintSpeed),
+    agility: Number(candidate.agility),
+    reactions: Number(candidate.reactions),
+    balance: Number(candidate.balance),
+    shotPower: Number(candidate.shotPower),
+    jumping: Number(candidate.jumping),
+    stamina: Number(candidate.stamina),
+    strength: Number(candidate.strength),
+    longShots: Number(candidate.longShots),
+    aggression: Number(candidate.aggression),
+    interceptions: Number(candidate.interceptions),
+    attackPosition: Number(candidate.attackPosition),
+    vision: Number(candidate.vision),
+    penalties: Number(candidate.penalties),
+    composure: Number(candidate.composure),
+    defensiveAwareness: Number(candidate.defensiveAwareness),
+    standingTackle: Number(candidate.standingTackle),
+    slidingTackle: Number(candidate.slidingTackle),
+    gkDiving: Number(candidate.gkDiving),
+    gkHandling: Number(candidate.gkHandling),
+    gkKicking: Number(candidate.gkKicking),
+    gkPositioning: Number(candidate.gkPositioning),
+    gkReflexes: Number(candidate.gkReflexes),
+  };
+
+  const validCount = Object.values(values).filter((value) => Number.isFinite(value)).length;
+  return validCount >= 10 ? values : null;
+}
+
 function resolvePotential(overall: number) {
   return Math.max(overall, Math.min(99, overall + 5));
+}
+
+function resolveTier(overall: number) {
+  if (overall >= 85) return "ELITE";
+  if (overall >= 80) return "A";
+  if (overall >= 75) return "B";
+  if (overall >= 70) return "C";
+  return "DEVELOPMENT";
 }
 
 export function buildPlayerSummary(player: PlayerSummarySource) {
@@ -185,17 +287,88 @@ export function buildPlayerSummary(player: PlayerSummarySource) {
   const rawAttributes = player.attributes ?? {};
   const fifa = resolveFifa(rawAttributes, playerPosition);
   const categoryIndex = buildCategoryIndex(fifa);
-  const performanceScore = calculateRankingScore(rawAttributes as any, weights);
-  const overall = calculateOverallRating({
-    position: playerPosition,
-    performanceScore,
-    categoryIndex,
-    macroOverall: Object.values(categoryIndex).reduce((total, value) => total + value, 0) / 6,
-    fifaAttributes: fifa,
-    rawAttributes,
-  });
-  const detailedStats = flattenDetailedStats(overall.fifaStyle.detailedStats);
-  const potential = resolvePotential(overall.overall);
+  const performanceScore = calculateRankingScore(fifa, weights);
+  const persistedOverall = hasFiniteNumber(player.overall) ? clampFifaCore(player.overall) : null;
+  const persistedPotential = hasFiniteNumber(player.potential) ? clampFifaCore(player.potential) : null;
+  const storedDetailedStats = resolveStoredDetailedStats(rawAttributes);
+  const shouldReusePersistedProfile =
+    fifa !== null &&
+    persistedOverall !== null &&
+    storedDetailedStats !== null;
+
+  const computedOverall = shouldReusePersistedProfile
+    ? null
+    : calculateOverallRating({
+        position: playerPosition,
+        performanceScore,
+        categoryIndex,
+        macroOverall: Object.values(categoryIndex).reduce((total, value) => total + value, 0) / 6,
+        fifaAttributes: fifa,
+        rawAttributes,
+      });
+
+  const finalOverall = persistedOverall ?? computedOverall?.overall ?? 60;
+  const potential = persistedPotential ?? resolvePotential(finalOverall);
+  const detailedStats =
+    storedDetailedStats ??
+    (computedOverall
+      ? flattenDetailedStats(computedOverall.fifaStyle.detailedStats)
+      : {
+          crossing: fifa.passing,
+          finishing: fifa.shooting,
+          headingAccuracy: fifa.physical,
+          shortPassing: fifa.passing,
+          volleys: fifa.shooting,
+          dribbling: fifa.dribbling,
+          curve: fifa.passing,
+          fkAccuracy: fifa.passing,
+          longPassing: fifa.passing,
+          ballControl: fifa.dribbling,
+          acceleration: fifa.pace,
+          sprintSpeed: fifa.pace,
+          agility: fifa.dribbling,
+          reactions: finalOverall,
+          balance: fifa.dribbling,
+          shotPower: fifa.shooting,
+          jumping: fifa.physical,
+          stamina: fifa.physical,
+          strength: fifa.physical,
+          longShots: fifa.shooting,
+          aggression: fifa.defending,
+          interceptions: fifa.defending,
+          attackPosition: fifa.shooting,
+          vision: fifa.passing,
+          penalties: fifa.shooting,
+          composure: finalOverall,
+          defensiveAwareness: fifa.defending,
+          standingTackle: fifa.defending,
+          slidingTackle: fifa.defending,
+          gkDiving: playerPosition === "GK" ? finalOverall : 40,
+          gkHandling: playerPosition === "GK" ? finalOverall : 40,
+          gkKicking: playerPosition === "GK" ? finalOverall : 40,
+          gkPositioning: playerPosition === "GK" ? finalOverall : 40,
+          gkReflexes: playerPosition === "GK" ? finalOverall : 40,
+        });
+  const overall = {
+    ...(computedOverall ?? {
+      tier: resolveTier(finalOverall),
+      positionRank: `${resolveTier(finalOverall)} Tier ${playerPosition}`,
+      fifaStyle: {
+        overall: finalOverall,
+        core: fifa,
+        categories: categoryIndex,
+        detailedStats: null,
+      },
+    }),
+    overall: finalOverall,
+    tier: resolveTier(finalOverall),
+    positionRank: `${resolveTier(finalOverall)} Tier ${playerPosition}`,
+    fifaStyle: {
+      ...(computedOverall?.fifaStyle ?? {}),
+      overall: finalOverall,
+      core: fifa,
+    },
+  };
 
   const profile = mapPlayerRecord({
     id: player.id,
@@ -205,7 +378,7 @@ export function buildPlayerSummary(player: PlayerSummarySource) {
     league: player.league ?? null,
     nationality: player.nationality ?? "Unknown",
     age: player.age ?? 0,
-    overall: overall.overall,
+    overall: finalOverall,
     potential,
     marketValue: player.marketValue ?? null,
     imagePath: player.imagePath ?? null,

@@ -12,6 +12,8 @@ model Player {
   slug            String   @unique
   name            String
   nameNormalized  String
+  source          String   @default("manual")
+  externalId      String?
 
   positions       String[]
   age             Int
@@ -40,6 +42,8 @@ model Player {
   @@index([team])
   @@index([overall(sort: Desc)])
   @@index([potential(sort: Desc)])
+  @@index([source])
+  @@unique([source, externalId])
   @@index([positions], type: Gin)
 }
 
