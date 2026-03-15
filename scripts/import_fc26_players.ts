@@ -7,7 +7,6 @@ import { nameToSlug, normalizeName } from "../src/utils/normalizeName";
 import { parsePositions } from "../src/utils/positions";
 
 const prisma = new PrismaClient();
-const DEFAULT_CSV_PATH = path.resolve(process.cwd(), "dataset", "fc26_players.csv");
 const SOURCE = "fc26";
 
 type Fc26CsvRow = {
@@ -122,11 +121,6 @@ function parseOptionalInt(value: unknown): number | null {
   return Number.isFinite(parsed) ? Math.round(parsed) : null;
 }
 
-function clampRating(value: number | null) {
-  if (!Number.isFinite(value)) return null;
-  return Math.max(1, Math.min(99, Math.round(Number(value))));
-}
-
 function parseOptionalFloat(value: unknown): number | null {
   if (value == null) return null;
   const normalized = String(value).trim();
@@ -135,10 +129,43 @@ function parseOptionalFloat(value: unknown): number | null {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
+function clampRating(value: number | null): number | null {
+  if (value == null || !Number.isFinite(value)) return null;
+  return Math.max(1, Math.min(99, Math.round(value)));
+}
+
 function compactObject<T extends Record<string, number | null>>(value: T) {
   return Object.fromEntries(
     Object.entries(value).filter(([, item]) => typeof item === "number" && Number.isFinite(item)),
   ) as Record<string, number>;
+}
+
+function resolveCsvPath() {
+  const inputPath = process.argv[2];
+
+  if (inputPath) {
+    const resolved = path.resolve(process.cwd(), inputPath);
+    if (fs.existsSync(resolved)) {
+      return resolved;
+    }
+
+    throw new Error(`CSV FC26 não encontrado no caminho informado: ${resolved}`);
+  }
+
+  const candidates = [
+    path.resolve(process.cwd(), "dataset", "fc26_players.csv"),
+    path.resolve(process.cwd(), "dataset", "FC26_20250921.csv"),
+    path.resolve(process.cwd(), "data", "fc26_players.csv"),
+    path.resolve(process.cwd(), "data", "FC26_20250921.csv"),
+  ];
+
+  const found = candidates.find((candidate) => fs.existsSync(candidate));
+
+  if (!found) {
+    throw new Error(`CSV FC26 não encontrado. Caminhos tentados:\n${candidates.join("\n")}`);
+  }
+
+  return found;
 }
 
 function buildAttributes(row: Fc26CsvRow, overall: number | null, potential: number | null) {
@@ -252,11 +279,6 @@ function buildAttributes(row: Fc26CsvRow, overall: number | null, potential: num
   };
 }
 
-function resolveCsvPath() {
-  const inputPath = process.argv[2];
-  return path.resolve(process.cwd(), inputPath ?? DEFAULT_CSV_PATH);
-}
-
 async function upsertPlayer(row: Fc26CsvRow, stats: ImportStats) {
   const externalId = String(row.player_id ?? "").trim() || null;
   const name = String(row.long_name ?? "").trim() || String(row.short_name ?? "").trim();
@@ -273,6 +295,7 @@ async function upsertPlayer(row: Fc26CsvRow, stats: ImportStats) {
   const potential = clampRating(parseOptionalInt(row.potential));
   const marketValue = parseOptionalFloat(row.value_eur);
   const imagePath = String(row.player_face_url ?? "").trim() || null;
+
   const payload: Prisma.PlayerUncheckedCreateInput = {
     slug: nameToSlug(name),
     name,
@@ -298,7 +321,9 @@ async function upsertPlayer(row: Fc26CsvRow, stats: ImportStats) {
 
   const existing = await prisma.player.findFirst({
     where: {
-      OR: [{ source: SOURCE, externalId }, { slug: payload.slug }],
+      OR: [externalId ? { source: SOURCE, externalId } : undefined, { slug: payload.slug }].filter(
+        Boolean,
+      ) as Prisma.PlayerWhereInput[],
     },
     select: { id: true },
   });
@@ -318,9 +343,7 @@ async function upsertPlayer(row: Fc26CsvRow, stats: ImportStats) {
 
 async function main() {
   const csvPath = resolveCsvPath();
-  if (!fs.existsSync(csvPath)) {
-    throw new Error(`CSV FC26 não encontrado em: ${csvPath}`);
-  }
+  console.log(`[fc26] usando CSV: ${csvPath}`);
 
   const stats: ImportStats = {
     processed: 0,
