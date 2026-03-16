@@ -20,6 +20,7 @@ export async function listPlayersController(req: Request, res: Response) {
   const minOverall = asNumber(req.query.minOverall);
 
   const result = await listPlayers({
+    search: typeof req.query.search === "string" ? req.query.search : undefined,
     position: typeof req.query.position === "string" ? req.query.position : undefined,
     team: typeof req.query.team === "string" ? req.query.team : undefined,
     league: typeof req.query.league === "string" ? req.query.league : undefined,
@@ -40,6 +41,7 @@ export async function searchPlayersController(req: Request, res: Response) {
   const minOverall = asNumber(req.query.minOverall);
 
   const result = await listPlayers({
+    search: typeof req.query.search === "string" ? req.query.search : undefined,
     position: typeof req.query.position === "string" ? req.query.position : undefined,
     team: typeof req.query.team === "string" ? req.query.team : undefined,
     league: typeof req.query.league === "string" ? req.query.league : undefined,

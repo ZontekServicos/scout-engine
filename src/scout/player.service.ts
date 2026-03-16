@@ -11,6 +11,7 @@ import { getPrimaryPosition } from "../utils/positions";
 import { mapPlayerRecord } from "../mappers/player.mapper";
 
 type ListPlayersParams = {
+  search?: string;
   position?: string;
   team?: string;
   league?: string;
@@ -558,6 +559,17 @@ export async function listPlayers(params: ListPlayersParams = {}) {
   const skip = (page - 1) * limit;
 
   const where: any = {};
+  const normalizedSearch = params.search?.trim();
+
+  if (normalizedSearch) {
+    where.OR = [
+      { name: { contains: normalizedSearch, mode: "insensitive" } },
+      { team: { contains: normalizedSearch, mode: "insensitive" } },
+      { league: { contains: normalizedSearch, mode: "insensitive" } },
+      { nationality: { contains: normalizedSearch, mode: "insensitive" } },
+      { positions: { has: normalizedSearch.toUpperCase() } },
+    ];
+  }
 
   if (params.position && params.position.trim()) {
     where.positions = { has: params.position.trim().toUpperCase() };
@@ -640,6 +652,7 @@ export async function listPlayers(params: ListPlayersParams = {}) {
       totalPages: Math.max(1, Math.ceil(total / limit)),
     },
     filters: {
+      search: normalizedSearch ?? null,
       position: params.position ?? null,
       team: params.team ?? null,
       league: params.league ?? null,
