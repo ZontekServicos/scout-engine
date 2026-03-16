@@ -94,8 +94,8 @@ function resolveFifaAttributes(attributes: any) {
 }
 
 /**
- * Gera atributos principais realistas quando o jogador não possui atributos FIFA detalhados.
- * A distribuição usa o overall como base e aplica ajustes por posição para evitar "todos iguais".
+ * Gera atributos principais realistas quando o jogador nÃƒÆ’Ã‚Â£o possui atributos FIFA detalhados.
+ * A distribuiÃƒÆ’Ã‚Â§ÃƒÆ’Ã‚Â£o usa o overall como base e aplica ajustes por posiÃƒÆ’Ã‚Â§ÃƒÆ’Ã‚Â£o para evitar "todos iguais".
  */
 function generateAttributesFromOverall(overall: number, position: string) {
   const base = Math.round(overall);
@@ -103,7 +103,7 @@ function generateAttributesFromOverall(overall: number, position: string) {
   // Garante limites consistentes para todas as engines consumidoras.
   const clamp = (value: number) => Math.max(40, Math.min(99, Math.round(value)));
 
-  // Perfil de distribuição por posição (offsets relativos ao overall).
+  // Perfil de distribuiÃƒÆ’Ã‚Â§ÃƒÆ’Ã‚Â£o por posiÃƒÆ’Ã‚Â§ÃƒÆ’Ã‚Â£o (offsets relativos ao overall).
   const presets: Record<
     string,
     {
@@ -155,7 +155,7 @@ function clampFifaCore(value: number) {
 function resolveFifaAttributesWithFallback(attributes: any, position: string) {
   const resolved = resolveFifaAttributes(attributes);
 
-  // Se o adaptador devolveu valores válidos, usamos normalmente.
+  // Se o adaptador devolveu valores vÃƒÆ’Ã‚Â¡lidos, usamos normalmente.
   const hasValidCore =
     typeof resolved?.pace === "number" &&
     typeof resolved?.shooting === "number" &&
@@ -262,6 +262,68 @@ function resolvePlayerLeague(player: any): string {
   );
 }
 
+const POSITION_GROUPS: Record<string, string> = {
+  ST: "attack",
+  CF: "attack",
+  RW: "attack",
+  LW: "attack",
+  CAM: "midfield",
+  CM: "midfield",
+  CDM: "midfield",
+  RB: "wide-defense",
+  LB: "wide-defense",
+  RWB: "wide-defense",
+  LWB: "wide-defense",
+  CB: "central-defense",
+  GK: "goalkeeper",
+};
+
+function getPositionGroup(position: string) {
+  return POSITION_GROUPS[position] ?? "hybrid";
+}
+
+function buildPositionContext(positionA: string, positionB: string) {
+  const groupA = getPositionGroup(positionA);
+  const groupB = getPositionGroup(positionB);
+
+  if (positionA === positionB) {
+    return {
+      kind: "same",
+      label: "Comparacao posicional direta",
+      tone: "neutral",
+      message: "Os dois jogadores ocupam a mesma posicao primaria, entao a leitura comparativa segue o contexto mais direto da plataforma.",
+      positionA,
+      positionB,
+      groupA,
+      groupB,
+    };
+  }
+
+  if (groupA === groupB) {
+    return {
+      kind: "related",
+      label: "Comparacao compativel",
+      tone: "info",
+      message: "As posicoes sao diferentes, mas pertencem ao mesmo grupo funcional. Compare considerando variacoes de corredor, altura media ou papel sem bola.",
+      positionA,
+      positionB,
+      groupA,
+      groupB,
+    };
+  }
+
+  return {
+    kind: "cross",
+    label: "Comparacao cruzada",
+    tone: "warning",
+    message: "Comparacao entre funcoes diferentes. A leitura analitica continua valida, mas deve considerar contextos taticos e responsabilidades de jogo distintos.",
+    positionA,
+    positionB,
+    groupA,
+    groupB,
+  };
+}
+
 export async function compareByIds(idA: string, idB: string) {
   const startedAt = Date.now();
   const [playerA, playerB] = await Promise.all([
@@ -276,15 +338,10 @@ export async function compareByIds(idA: string, idB: string) {
 
   const positionA = getPrimaryPosition(playerA);
   const positionB = getPrimaryPosition(playerB);
+  const positionContext = buildPositionContext(positionA, positionB);
 
-  if (positionA !== positionB) {
-    throw new Error("Players must have the same position");
-  }
-
-  const weights = POSITION_WEIGHTS[positionA];
-  if (!weights) {
-    throw new Error(`No weights for position ${positionA}`);
-  }
+  const weightsA = POSITION_WEIGHTS[positionA] ?? POSITION_WEIGHTS.CM;
+  const weightsB = POSITION_WEIGHTS[positionB] ?? POSITION_WEIGHTS.CM;
 
   // ---------------- QUALITATIVE ----------------
   const qualitative: CompareResult = compareAttributes(
@@ -293,9 +350,9 @@ export async function compareByIds(idA: string, idB: string) {
   );
 
   // ---------------- QUANTITATIVE ----------------
-  const scoreA = calculateRankingScore(playerA.attributes as Attributes, weights);
+  const scoreA = calculateRankingScore(playerA.attributes as Attributes, weightsA);
 
-  const scoreB = calculateRankingScore(playerB.attributes as Attributes, weights);
+  const scoreB = calculateRankingScore(playerB.attributes as Attributes, weightsB);
 
   const difference = Number(Math.abs(scoreA - scoreB).toFixed(2));
   const winner = scoreA > scoreB ? "A" : scoreB > scoreA ? "B" : "DRAW";
@@ -482,6 +539,7 @@ export async function compareByIds(idA: string, idB: string) {
       output: {
         qualitative,
         quantitative: { scoreA, scoreB, difference, winner },
+        positionContext,
         playerDetails: {
           playerA: {
             id: playerA.id,
@@ -548,6 +606,7 @@ Winner: ${winner === "A" ? playerA.name : winner === "B" ? playerB.name : "Draw"
   return {
     reportId: report.id,
     position: positionA,
+    positionContext,
     players: {
       playerA: {
         id: playerA.id,
