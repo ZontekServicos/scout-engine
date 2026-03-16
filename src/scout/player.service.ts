@@ -12,12 +12,19 @@ import { mapPlayerRecord } from "../mappers/player.mapper";
 
 type ListPlayersParams = {
   search?: string;
+  positions?: string[];
   position?: string;
+  nationality?: string;
   team?: string;
   league?: string;
+  source?: string;
   overallMin?: number;
   overallMax?: number;
   minOverall?: number;
+  potentialMin?: number;
+  potentialMax?: number;
+  marketValueMin?: number;
+  marketValueMax?: number;
   ageMin?: number;
   ageMax?: number;
   page?: number;
@@ -553,35 +560,171 @@ export async function getSimilarPlayers(id: string) {
     });
 }
 
+function normalizeString(value?: string | null) {
+  return value?.trim() ?? "";
+}
+
+function normalizeSearchValue(value: string) {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .trim();
+}
+
+function matchesRange(value: number | null, min?: number, max?: number) {
+  if (!Number.isFinite(min) && !Number.isFinite(max)) {
+    return true;
+  }
+
+  if (value === null) {
+    return false;
+  }
+
+  if (Number.isFinite(min) && value < Number(min)) {
+    return false;
+  }
+
+  if (Number.isFinite(max) && value > Number(max)) {
+    return false;
+  }
+
+  return true;
+}
+
+async function getPlayerFilterOptions() {
+  const [positionRows, nationalityRows, teamRows, leagueRows, sourceRows] = await Promise.all([
+    prisma.player.findMany({ select: { positions: true } }),
+    prisma.player.findMany({
+      select: { nationality: true },
+      distinct: ["nationality"],
+      orderBy: { nationality: "asc" },
+    }),
+    prisma.player.findMany({
+      where: { team: { not: null } },
+      select: { team: true },
+      distinct: ["team"],
+      orderBy: { team: "asc" },
+    }),
+    prisma.player.findMany({
+      where: { league: { not: null } },
+      select: { league: true },
+      distinct: ["league"],
+      orderBy: { league: "asc" },
+    }),
+    prisma.player.findMany({
+      select: { source: true },
+      distinct: ["source"],
+      orderBy: { source: "asc" },
+    }),
+  ]);
+
+  return {
+    positions: Array.from(
+      new Set(
+        positionRows
+          .flatMap((row) => row.positions ?? [])
+          .map((position) => normalizeString(position).toUpperCase())
+          .filter(Boolean),
+      ),
+    ).sort((left, right) => left.localeCompare(right)),
+    nationalities: nationalityRows
+      .map((row) => normalizeString(row.nationality))
+      .filter(Boolean),
+    teams: teamRows
+      .map((row) => normalizeString(row.team))
+      .filter(Boolean),
+    leagues: leagueRows
+      .map((row) => normalizeString(row.league))
+      .filter(Boolean),
+    sources: sourceRows
+      .map((row) => normalizeString(row.source))
+      .filter(Boolean),
+  };
+}
+
 export async function listPlayers(params: ListPlayersParams = {}) {
   const page = Math.max(1, Number(params.page ?? 1));
   const limit = Math.min(100, Math.max(1, Number(params.limit ?? 20)));
   const skip = (page - 1) * limit;
 
-  const where: any = {};
-  const normalizedSearch = params.search?.trim();
+  const normalizedSearch = normalizeString(params.search);
+  const normalizedSearchValue = normalizedSearch ? normalizeSearchValue(normalizedSearch) : "";
+  const normalizedPositions = Array.from(
+    new Set(
+      [...(params.positions ?? []), ...(params.position ? [params.position] : [])]
+        .map((value) => normalizeString(value).toUpperCase())
+        .filter(Boolean),
+    ),
+  );
+
+  const whereClauses: any[] = [];
 
   if (normalizedSearch) {
-    where.OR = [
-      { name: { contains: normalizedSearch, mode: "insensitive" } },
-      { team: { contains: normalizedSearch, mode: "insensitive" } },
-      { league: { contains: normalizedSearch, mode: "insensitive" } },
-      { nationality: { contains: normalizedSearch, mode: "insensitive" } },
-      { positions: { has: normalizedSearch.toUpperCase() } },
-    ];
+    whereClauses.push({
+      OR: [
+        { name: { contains: normalizedSearch, mode: "insensitive" } },
+        { nameNormalized: { contains: normalizedSearchValue } },
+        { team: { contains: normalizedSearch, mode: "insensitive" } },
+        { league: { contains: normalizedSearch, mode: "insensitive" } },
+        { nationality: { contains: normalizedSearch, mode: "insensitive" } },
+        { positions: { has: normalizedSearch.toUpperCase() } },
+      ],
+    });
   }
 
-  if (params.position && params.position.trim()) {
-    where.positions = { has: params.position.trim().toUpperCase() };
+  if (normalizedPositions.length > 0) {
+    whereClauses.push({ positions: { hasSome: normalizedPositions } });
   }
 
-  if (params.league && params.league.trim()) {
-    where.league = { contains: params.league.trim(), mode: "insensitive" };
+  if (normalizeString(params.nationality)) {
+    whereClauses.push({ nationality: { equals: normalizeString(params.nationality), mode: "insensitive" } });
   }
 
-  if (params.team && params.team.trim()) {
-    where.team = { contains: params.team.trim(), mode: "insensitive" };
+  if (normalizeString(params.team)) {
+    whereClauses.push({ team: { equals: normalizeString(params.team), mode: "insensitive" } });
   }
+
+  if (normalizeString(params.league)) {
+    whereClauses.push({ league: { equals: normalizeString(params.league), mode: "insensitive" } });
+  }
+
+  if (normalizeString(params.source)) {
+    whereClauses.push({ source: { equals: normalizeString(params.source), mode: "insensitive" } });
+  }
+
+  if (Number.isFinite(params.ageMin) || Number.isFinite(params.ageMax)) {
+    whereClauses.push({
+      age: {
+        ...(Number.isFinite(params.ageMin) ? { gte: Number(params.ageMin) } : {}),
+        ...(Number.isFinite(params.ageMax) ? { lte: Number(params.ageMax) } : {}),
+      },
+    });
+  }
+
+  const where = whereClauses.length > 0 ? { AND: whereClauses } : {};
+
+  const [players, filterOptions] = await Promise.all([
+    prisma.player.findMany({
+      where,
+      select: {
+        id: true,
+        name: true,
+        source: true,
+        team: true,
+        league: true,
+        positions: true,
+        age: true,
+        nationality: true,
+        overall: true,
+        potential: true,
+        marketValue: true,
+        imagePath: true,
+        attributes: true,
+      },
+    }),
+    getPlayerFilterOptions(),
+  ]);
 
   const normalizedOverallMin = Number.isFinite(params.overallMin)
     ? Number(params.overallMin)
@@ -589,44 +732,18 @@ export async function listPlayers(params: ListPlayersParams = {}) {
       ? Number(params.minOverall)
       : undefined;
 
-  if (Number.isFinite(params.ageMin) || Number.isFinite(params.ageMax)) {
-    where.age = {
-      ...(Number.isFinite(params.ageMin) ? { gte: Number(params.ageMin) } : {}),
-      ...(Number.isFinite(params.ageMax) ? { lte: Number(params.ageMax) } : {}),
-    };
-  }
-
-  const players = await prisma.player.findMany({
-    where,
-    select: {
-      id: true,
-      name: true,
-      team: true,
-      league: true,
-      positions: true,
-      age: true,
-      nationality: true,
-      overall: true,
-      potential: true,
-      marketValue: true,
-      imagePath: true,
-      attributes: true,
-    },
-  });
-
   const summaries = players
     .map((player) => buildPlayerSummary(player as PlayerSummarySource).player)
     .filter((player) => {
-      const overall = player.overall;
-      if (overall === null) {
-        return !Number.isFinite(normalizedOverallMin) && !Number.isFinite(params.overallMax);
-      }
-
-      if (Number.isFinite(normalizedOverallMin) && overall < Number(normalizedOverallMin)) {
+      if (!matchesRange(player.overall, normalizedOverallMin, params.overallMax)) {
         return false;
       }
 
-      if (Number.isFinite(params.overallMax) && overall > Number(params.overallMax)) {
+      if (!matchesRange(player.potential, params.potentialMin, params.potentialMax)) {
+        return false;
+      }
+
+      if (!matchesRange(player.marketValue, params.marketValueMin, params.marketValueMax)) {
         return false;
       }
 
@@ -651,14 +768,21 @@ export async function listPlayers(params: ListPlayersParams = {}) {
       total,
       totalPages: Math.max(1, Math.ceil(total / limit)),
     },
+    filterOptions,
     filters: {
-      search: normalizedSearch ?? null,
-      position: params.position ?? null,
-      team: params.team ?? null,
-      league: params.league ?? null,
+      search: normalizedSearch || null,
+      positions: normalizedPositions,
+      nationality: normalizeString(params.nationality) || null,
+      team: normalizeString(params.team) || null,
+      league: normalizeString(params.league) || null,
+      source: normalizeString(params.source) || null,
       minOverall: Number.isFinite(normalizedOverallMin) ? Number(normalizedOverallMin) : null,
       overallMin: Number.isFinite(normalizedOverallMin) ? Number(normalizedOverallMin) : null,
       overallMax: Number.isFinite(params.overallMax) ? Number(params.overallMax) : null,
+      minPotential: Number.isFinite(params.potentialMin) ? Number(params.potentialMin) : null,
+      maxPotential: Number.isFinite(params.potentialMax) ? Number(params.potentialMax) : null,
+      minValue: Number.isFinite(params.marketValueMin) ? Number(params.marketValueMin) : null,
+      maxValue: Number.isFinite(params.marketValueMax) ? Number(params.marketValueMax) : null,
       ageMin: Number.isFinite(params.ageMin) ? Number(params.ageMin) : null,
       ageMax: Number.isFinite(params.ageMax) ? Number(params.ageMax) : null,
     },

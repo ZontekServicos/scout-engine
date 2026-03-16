@@ -15,47 +15,76 @@ function asNumber(value: unknown): number | undefined {
   return Number.isFinite(parsed) ? parsed : undefined;
 }
 
+function getStringQuery(req: Request, ...keys: string[]) {
+  for (const key of keys) {
+    const value = req.query[key];
+    if (typeof value === "string" && value.trim()) {
+      return value.trim();
+    }
+  }
+
+  return undefined;
+}
+
+function getNumericQuery(req: Request, ...keys: string[]) {
+  for (const key of keys) {
+    const parsed = asNumber(req.query[key]);
+    if (Number.isFinite(parsed)) {
+      return parsed;
+    }
+  }
+
+  return undefined;
+}
+
+function getArrayQuery(req: Request, ...keys: string[]) {
+  const value = getStringQuery(req, ...keys);
+  if (!value) {
+    return undefined;
+  }
+
+  const items = value
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
+
+  return items.length > 0 ? items : undefined;
+}
+
+function buildListPlayersParams(req: Request) {
+  const positions = getArrayQuery(req, "positions");
+  const position = getStringQuery(req, "position");
+
+  return {
+    search: getStringQuery(req, "search", "query"),
+    positions,
+    position,
+    nationality: getStringQuery(req, "nationality"),
+    team: getStringQuery(req, "team"),
+    league: getStringQuery(req, "league"),
+    source: getStringQuery(req, "source"),
+    overallMin: getNumericQuery(req, "overallMin", "minOverall"),
+    overallMax: getNumericQuery(req, "overallMax", "maxOverall"),
+    potentialMin: getNumericQuery(req, "potentialMin", "minPotential"),
+    potentialMax: getNumericQuery(req, "potentialMax", "maxPotential"),
+    marketValueMin: getNumericQuery(req, "marketValueMin", "minValue"),
+    marketValueMax: getNumericQuery(req, "marketValueMax", "maxValue"),
+    ageMin: getNumericQuery(req, "ageMin", "minAge"),
+    ageMax: getNumericQuery(req, "ageMax", "maxAge"),
+    page: getNumericQuery(req, "page"),
+    limit: getNumericQuery(req, "limit"),
+  };
+}
+
 export async function listPlayersController(req: Request, res: Response) {
-  const overallMin = asNumber(req.query.overallMin);
-  const minOverall = asNumber(req.query.minOverall);
-
-  const result = await listPlayers({
-    search: typeof req.query.search === "string" ? req.query.search : undefined,
-    position: typeof req.query.position === "string" ? req.query.position : undefined,
-    team: typeof req.query.team === "string" ? req.query.team : undefined,
-    league: typeof req.query.league === "string" ? req.query.league : undefined,
-    overallMin: Number.isFinite(overallMin) ? overallMin : minOverall,
-    overallMax: asNumber(req.query.overallMax),
-    minOverall,
-    ageMin: asNumber(req.query.ageMin),
-    ageMax: asNumber(req.query.ageMax),
-    page: asNumber(req.query.page),
-    limit: asNumber(req.query.limit),
-  });
-
-  return res.json(successResponse(result.items, { ...result.pagination, filters: result.filters }));
+  const result = await listPlayers(buildListPlayersParams(req));
+  return res.json(successResponse(result.items, { ...result.pagination, filters: result.filters, filterOptions: result.filterOptions }));
 }
 
 export async function searchPlayersController(req: Request, res: Response) {
-  const overallMin = asNumber(req.query.overallMin);
-  const minOverall = asNumber(req.query.minOverall);
-
-  const result = await listPlayers({
-    search: typeof req.query.search === "string" ? req.query.search : undefined,
-    position: typeof req.query.position === "string" ? req.query.position : undefined,
-    team: typeof req.query.team === "string" ? req.query.team : undefined,
-    league: typeof req.query.league === "string" ? req.query.league : undefined,
-    overallMin: Number.isFinite(overallMin) ? overallMin : minOverall,
-    overallMax: asNumber(req.query.overallMax),
-    minOverall,
-    ageMin: asNumber(req.query.ageMin),
-    ageMax: asNumber(req.query.ageMax),
-    page: asNumber(req.query.page),
-    limit: asNumber(req.query.limit),
-  });
-
+  const result = await listPlayers(buildListPlayersParams(req));
   return res.json(
-    successResponse(result.items, { ...result.pagination, filters: result.filters }),
+    successResponse(result.items, { ...result.pagination, filters: result.filters, filterOptions: result.filterOptions }),
   );
 }
 
