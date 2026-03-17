@@ -9,6 +9,7 @@ import { POSITION_WEIGHTS } from "./ranking.weights";
 import { calculateRiskScore } from "./risk.engine";
 import { getPrimaryPosition } from "../utils/positions";
 import { mapPlayerRecord } from "../mappers/player.mapper";
+import { withCache } from "../lib/cache";
 
 type ListPlayersParams = {
   search?: string;
@@ -572,75 +573,57 @@ function normalizeSearchValue(value: string) {
     .trim();
 }
 
-function matchesRange(value: number | null, min?: number, max?: number) {
-  if (!Number.isFinite(min) && !Number.isFinite(max)) {
-    return true;
-  }
-
-  if (value === null) {
-    return false;
-  }
-
-  if (Number.isFinite(min) && value < Number(min)) {
-    return false;
-  }
-
-  if (Number.isFinite(max) && value > Number(max)) {
-    return false;
-  }
-
-  return true;
-}
-
 async function getPlayerFilterOptions() {
-  const [positionRows, nationalityRows, teamRows, leagueRows, sourceRows] = await Promise.all([
-    prisma.player.findMany({ select: { positions: true } }),
-    prisma.player.findMany({
-      select: { nationality: true },
-      distinct: ["nationality"],
-      orderBy: { nationality: "asc" },
-    }),
-    prisma.player.findMany({
-      where: { team: { not: null } },
-      select: { team: true },
-      distinct: ["team"],
-      orderBy: { team: "asc" },
-    }),
-    prisma.player.findMany({
-      where: { league: { not: null } },
-      select: { league: true },
-      distinct: ["league"],
-      orderBy: { league: "asc" },
-    }),
-    prisma.player.findMany({
-      select: { source: true },
-      distinct: ["source"],
-      orderBy: { source: "asc" },
-    }),
-  ]);
+  return withCache("players:filter-options", 600, async () => {
+    const [positionRows, nationalityRows, teamRows, leagueRows, sourceRows] = await Promise.all([
+      prisma.player.findMany({ select: { positions: true } }),
+      prisma.player.findMany({
+        select: { nationality: true },
+        distinct: ["nationality"],
+        orderBy: { nationality: "asc" },
+      }),
+      prisma.player.findMany({
+        where: { team: { not: null } },
+        select: { team: true },
+        distinct: ["team"],
+        orderBy: { team: "asc" },
+      }),
+      prisma.player.findMany({
+        where: { league: { not: null } },
+        select: { league: true },
+        distinct: ["league"],
+        orderBy: { league: "asc" },
+      }),
+      prisma.player.findMany({
+        select: { source: true },
+        distinct: ["source"],
+        orderBy: { source: "asc" },
+      }),
+    ]);
 
-  return {
-    positions: Array.from(
-      new Set(
-        positionRows
-          .flatMap((row) => row.positions ?? [])
-          .map((position) => normalizeString(position).toUpperCase())
-          .filter(Boolean),
-      ),
-    ).sort((left, right) => left.localeCompare(right)),
-    nationalities: nationalityRows
-      .map((row) => normalizeString(row.nationality))
-      .filter(Boolean),
-    teams: teamRows
-      .map((row) => normalizeString(row.team))
-      .filter(Boolean),
-    leagues: leagueRows
-      .map((row) => normalizeString(row.league))
-      .filter(Boolean),
-    sources: sourceRows
-      .map((row) => normalizeString(row.source))
-      .filter(Boolean),
-  };
+    return {
+      positions: Array.from(
+        new Set(
+          positionRows
+            .flatMap((row) => row.positions ?? [])
+            .map((position) => normalizeString(position).toUpperCase())
+            .filter(Boolean),
+        ),
+      ).sort((left, right) => left.localeCompare(right)),
+      nationalities: nationalityRows
+        .map((row) => normalizeString(row.nationality))
+        .filter(Boolean),
+      teams: teamRows
+        .map((row) => normalizeString(row.team))
+        .filter(Boolean),
+      leagues: leagueRows
+        .map((row) => normalizeString(row.league))
+        .filter(Boolean),
+      sources: sourceRows
+        .map((row) => normalizeString(row.source))
+        .filter(Boolean),
+    };
+  });
 }
 
 export async function listPlayers(params: ListPlayersParams = {}) {
@@ -702,11 +685,53 @@ export async function listPlayers(params: ListPlayersParams = {}) {
     });
   }
 
+  const normalizedOverallMin = Number.isFinite(params.overallMin)
+    ? Number(params.overallMin)
+    : Number.isFinite(params.minOverall)
+      ? Number(params.minOverall)
+      : undefined;
+  const normalizedOverallMax = Number.isFinite(params.overallMax) ? Number(params.overallMax) : undefined;
+  const normalizedPotentialMin = Number.isFinite(params.potentialMin) ? Number(params.potentialMin) : undefined;
+  const normalizedPotentialMax = Number.isFinite(params.potentialMax) ? Number(params.potentialMax) : undefined;
+  const normalizedMarketValueMin = Number.isFinite(params.marketValueMin) ? Number(params.marketValueMin) : undefined;
+  const normalizedMarketValueMax = Number.isFinite(params.marketValueMax) ? Number(params.marketValueMax) : undefined;
+
+  if (Number.isFinite(normalizedOverallMin) || Number.isFinite(normalizedOverallMax)) {
+    whereClauses.push({
+      overall: {
+        ...(Number.isFinite(normalizedOverallMin) ? { gte: normalizedOverallMin } : {}),
+        ...(Number.isFinite(normalizedOverallMax) ? { lte: normalizedOverallMax } : {}),
+      },
+    });
+  }
+
+  if (Number.isFinite(normalizedPotentialMin) || Number.isFinite(normalizedPotentialMax)) {
+    whereClauses.push({
+      potential: {
+        ...(Number.isFinite(normalizedPotentialMin) ? { gte: normalizedPotentialMin } : {}),
+        ...(Number.isFinite(normalizedPotentialMax) ? { lte: normalizedPotentialMax } : {}),
+      },
+    });
+  }
+
+  if (Number.isFinite(normalizedMarketValueMin) || Number.isFinite(normalizedMarketValueMax)) {
+    whereClauses.push({
+      marketValue: {
+        ...(Number.isFinite(normalizedMarketValueMin) ? { gte: normalizedMarketValueMin } : {}),
+        ...(Number.isFinite(normalizedMarketValueMax) ? { lte: normalizedMarketValueMax } : {}),
+      },
+    });
+  }
+
   const where = whereClauses.length > 0 ? { AND: whereClauses } : {};
 
-  const [players, filterOptions] = await Promise.all([
+  const [total, players, filterOptions] = await Promise.all([
+    prisma.player.count({ where }),
     prisma.player.findMany({
       where,
+      skip,
+      take: limit,
+      orderBy: [{ overall: "desc" }, { name: "asc" }],
       select: {
         id: true,
         name: true,
@@ -726,39 +751,7 @@ export async function listPlayers(params: ListPlayersParams = {}) {
     getPlayerFilterOptions(),
   ]);
 
-  const normalizedOverallMin = Number.isFinite(params.overallMin)
-    ? Number(params.overallMin)
-    : Number.isFinite(params.minOverall)
-      ? Number(params.minOverall)
-      : undefined;
-
-  const summaries = players
-    .map((player) => buildPlayerSummary(player as PlayerSummarySource).player)
-    .filter((player) => {
-      if (!matchesRange(player.overall, normalizedOverallMin, params.overallMax)) {
-        return false;
-      }
-
-      if (!matchesRange(player.potential, params.potentialMin, params.potentialMax)) {
-        return false;
-      }
-
-      if (!matchesRange(player.marketValue, params.marketValueMin, params.marketValueMax)) {
-        return false;
-      }
-
-      return true;
-    })
-    .sort((left, right) => {
-      const overallDiff = (right.overall ?? -1) - (left.overall ?? -1);
-      if (overallDiff !== 0) {
-        return overallDiff;
-      }
-      return left.name.localeCompare(right.name);
-    });
-
-  const total = summaries.length;
-  const items = summaries.slice(skip, skip + limit);
+  const items = players.map((player) => buildPlayerSummary(player as PlayerSummarySource).player);
 
   return {
     items,
@@ -778,11 +771,11 @@ export async function listPlayers(params: ListPlayersParams = {}) {
       source: normalizeString(params.source) || null,
       minOverall: Number.isFinite(normalizedOverallMin) ? Number(normalizedOverallMin) : null,
       overallMin: Number.isFinite(normalizedOverallMin) ? Number(normalizedOverallMin) : null,
-      overallMax: Number.isFinite(params.overallMax) ? Number(params.overallMax) : null,
-      minPotential: Number.isFinite(params.potentialMin) ? Number(params.potentialMin) : null,
-      maxPotential: Number.isFinite(params.potentialMax) ? Number(params.potentialMax) : null,
-      minValue: Number.isFinite(params.marketValueMin) ? Number(params.marketValueMin) : null,
-      maxValue: Number.isFinite(params.marketValueMax) ? Number(params.marketValueMax) : null,
+      overallMax: Number.isFinite(normalizedOverallMax) ? Number(normalizedOverallMax) : null,
+      minPotential: Number.isFinite(normalizedPotentialMin) ? Number(normalizedPotentialMin) : null,
+      maxPotential: Number.isFinite(normalizedPotentialMax) ? Number(normalizedPotentialMax) : null,
+      minValue: Number.isFinite(normalizedMarketValueMin) ? Number(normalizedMarketValueMin) : null,
+      maxValue: Number.isFinite(normalizedMarketValueMax) ? Number(normalizedMarketValueMax) : null,
       ageMin: Number.isFinite(params.ageMin) ? Number(params.ageMin) : null,
       ageMax: Number.isFinite(params.ageMax) ? Number(params.ageMax) : null,
     },
