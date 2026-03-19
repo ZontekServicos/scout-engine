@@ -2,6 +2,7 @@ import { prisma } from "../lib/prisma";
 import { calculateCapitalEfficiency } from "./capital-efficiency.engine";
 import { calculateFinancialRisk } from "./financial-risk.engine";
 import { calculateGrowthProjection } from "./growth-projection.engine";
+import { buildNormalizedRiskPayload } from "./investment-risk.engine";
 import { calculateLiquidityScore } from "./liquidity.engine";
 import { calculateOverallRating } from "./overall.engine";
 import { calculateRankingScore } from "./ranking.engine";
@@ -290,6 +291,82 @@ function resolveTier(overall: number) {
   return "DEVELOPMENT";
 }
 
+function buildRiskAnalytics(params: {
+  age: number;
+  position: string;
+  performanceScore: number;
+  categoryIndex: ReturnType<typeof buildCategoryIndex>;
+  overall: number;
+  potential: number;
+}) {
+  const risk = calculateRiskScore({
+    age: params.age,
+    position: params.position,
+    performanceScore: params.performanceScore,
+    averagePositionScore: params.performanceScore,
+    categoryIndex: params.categoryIndex,
+  });
+  const classification: "SAFE" | "MODERATE" | "HIGH_RISK" =
+    risk.totalRisk >= 55 ? "HIGH_RISK" : risk.totalRisk >= 25 ? "MODERATE" : "SAFE";
+
+  const antiFlop = {
+    flopProbability: risk.totalRisk,
+    safetyIndex: 100 - risk.totalRisk,
+    confidenceScore: 80,
+    classification,
+    decisionHint: "PROCEED" as const,
+    keyDrivers: [] as string[],
+    breakdown: {
+      structural: risk.breakdown.structural,
+      competitive: risk.breakdown.competitive,
+      ageCurve: risk.breakdown.age,
+      medical: 0,
+      uncertainty: 0,
+    },
+  };
+
+  const liquidity = calculateLiquidityScore({
+    age: params.age,
+    performanceScore: params.performanceScore,
+    averagePositionScore: params.performanceScore,
+    risk,
+    antiFlop,
+  });
+
+  const financialRisk = calculateFinancialRisk({
+    structuralRisk: risk.totalRisk,
+    flopProbability: risk.totalRisk,
+    liquidityScore: liquidity.liquidityScore,
+    age: params.age,
+    overall: params.overall,
+  });
+
+  const normalizedRisk = buildNormalizedRiskPayload({
+    age: params.age,
+    overall: params.overall,
+    potential: params.potential,
+    structuralRisk: risk,
+    financialRisk,
+    liquidity,
+  });
+
+  const capitalEfficiency = calculateCapitalEfficiency({
+    performanceScore: params.performanceScore,
+    flopProbability: risk.totalRisk,
+    liquidityScore: liquidity.liquidityScore,
+    financialRiskIndex: financialRisk.riskIndex,
+  });
+
+  return {
+    risk,
+    antiFlop,
+    liquidity,
+    financialRisk,
+    normalizedRisk,
+    capitalEfficiency,
+  };
+}
+
 export function buildPlayerSummary(player: PlayerSummarySource) {
   const playerPosition = resolvePlayerPosition(player);
   const weights = POSITION_WEIGHTS[playerPosition];
@@ -397,8 +474,30 @@ export function buildPlayerSummary(player: PlayerSummarySource) {
     },
   });
 
+  const analytics = buildRiskAnalytics({
+    age: player.age ?? 25,
+    position: playerPosition,
+    performanceScore,
+    categoryIndex,
+    overall: finalOverall,
+    potential,
+  });
+
   return {
-    player: profile,
+    player: {
+      ...profile,
+      capitalEfficiency: analytics.capitalEfficiency.index,
+      riskLevel: analytics.normalizedRisk.risk.level,
+      risk: analytics.normalizedRisk.risk,
+      structuralRisk: analytics.normalizedRisk.structuralRisk,
+      antiFlopIndex: {
+        flopProbability: analytics.antiFlop.flopProbability,
+        safetyIndex: analytics.antiFlop.safetyIndex,
+        classification: analytics.antiFlop.classification,
+      },
+      liquidity: analytics.normalizedRisk.liquidity,
+      financialRisk: analytics.normalizedRisk.financialRisk,
+    },
     position: playerPosition,
     overall,
     potential,
@@ -406,6 +505,7 @@ export function buildPlayerSummary(player: PlayerSummarySource) {
     categoryIndex,
     performanceScore,
     detailedStats,
+    analytics,
   };
 }
 
@@ -413,52 +513,7 @@ export async function getPlayerProfile(id: string) {
   const player = await prisma.player.findUnique({ where: { id } });
   if (!player) throw new Error("Player not found");
   const summary = buildPlayerSummary(player as PlayerSummarySource);
-
-  const risk = calculateRiskScore({
-    age: player.age ?? 25,
-    position: summary.position,
-    performanceScore: summary.performanceScore,
-    averagePositionScore: summary.performanceScore,
-    categoryIndex: summary.categoryIndex,
-  });
-
-  const liquidity = calculateLiquidityScore({
-    age: player.age ?? 25,
-    performanceScore: summary.performanceScore,
-    averagePositionScore: summary.performanceScore,
-    risk,
-    antiFlop: {
-      flopProbability: risk.totalRisk,
-      safetyIndex: 100 - risk.totalRisk,
-      confidenceScore: 80,
-      classification:
-        risk.totalRisk >= 55 ? "HIGH_RISK" : risk.totalRisk >= 25 ? "MODERATE" : "SAFE",
-      decisionHint: "PROCEED",
-      keyDrivers: [],
-      breakdown: {
-        structural: risk.breakdown.structural,
-        competitive: risk.breakdown.competitive,
-        ageCurve: risk.breakdown.age,
-        medical: 0,
-        uncertainty: 0,
-      },
-    },
-  });
-
-  const financialRisk = calculateFinancialRisk({
-    structuralRisk: risk.totalRisk,
-    flopProbability: risk.totalRisk,
-    liquidityScore: liquidity.liquidityScore,
-    age: player.age ?? 25,
-    overall: summary.overall.overall,
-  });
-
-  const capitalEfficiency = calculateCapitalEfficiency({
-    performanceScore: summary.performanceScore,
-    flopProbability: risk.totalRisk,
-    liquidityScore: liquidity.liquidityScore,
-    financialRiskIndex: financialRisk.riskIndex,
-  });
+  const { risk, liquidity, financialRisk, capitalEfficiency, normalizedRisk } = summary.analytics;
 
   const raw = (player.attributes as any) ?? {};
   const technical = raw.skill ?? {
@@ -507,6 +562,10 @@ export async function getPlayerProfile(id: string) {
     liquidityScore: liquidity.liquidityScore,
     structuralRisk: risk.totalRisk,
     financialRisk: financialRisk.riskIndex,
+    risk: normalizedRisk.risk,
+    structuralRiskNormalized: normalizedRisk.structuralRisk,
+    financialRiskNormalized: normalizedRisk.financialRisk,
+    liquidityNormalized: normalizedRisk.liquidity,
     image: player.imagePath ?? null,
   };
 }

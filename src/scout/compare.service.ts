@@ -20,6 +20,7 @@ import { calculateGrowthProjection } from "./growth-projection.engine";
 import { buildExplainability } from "./explainability.service";
 import { logger } from "../lib/logger";
 import { getPrimaryPosition } from "../utils/positions";
+import { buildPlayerSummary } from "./player.service";
 
 //------------------Busca Segura----------------------------
 async function findPlayerByNameOrThrow(name: string) {
@@ -339,6 +340,8 @@ export async function compareByIds(idA: string, idB: string) {
   const positionA = getPrimaryPosition(playerA);
   const positionB = getPrimaryPosition(playerB);
   const positionContext = buildPositionContext(positionA, positionB);
+  const summaryA = buildPlayerSummary(playerA as any);
+  const summaryB = buildPlayerSummary(playerB as any);
 
   const weightsA = POSITION_WEIGHTS[positionA] ?? POSITION_WEIGHTS.CM;
   const weightsB = POSITION_WEIGHTS[positionB] ?? POSITION_WEIGHTS.CM;
@@ -540,6 +543,10 @@ export async function compareByIds(idA: string, idB: string) {
         qualitative,
         quantitative: { scoreA, scoreB, difference, winner },
         positionContext,
+        summary: {
+          playerA: summaryA.player,
+          playerB: summaryB.player,
+        },
         playerDetails: {
           playerA: {
             id: playerA.id,
@@ -564,6 +571,10 @@ export async function compareByIds(idA: string, idB: string) {
         antiFlop: { playerA: antiFlopA, playerB: antiFlopB },
         liquidity: { playerA: liquidityA, playerB: liquidityB },
         financialRisk: { playerA: financialRiskA, playerB: financialRiskB },
+        riskProfile: {
+          playerA: summaryA.player.risk,
+          playerB: summaryB.player.risk,
+        },
         capitalEfficiency: {
           playerA: capitalEfficiencyA,
           playerB: capitalEfficiencyB,
@@ -627,6 +638,10 @@ Winner: ${winner === "A" ? playerA.name : winner === "B" ? playerB.name : "Draw"
         nationality: playerB.nationality ?? null,
       },
     },
+    summary: {
+      playerA: summaryA.player,
+      playerB: summaryB.player,
+    },
     qualitative,
     quantitative: { scoreA, scoreB, difference, winner },
     overallRating: { playerA: overallA, playerB: overallB },
@@ -644,6 +659,10 @@ Winner: ${winner === "A" ? playerA.name : winner === "B" ? playerB.name : "Draw"
     antiFlop: { playerA: antiFlopA, playerB: antiFlopB },
     liquidity: { playerA: liquidityA, playerB: liquidityB },
     financialRisk: { playerA: financialRiskA, playerB: financialRiskB },
+    riskProfile: {
+      playerA: summaryA.player.risk,
+      playerB: summaryB.player.risk,
+    },
     capitalEfficiency: {
       playerA: capitalEfficiencyA,
       playerB: capitalEfficiencyB,
