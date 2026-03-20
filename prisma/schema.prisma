@@ -36,6 +36,7 @@ model Player {
   updatedAt   DateTime @updatedAt
 
   scoutReports       ScoutReport[]
+  comparisonEntries  AnalysisComparison[]
   metricsSnapshots   PlayerMetrics[]
   financialSnapshots PlayerFinancials[]
   riskSnapshots      PlayerRiskSnapshot[]
@@ -128,11 +129,45 @@ model ScoutReport {
   createdAt   DateTime @default(now())
 
   player Player @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  analysis Analysis?
 
   @@index([playerId])
   @@index([type])
   @@index([createdAt])
   @@index([decisionStatus])
+}
+
+model Analysis {
+  id            String               @id @default(uuid())
+  type          AnalysisType
+  title         String
+  createdAt     DateTime             @default(now())
+  updatedAt     DateTime             @updatedAt
+  status        AnalysisStatus       @default(COMPLETED)
+  analyst       String?
+  scoutReportId String?              @unique @map("scout_report_id")
+
+  scoutReport   ScoutReport?         @relation(fields: [scoutReportId], references: [id], onDelete: SetNull)
+  comparisons   AnalysisComparison[]
+
+  @@index([type])
+  @@index([createdAt])
+  @@index([status])
+}
+
+model AnalysisComparison {
+  id         String   @id @default(uuid())
+  analysisId String
+  playerId   String
+  order      Int
+
+  analysis   Analysis @relation(fields: [analysisId], references: [id], onDelete: Cascade)
+  player     Player    @relation(fields: [playerId], references: [id], onDelete: Cascade)
+
+  @@index([analysisId])
+  @@index([playerId])
+  @@unique([analysisId, order])
+  @@unique([analysisId, playerId])
 }
 
 enum ScoutType {
@@ -151,4 +186,15 @@ enum RiskLevel {
   LOW
   MEDIUM
   HIGH
+}
+
+enum AnalysisType {
+  COMPARISON
+  REPORT
+}
+
+enum AnalysisStatus {
+  COMPLETED
+  IN_PROGRESS
+  ARCHIVED
 }

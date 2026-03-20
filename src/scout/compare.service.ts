@@ -590,68 +590,6 @@ export async function compareByIds(idA: string, idB: string) {
     financialRisk: financialRiskB,
     growthProjection: growthProjectionB,
   });
-  // ---------------- PERSIST REPORT ----------------
-  const report = await prisma.scoutReport.create({
-    data: {
-      type: "COMPARE",
-      playerId: hydratedPlayerA.id,
-      input: { playerA: hydratedPlayerA.id, playerB: hydratedPlayerB.id },
-      output: {
-        qualitative,
-        quantitative: { scoreA, scoreB, difference, winner },
-        positionContext,
-        summary: {
-          playerA: summaryA.player,
-          playerB: summaryB.player,
-        },
-        playerDetails: {
-          playerA: {
-            id: hydratedPlayerA.id,
-            playerKey: hydratedPlayerA.id,
-            name: hydratedPlayerA.name,
-            nomeJogador: hydratedPlayerA.name,
-            position: positionA,
-            age: hydratedPlayerA.age ?? null,
-            nationality: hydratedPlayerA.nationality ?? null,
-          },
-          playerB: {
-            id: hydratedPlayerB.id,
-            playerKey: hydratedPlayerB.id,
-            name: hydratedPlayerB.name,
-            nomeJogador: hydratedPlayerB.name,
-            position: positionB,
-            age: hydratedPlayerB.age ?? null,
-            nationality: hydratedPlayerB.nationality ?? null,
-          },
-        },
-        overallRating: { playerA: overallA, playerB: overallB },
-        antiFlop: { playerA: antiFlopA, playerB: antiFlopB },
-        liquidity: { playerA: liquidityA, playerB: liquidityB },
-        financialRisk: { playerA: financialRiskA, playerB: financialRiskB },
-        riskProfile: {
-          playerA: summaryA.player.risk,
-          playerB: summaryB.player.risk,
-        },
-        capitalEfficiency: {
-          playerA: capitalEfficiencyA,
-          playerB: capitalEfficiencyB,
-        },
-        growthProjection: {
-          playerA: growthProjectionA,
-          playerB: growthProjectionB,
-        },
-        explainability: {
-          playerA: explainabilityA,
-          playerB: explainabilityB,
-        },
-        fifaCards: {
-          playerA: fifaCardA,
-          playerB: fifaCardB,
-        },
-      } as any,
-    },
-  });
-
   const aiNarrative = `
 ${hydratedPlayerA.name} scored ${scoreA}.
 ${hydratedPlayerB.name} scored ${scoreB}.
@@ -659,20 +597,13 @@ Difference: ${difference}.
 Winner: ${winner === "A" ? hydratedPlayerA.name : winner === "B" ? hydratedPlayerB.name : "Draw"}.
 `.trim();
 
-  await prisma.scoutReport.update({
-    where: { id: report.id },
-    data: { aiNarrative },
-  });
-
   logger.info("Compare completed", {
-    reportId: report.id,
     idA,
     idB,
     durationMs: Date.now() - startedAt,
   });
 
   return {
-    reportId: report.id,
     position: positionA,
     positionContext,
     players: {

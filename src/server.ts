@@ -3,6 +3,7 @@ import cors from "cors";
 import rateLimit from "express-rate-limit";
 import "dotenv/config";
 import analyticsRoutes from "./routes/analytics.routes";
+import analysisRoutes from "./routes/analysis.routes";
 import alertsRoutes from "./routes/alerts.routes";
 import compareRoutes from "./routes/compare.routes";
 import devRoutes from "./routes/dev.routes";
@@ -45,6 +46,7 @@ app.options(/.*/, cors());
 app.use(limiter);
 
 app.use("/api/scout", scoutRoutes);
+app.use("/api/analysis", analysisRoutes);
 app.use("/api/compare", compareRoutes);
 app.use("/api/ranking", rankingRoutes);
 app.use("/api/reports", reportsRoutes);
