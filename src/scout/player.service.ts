@@ -1,3 +1,4 @@
+import { Prisma } from "@prisma/client";
 import { prisma } from "../lib/prisma";
 import { calculateCapitalEfficiency } from "./capital-efficiency.engine";
 import { calculateFinancialRisk } from "./financial-risk.engine";
@@ -63,7 +64,7 @@ type ListPlayersParams = {
   limit?: number;
 };
 
-type PlayerSummarySource = {
+export type PlayerSummarySource = {
   id: string;
   name: string;
   source?: string | null;
@@ -83,6 +84,36 @@ type PlayerSummarySource = {
   financialSnapshots?: LatestFinancialSnapshot[];
   riskSnapshots?: LatestRiskSnapshot[];
 };
+
+export const PLAYER_SNAPSHOT_INCLUDE = {
+  metricsSnapshots: {
+    orderBy: { timestamp: "desc" },
+    take: 1,
+  },
+  financialSnapshots: {
+    orderBy: { timestamp: "desc" },
+    take: 1,
+  },
+  riskSnapshots: {
+    orderBy: { timestamp: "desc" },
+    take: 1,
+  },
+} as const;
+
+export const PLAYER_SNAPSHOT_SELECT = {
+  metricsSnapshots: {
+    orderBy: { timestamp: "desc" },
+    take: 1,
+  },
+  financialSnapshots: {
+    orderBy: { timestamp: "desc" },
+    take: 1,
+  },
+  riskSnapshots: {
+    orderBy: { timestamp: "desc" },
+    take: 1,
+  },
+} as const;
 
 type FifaCore = {
   pace: number;
@@ -136,6 +167,90 @@ function clampFifaCore(value: number) {
 
 function hasFiniteNumber(value: unknown): value is number {
   return typeof value === "number" && Number.isFinite(value);
+}
+
+function isMissingSnapshotTableError(error: unknown) {
+  return (
+    error instanceof Prisma.PrismaClientKnownRequestError &&
+    error.code === "P2021" &&
+    typeof error.message === "string" &&
+    (error.message.includes("PlayerMetrics") ||
+      error.message.includes("PlayerFinancials") ||
+      error.message.includes("PlayerRiskSnapshot"))
+  );
+}
+
+async function findPlayerWithSnapshots(id: string) {
+  try {
+    return await prisma.player.findUnique({
+      where: { id },
+      include: PLAYER_SNAPSHOT_INCLUDE,
+    });
+  } catch (error) {
+    if (!isMissingSnapshotTableError(error)) {
+      throw error;
+    }
+
+    return prisma.player.findUnique({
+      where: { id },
+    });
+  }
+}
+
+async function findPlayersWithSnapshots(args: {
+  where: Record<string, unknown>;
+  skip?: number;
+  take?: number;
+  orderBy?: Array<Record<string, "asc" | "desc">>;
+}) {
+  try {
+    return await prisma.player.findMany({
+      ...args,
+      select: {
+        id: true,
+        name: true,
+        source: true,
+        team: true,
+        league: true,
+        positions: true,
+        age: true,
+        nationality: true,
+        overall: true,
+        potential: true,
+        marketValue: true,
+        imagePath: true,
+        attributes: true,
+        contractEnd: true,
+        updatedAt: true,
+        ...PLAYER_SNAPSHOT_SELECT,
+      },
+    });
+  } catch (error) {
+    if (!isMissingSnapshotTableError(error)) {
+      throw error;
+    }
+
+    return prisma.player.findMany({
+      ...args,
+      select: {
+        id: true,
+        name: true,
+        source: true,
+        team: true,
+        league: true,
+        positions: true,
+        age: true,
+        nationality: true,
+        overall: true,
+        potential: true,
+        marketValue: true,
+        imagePath: true,
+        attributes: true,
+        contractEnd: true,
+        updatedAt: true,
+      },
+    });
+  }
 }
 
 function generateAttributesFromOverall(overall: number, position: string) {
@@ -241,20 +356,27 @@ function getLatestRiskSnapshot(player: PlayerSummarySource) {
   return player.riskSnapshots?.[0] ?? null;
 }
 
+function isSnapshotFresh(player: PlayerSummarySource, snapshot: { timestamp: Date } | null) {
+  if (!snapshot) {
+    return false;
+  }
+
+  if (!player.updatedAt) {
+    return true;
+  }
+
+  return snapshot.timestamp >= player.updatedAt;
+}
+
 function hasFreshSnapshots(player: PlayerSummarySource) {
-  const updatedAt = player.updatedAt;
   const latestMetrics = getLatestMetricsSnapshot(player);
   const latestFinancial = getLatestFinancialSnapshot(player);
   const latestRisk = getLatestRiskSnapshot(player);
 
-  if (!updatedAt || !latestMetrics || !latestFinancial || !latestRisk) {
-    return false;
-  }
-
   return (
-    latestMetrics.timestamp >= updatedAt &&
-    latestFinancial.timestamp >= updatedAt &&
-    latestRisk.timestamp >= updatedAt
+    isSnapshotFresh(player, latestMetrics) &&
+    isSnapshotFresh(player, latestFinancial) &&
+    isSnapshotFresh(player, latestRisk)
   );
 }
 
@@ -642,86 +764,148 @@ export function buildPlayerSummary(player: PlayerSummarySource) {
   };
 }
 
-export async function persistAnalyticalSnapshots(player: PlayerSummarySource) {
-  if (hasFreshSnapshots(player)) {
-    return;
+function resolveSnapshotTimestamp(player: PlayerSummarySource, reference = new Date()) {
+  if (player.updatedAt && player.updatedAt.getTime() <= reference.getTime()) {
+    return player.updatedAt;
+  }
+
+  return reference;
+}
+
+export function buildAnalyticalSnapshotBatch(
+  player: PlayerSummarySource,
+  options: {
+    includeMetricsSnapshot?: boolean;
+    includeFinancialSnapshot?: boolean;
+    includeRiskSnapshot?: boolean;
+    timestamp?: Date;
+  } = {},
+) {
+  const latestMetrics = getLatestMetricsSnapshot(player);
+  const latestFinancial = getLatestFinancialSnapshot(player);
+  const latestRisk = getLatestRiskSnapshot(player);
+  const includeMetricsSnapshot = options.includeMetricsSnapshot ?? !isSnapshotFresh(player, latestMetrics);
+  const includeFinancialSnapshot = options.includeFinancialSnapshot ?? !isSnapshotFresh(player, latestFinancial);
+  const includeRiskSnapshot = options.includeRiskSnapshot ?? !isSnapshotFresh(player, latestRisk);
+
+  if (!includeMetricsSnapshot && !includeFinancialSnapshot && !includeRiskSnapshot) {
+    return null;
   }
 
   const summary = buildPlayerSummary({
     ...player,
-    metricsSnapshots: [],
-    financialSnapshots: [],
-    riskSnapshots: [],
+    metricsSnapshots: includeMetricsSnapshot ? [] : player.metricsSnapshots,
+    financialSnapshots: includeFinancialSnapshot ? [] : player.financialSnapshots,
+    riskSnapshots: includeRiskSnapshot ? [] : player.riskSnapshots,
   });
 
+  const timestamp = options.timestamp ?? resolveSnapshotTimestamp(player);
   const contractYears = normalizeContractYears(player.contractEnd);
-  const marketValue = player.marketValue ?? null;
-  const transferCostEstimate = resolveTransferCostEstimate(
-    marketValue,
-    summary.player.liquidity.score,
-  );
+  const marketValue = latestFinancial?.marketValue ?? player.marketValue ?? null;
+  const transferCostEstimate = resolveTransferCostEstimate(marketValue, summary.player.liquidity.score);
 
-  await prisma.$transaction([
-    prisma.playerMetrics.create({
-      data: {
-        playerId: player.id,
-        overall: summary.overall.overall,
-        potential: summary.potential,
-        pace: summary.fifa.pace,
-        shooting: summary.fifa.shooting,
-        passing: summary.fifa.passing,
-        defending: summary.fifa.defending,
-        physical: summary.fifa.physical,
-        dribbling: summary.fifa.dribbling,
+  return {
+    summary,
+    metrics: includeMetricsSnapshot
+      ? {
+          playerId: player.id,
+          overall: summary.overall.overall,
+          potential: summary.potential,
+          pace: summary.fifa.pace,
+          shooting: summary.fifa.shooting,
+          passing: summary.fifa.passing,
+          defending: summary.fifa.defending,
+          physical: summary.fifa.physical,
+          dribbling: summary.fifa.dribbling,
+          timestamp,
+        }
+      : null,
+    financials: includeFinancialSnapshot
+      ? {
+          playerId: player.id,
+          marketValue,
+          salary: latestFinancial?.salary ?? null,
+          transferCostEstimate: latestFinancial?.transferCostEstimate ?? transferCostEstimate,
+          contractYears: latestFinancial?.contractYears ?? contractYears,
+          timestamp,
+        }
+      : null,
+    risk: includeRiskSnapshot
+      ? {
+          playerId: player.id,
+          structuralRisk: summary.player.structuralRisk.score,
+          financialRisk: summary.player.financialRisk.index,
+          liquidityScore: summary.player.liquidity.score,
+          compositeRisk: summary.player.risk.score,
+          riskLevel: summary.player.risk.level,
+          explanation: summary.player.risk.explanation,
+          timestamp,
+        }
+      : null,
+  };
+}
+
+export async function persistAnalyticalSnapshots(player: PlayerSummarySource) {
+  if (hasFreshSnapshots(player)) {
+    return {
+      created: {
+        metrics: 0,
+        financials: 0,
+        riskSnapshots: 0,
       },
-    }),
-    prisma.playerFinancials.create({
-      data: {
-        playerId: player.id,
-        marketValue,
-        salary: null,
-        transferCostEstimate,
-        contractYears,
+    };
+  }
+
+  const batch = buildAnalyticalSnapshotBatch(player);
+  if (!batch) {
+    return {
+      created: {
+        metrics: 0,
+        financials: 0,
+        riskSnapshots: 0,
       },
-    }),
-    prisma.playerRiskSnapshot.create({
-      data: {
-        playerId: player.id,
-        structuralRisk: summary.player.structuralRisk.score,
-        financialRisk: summary.player.financialRisk.index,
-        liquidityScore: summary.player.liquidity.score,
-        compositeRisk: summary.player.risk.score,
-        riskLevel: summary.player.risk.level,
-        explanation: summary.player.risk.explanation,
-      },
-    }),
-  ]);
+    };
+  }
+
+  const operations = [];
+  if (batch.metrics) {
+    operations.push(prisma.playerMetrics.create({ data: batch.metrics }));
+  }
+  if (batch.financials) {
+    operations.push(prisma.playerFinancials.create({ data: batch.financials }));
+  }
+  if (batch.risk) {
+    operations.push(prisma.playerRiskSnapshot.create({ data: batch.risk }));
+  }
+
+  try {
+    if (operations.length > 0) {
+      await prisma.$transaction(operations);
+    }
+  } catch (error) {
+    if (!isMissingSnapshotTableError(error)) {
+      throw error;
+    }
+  }
+
+  return {
+    created: {
+      metrics: batch.metrics ? 1 : 0,
+      financials: batch.financials ? 1 : 0,
+      riskSnapshots: batch.risk ? 1 : 0,
+    },
+  };
 }
 
 export async function getPlayerProfile(id: string) {
-  const player = await prisma.player.findUnique({
-    where: { id },
-    include: {
-      metricsSnapshots: {
-        orderBy: { timestamp: "desc" },
-        take: 1,
-      },
-      financialSnapshots: {
-        orderBy: { timestamp: "desc" },
-        take: 1,
-      },
-      riskSnapshots: {
-        orderBy: { timestamp: "desc" },
-        take: 1,
-      },
-    },
-  });
+  const player = await findPlayerWithSnapshots(id);
   if (!player) throw new Error("Player not found");
   await persistAnalyticalSnapshots(player as PlayerSummarySource);
-  const summary = buildPlayerSummary(player as PlayerSummarySource);
+  const refreshedPlayer = (await findPlayerWithSnapshots(id)) ?? player;
+  const summary = buildPlayerSummary(refreshedPlayer as PlayerSummarySource);
   const { risk, liquidity, financialRisk, capitalEfficiency, normalizedRisk } = summary.analytics;
 
-  const raw = (player.attributes as any) ?? {};
+  const raw = (refreshedPlayer.attributes as any) ?? {};
   const technical = raw.skill ?? {
     dribbling: summary.detailedStats.dribbling,
     ballControl: summary.detailedStats.ballControl,
@@ -751,16 +935,16 @@ export async function getPlayerProfile(id: string) {
     mental,
 
     // Campos legados para manter compatibilidade retroativa.
-    id: player.id,
-    playerKey: player.id,
-    name: player.name,
-    nomeJogador: player.name,
-    age: player.age ?? null,
+    id: refreshedPlayer.id,
+    playerKey: refreshedPlayer.id,
+    name: refreshedPlayer.name,
+    nomeJogador: refreshedPlayer.name,
+    age: refreshedPlayer.age ?? null,
     position: summary.position,
-    team: player.team ?? null,
-    league: player.league ?? null,
-    marketValue: player.marketValue ?? null,
-    contractEnd: player.contractEnd ? String(player.contractEnd) : null,
+    team: refreshedPlayer.team ?? null,
+    league: refreshedPlayer.league ?? null,
+    marketValue: summary.player.marketValue ?? null,
+    contractEnd: refreshedPlayer.contractEnd ? String(refreshedPlayer.contractEnd) : null,
     overall: summary.overall.overall,
     fifaStyle: summary.overall.fifaStyle,
     potential: summary.potential,
@@ -772,7 +956,7 @@ export async function getPlayerProfile(id: string) {
     structuralRiskNormalized: normalizedRisk.structuralRisk,
     financialRiskNormalized: normalizedRisk.financialRisk,
     liquidityNormalized: normalizedRisk.liquidity,
-    image: player.imagePath ?? null,
+    image: refreshedPlayer.imagePath ?? null,
   };
 }
 
@@ -793,40 +977,12 @@ export async function getSimilarPlayers(id: string) {
   const base = await prisma.player.findUnique({ where: { id } });
   if (!base) throw new Error("Player not found");
 
-  const peers = await prisma.player.findMany({
+  const peers = await findPlayersWithSnapshots({
     where: {
       positions: { has: resolvePlayerPosition(base as any) },
       NOT: { id: base.id },
     },
     take: 6,
-    select: {
-      id: true,
-      name: true,
-      positions: true,
-      team: true,
-      league: true,
-      nationality: true,
-      age: true,
-      overall: true,
-      potential: true,
-      marketValue: true,
-      imagePath: true,
-      attributes: true,
-      updatedAt: true,
-      contractEnd: true,
-      metricsSnapshots: {
-        orderBy: { timestamp: "desc" },
-        take: 1,
-      },
-      financialSnapshots: {
-        orderBy: { timestamp: "desc" },
-        take: 1,
-      },
-      riskSnapshots: {
-        orderBy: { timestamp: "desc" },
-        take: 1,
-      },
-    },
   });
 
   return peers
@@ -1006,40 +1162,11 @@ export async function listPlayers(params: ListPlayersParams = {}) {
 
   const [total, players, filterOptions] = await Promise.all([
     prisma.player.count({ where }),
-    prisma.player.findMany({
+    findPlayersWithSnapshots({
       where,
       skip,
       take: limit,
       orderBy: [{ overall: "desc" }, { name: "asc" }],
-      select: {
-        id: true,
-        name: true,
-        source: true,
-        team: true,
-        league: true,
-        positions: true,
-        age: true,
-        nationality: true,
-        overall: true,
-        potential: true,
-        marketValue: true,
-        imagePath: true,
-        attributes: true,
-        contractEnd: true,
-        updatedAt: true,
-        metricsSnapshots: {
-          orderBy: { timestamp: "desc" },
-          take: 1,
-        },
-        financialSnapshots: {
-          orderBy: { timestamp: "desc" },
-          take: 1,
-        },
-        riskSnapshots: {
-          orderBy: { timestamp: "desc" },
-          take: 1,
-        },
-      },
     }),
     getPlayerFilterOptions(),
   ]);

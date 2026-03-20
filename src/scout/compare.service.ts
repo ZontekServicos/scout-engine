@@ -374,40 +374,81 @@ export async function compareByIds(idA: string, idB: string) {
     persistAnalyticalSnapshots(playerB as any),
   ]);
 
-  const positionA = getPrimaryPosition(playerA);
-  const positionB = getPrimaryPosition(playerB);
+  const [hydratedPlayerA, hydratedPlayerB] = await Promise.all([
+    prisma.player.findUnique({
+      where: { id: idA },
+      include: {
+        metricsSnapshots: {
+          orderBy: { timestamp: "desc" },
+          take: 1,
+        },
+        financialSnapshots: {
+          orderBy: { timestamp: "desc" },
+          take: 1,
+        },
+        riskSnapshots: {
+          orderBy: { timestamp: "desc" },
+          take: 1,
+        },
+      },
+    }),
+    prisma.player.findUnique({
+      where: { id: idB },
+      include: {
+        metricsSnapshots: {
+          orderBy: { timestamp: "desc" },
+          take: 1,
+        },
+        financialSnapshots: {
+          orderBy: { timestamp: "desc" },
+          take: 1,
+        },
+        riskSnapshots: {
+          orderBy: { timestamp: "desc" },
+          take: 1,
+        },
+      },
+    }),
+  ]);
+
+  if (!hydratedPlayerA || !hydratedPlayerB) {
+    throw new Error("Player not found after snapshot hydration");
+  }
+
+  const positionA = getPrimaryPosition(hydratedPlayerA);
+  const positionB = getPrimaryPosition(hydratedPlayerB);
   const positionContext = buildPositionContext(positionA, positionB);
-  const summaryA = buildPlayerSummary(playerA as any);
-  const summaryB = buildPlayerSummary(playerB as any);
+  const summaryA = buildPlayerSummary(hydratedPlayerA as any);
+  const summaryB = buildPlayerSummary(hydratedPlayerB as any);
 
   const weightsA = POSITION_WEIGHTS[positionA] ?? POSITION_WEIGHTS.CM;
   const weightsB = POSITION_WEIGHTS[positionB] ?? POSITION_WEIGHTS.CM;
 
   // ---------------- QUALITATIVE ----------------
   const qualitative: CompareResult = compareAttributes(
-    playerA.attributes as Attributes,
-    playerB.attributes as Attributes,
+    hydratedPlayerA.attributes as Attributes,
+    hydratedPlayerB.attributes as Attributes,
   );
 
   // ---------------- QUANTITATIVE ----------------
-  const scoreA = calculateRankingScore(playerA.attributes as Attributes, weightsA);
+  const scoreA = calculateRankingScore(hydratedPlayerA.attributes as Attributes, weightsA);
 
-  const scoreB = calculateRankingScore(playerB.attributes as Attributes, weightsB);
+  const scoreB = calculateRankingScore(hydratedPlayerB.attributes as Attributes, weightsB);
 
   const difference = Number(Math.abs(scoreA - scoreB).toFixed(2));
   const winner = scoreA > scoreB ? "A" : scoreB > scoreA ? "B" : "DRAW";
   const averagePositionScore = (scoreA + scoreB) / 2;
 
   // ---------------- FIFA + CATEGORY ----------------
-  const fifaA = resolveFifaAttributesWithFallback(playerA.attributes, positionA);
-  const fifaB = resolveFifaAttributesWithFallback(playerB.attributes, positionB);
+  const fifaA = summaryA.fifa;
+  const fifaB = summaryB.fifa;
 
   const categoryA = buildCategoryIndex(fifaA);
   const categoryB = buildCategoryIndex(fifaB);
 
   // ---------------- RISK ----------------
   const riskA = calculateRiskScore({
-    age: playerA.age ?? 25,
+    age: hydratedPlayerA.age ?? 25,
     position: positionA,
     performanceScore: scoreA,
     averagePositionScore,
@@ -415,21 +456,21 @@ export async function compareByIds(idA: string, idB: string) {
   });
 
   const riskB = calculateRiskScore({
-    age: playerB.age ?? 25,
+    age: hydratedPlayerB.age ?? 25,
     position: positionB,
     performanceScore: scoreB,
     averagePositionScore,
     categoryIndex: categoryB,
   });
 
-  const executiveSummaryA = buildExecutiveRiskSummary(playerA.name, riskA);
-  const executiveSummaryB = buildExecutiveRiskSummary(playerB.name, riskB);
+  const executiveSummaryA = buildExecutiveRiskSummary(hydratedPlayerA.name, riskA);
+  const executiveSummaryB = buildExecutiveRiskSummary(hydratedPlayerB.name, riskB);
 
   // ---------------- MEDICAL RISK (LESION MAP) ----------------
   const lesionMap = loadLesionMapFromPath(process.env.LESION_MAP_PATH);
 
-  const injuriesA = extractInjuryEventsFromAttributes(playerA.attributes);
-  const injuriesB = extractInjuryEventsFromAttributes(playerB.attributes);
+  const injuriesA = extractInjuryEventsFromAttributes(hydratedPlayerA.attributes);
+  const injuriesB = extractInjuryEventsFromAttributes(hydratedPlayerB.attributes);
 
   const medicalRiskA = calculateMedicalRisk({
     injuries: injuriesA,
@@ -444,25 +485,25 @@ export async function compareByIds(idA: string, idB: string) {
   // ---------------- ANTI FLOP ----------------
   const antiFlopA = calculateAntiFlopIndex({
     risk: riskA,
-    age: playerA.age ?? 25,
+    age: hydratedPlayerA.age ?? 25,
     performanceScore: scoreA,
     averagePositionScore,
     medicalRisk: medicalRiskA,
-    leagueDifficultyCoefficient: getLeagueDifficultyCoefficient(resolvePlayerLeague(playerA)),
+    leagueDifficultyCoefficient: getLeagueDifficultyCoefficient(resolvePlayerLeague(hydratedPlayerA)),
   });
 
   const antiFlopB = calculateAntiFlopIndex({
     risk: riskB,
-    age: playerB.age ?? 25,
+    age: hydratedPlayerB.age ?? 25,
     performanceScore: scoreB,
     averagePositionScore,
     medicalRisk: medicalRiskB,
-    leagueDifficultyCoefficient: getLeagueDifficultyCoefficient(resolvePlayerLeague(playerB)),
+    leagueDifficultyCoefficient: getLeagueDifficultyCoefficient(resolvePlayerLeague(hydratedPlayerB)),
   });
 
   // ---------------- LIQUIDITY ----------------
   const liquidityA = calculateLiquidityScore({
-    age: playerA.age ?? 25,
+    age: hydratedPlayerA.age ?? 25,
     performanceScore: scoreA,
     averagePositionScore,
     risk: riskA,
@@ -470,47 +511,26 @@ export async function compareByIds(idA: string, idB: string) {
   });
 
   const liquidityB = calculateLiquidityScore({
-    age: playerB.age ?? 25,
+    age: hydratedPlayerB.age ?? 25,
     performanceScore: scoreB,
     averagePositionScore,
     risk: riskB,
     antiFlop: antiFlopB,
   });
 
-  // ---------------- MACRO OVERALL ----------------
-  const macroOverallA =
-    Object.values(categoryA).reduce((a, b) => a + b, 0) / Object.values(categoryA).length;
-
-  const macroOverallB =
-    Object.values(categoryB).reduce((a, b) => a + b, 0) / Object.values(categoryB).length;
-
   // ---------------- OVERALL ----------------
-  const overallA = calculateOverallRating({
-    position: positionA,
-    performanceScore: scoreA,
-    categoryIndex: categoryA,
-    macroOverall: macroOverallA,
-    fifaAttributes: fifaA,
-    rawAttributes: playerA.attributes,
-  });
-  const fifaCardA = buildFifaCard(playerA, overallA, fifaA);
+  const overallA = summaryA.overall;
+  const fifaCardA = buildFifaCard(hydratedPlayerA, overallA, fifaA);
 
-  const overallB = calculateOverallRating({
-    position: positionB,
-    performanceScore: scoreB,
-    categoryIndex: categoryB,
-    macroOverall: macroOverallB,
-    fifaAttributes: fifaB,
-    rawAttributes: playerB.attributes,
-  });
-  const fifaCardB = buildFifaCard(playerB, overallB, fifaB);
+  const overallB = summaryB.overall;
+  const fifaCardB = buildFifaCard(hydratedPlayerB, overallB, fifaB);
 
   // ---------------- FINANCIAL RISK ----------------
   const financialRiskA = calculateFinancialRisk({
     structuralRisk: riskA.totalRisk,
     flopProbability: antiFlopA.flopProbability,
     liquidityScore: liquidityA.liquidityScore,
-    age: playerA.age ?? 25,
+    age: hydratedPlayerA.age ?? 25,
     overall: overallA.overall,
   });
 
@@ -518,7 +538,7 @@ export async function compareByIds(idA: string, idB: string) {
     structuralRisk: riskB.totalRisk,
     flopProbability: antiFlopB.flopProbability,
     liquidityScore: liquidityB.liquidityScore,
-    age: playerB.age ?? 25,
+    age: hydratedPlayerB.age ?? 25,
     overall: overallB.overall,
   });
 
@@ -538,23 +558,23 @@ export async function compareByIds(idA: string, idB: string) {
   });
 
   const growthProjectionA = calculateGrowthProjection({
-    age: playerA.age ?? 25,
+    age: hydratedPlayerA.age ?? 25,
     position: positionA,
     currentOverall: overallA.overall,
     performanceHistory: [scoreA],
-    physicalLoad: Number((playerA.attributes as any)?.physicalLoad ?? 55),
-    performanceStability: Number((playerA.attributes as any)?.stability ?? 60),
-    leagueDifficultyCoefficient: getLeagueDifficultyCoefficient(resolvePlayerLeague(playerA)),
+    physicalLoad: Number((hydratedPlayerA.attributes as any)?.physicalLoad ?? 55),
+    performanceStability: Number((hydratedPlayerA.attributes as any)?.stability ?? 60),
+    leagueDifficultyCoefficient: getLeagueDifficultyCoefficient(resolvePlayerLeague(hydratedPlayerA)),
   });
 
   const growthProjectionB = calculateGrowthProjection({
-    age: playerB.age ?? 25,
+    age: hydratedPlayerB.age ?? 25,
     position: positionB,
     currentOverall: overallB.overall,
     performanceHistory: [scoreB],
-    physicalLoad: Number((playerB.attributes as any)?.physicalLoad ?? 55),
-    performanceStability: Number((playerB.attributes as any)?.stability ?? 60),
-    leagueDifficultyCoefficient: getLeagueDifficultyCoefficient(resolvePlayerLeague(playerB)),
+    physicalLoad: Number((hydratedPlayerB.attributes as any)?.physicalLoad ?? 55),
+    performanceStability: Number((hydratedPlayerB.attributes as any)?.stability ?? 60),
+    leagueDifficultyCoefficient: getLeagueDifficultyCoefficient(resolvePlayerLeague(hydratedPlayerB)),
   });
 
   const explainabilityA = buildExplainability({
@@ -574,8 +594,8 @@ export async function compareByIds(idA: string, idB: string) {
   const report = await prisma.scoutReport.create({
     data: {
       type: "COMPARE",
-      playerId: playerA.id,
-      input: { playerA: playerA.id, playerB: playerB.id },
+      playerId: hydratedPlayerA.id,
+      input: { playerA: hydratedPlayerA.id, playerB: hydratedPlayerB.id },
       output: {
         qualitative,
         quantitative: { scoreA, scoreB, difference, winner },
@@ -586,22 +606,22 @@ export async function compareByIds(idA: string, idB: string) {
         },
         playerDetails: {
           playerA: {
-            id: playerA.id,
-            playerKey: playerA.id,
-            name: playerA.name,
-            nomeJogador: playerA.name,
+            id: hydratedPlayerA.id,
+            playerKey: hydratedPlayerA.id,
+            name: hydratedPlayerA.name,
+            nomeJogador: hydratedPlayerA.name,
             position: positionA,
-            age: playerA.age ?? null,
-            nationality: playerA.nationality ?? null,
+            age: hydratedPlayerA.age ?? null,
+            nationality: hydratedPlayerA.nationality ?? null,
           },
           playerB: {
-            id: playerB.id,
-            playerKey: playerB.id,
-            name: playerB.name,
-            nomeJogador: playerB.name,
+            id: hydratedPlayerB.id,
+            playerKey: hydratedPlayerB.id,
+            name: hydratedPlayerB.name,
+            nomeJogador: hydratedPlayerB.name,
             position: positionB,
-            age: playerB.age ?? null,
-            nationality: playerB.nationality ?? null,
+            age: hydratedPlayerB.age ?? null,
+            nationality: hydratedPlayerB.nationality ?? null,
           },
         },
         overallRating: { playerA: overallA, playerB: overallB },
@@ -633,10 +653,10 @@ export async function compareByIds(idA: string, idB: string) {
   });
 
   const aiNarrative = `
-${playerA.name} scored ${scoreA}.
-${playerB.name} scored ${scoreB}.
+${hydratedPlayerA.name} scored ${scoreA}.
+${hydratedPlayerB.name} scored ${scoreB}.
 Difference: ${difference}.
-Winner: ${winner === "A" ? playerA.name : winner === "B" ? playerB.name : "Draw"}.
+Winner: ${winner === "A" ? hydratedPlayerA.name : winner === "B" ? hydratedPlayerB.name : "Draw"}.
 `.trim();
 
   await prisma.scoutReport.update({
@@ -657,22 +677,22 @@ Winner: ${winner === "A" ? playerA.name : winner === "B" ? playerB.name : "Draw"
     positionContext,
     players: {
       playerA: {
-        id: playerA.id,
-        playerKey: playerA.id,
-        name: playerA.name,
-        nomeJogador: playerA.name,
+        id: hydratedPlayerA.id,
+        playerKey: hydratedPlayerA.id,
+        name: hydratedPlayerA.name,
+        nomeJogador: hydratedPlayerA.name,
         position: positionA,
-        age: playerA.age ?? null,
-        nationality: playerA.nationality ?? null,
+        age: hydratedPlayerA.age ?? null,
+        nationality: hydratedPlayerA.nationality ?? null,
       },
       playerB: {
-        id: playerB.id,
-        playerKey: playerB.id,
-        name: playerB.name,
-        nomeJogador: playerB.name,
+        id: hydratedPlayerB.id,
+        playerKey: hydratedPlayerB.id,
+        name: hydratedPlayerB.name,
+        nomeJogador: hydratedPlayerB.name,
         position: positionB,
-        age: playerB.age ?? null,
-        nationality: playerB.nationality ?? null,
+        age: hydratedPlayerB.age ?? null,
+        nationality: hydratedPlayerB.nationality ?? null,
       },
     },
     summary: {
