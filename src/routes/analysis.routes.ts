@@ -1,7 +1,7 @@
 import { Router, Request, Response, NextFunction } from "express";
 import { successResponse } from "../lib/apiResponse";
 import { validate } from "../lib/validate";
-import { createComparisonAnalysis, getAnalysisById, listAnalyses } from "../analysis/analysis.service";
+import { createComparisonAnalysis, deleteAnalysis, getAnalysisById, listAnalyses } from "../analysis/analysis.service";
 import { analysisParamsSchema, createComparisonAnalysisSchema } from "../validators/analysis.validators";
 
 const router = Router();
@@ -37,5 +37,15 @@ router.post(
     }
   },
 );
+
+router.delete("/:id", validate(analysisParamsSchema, "params"), async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { id } = (req as any).validated.params;
+    const result = await deleteAnalysis(id);
+    res.json(successResponse(result));
+  } catch (error) {
+    next(error);
+  }
+});
 
 export default router;

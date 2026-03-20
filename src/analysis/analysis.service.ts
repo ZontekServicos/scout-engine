@@ -5,6 +5,7 @@ type AnalysisStatus = "COMPLETED" | "IN_PROGRESS" | "ARCHIVED";
 
 type CreateComparisonAnalysisInput = {
   title?: string;
+  description?: string;
   analyst?: string;
   status?: AnalysisStatus;
   playerIds: string[];
@@ -135,6 +136,7 @@ async function syncLegacyReportAnalyses() {
 function mapAnalysisEntity(analysis: {
   id: string;
   title: string;
+  description: string | null;
   type: AnalysisType;
   status: AnalysisStatus;
   analyst: string | null;
@@ -181,6 +183,7 @@ function mapAnalysisEntity(analysis: {
   return {
     id: analysis.id,
     title: analysis.title,
+    description: analysis.description,
     type: analysis.type,
     typeLabel: getAnalysisTypeLabel(analysis.type),
     createdAt: analysis.createdAt.toISOString(),
@@ -281,6 +284,7 @@ export async function createComparisonAnalysis(input: CreateComparisonAnalysisIn
     data: {
       type: "COMPARISON",
       title,
+      description: normalizeText(input.description) || null,
       analyst: normalizeText(input.analyst, "Sistema SoccerMind"),
       status: input.status ?? "COMPLETED",
       comparisons: {
@@ -305,4 +309,37 @@ export async function createComparisonAnalysis(input: CreateComparisonAnalysisIn
   });
 
   return mapAnalysisEntity(analysis);
+}
+
+export async function deleteAnalysis(id: string) {
+  await syncLegacyReportAnalyses();
+
+  const existingAnalysis = await prisma.analysis.findUnique({
+    where: { id },
+    select: {
+      id: true,
+      scoutReportId: true,
+    },
+  });
+
+  if (!existingAnalysis) {
+    const error = new Error("Analysis not found") as Error & { statusCode?: number };
+    error.statusCode = 404;
+    throw error;
+  }
+
+  if (existingAnalysis.scoutReportId) {
+    const error = new Error("Report analyses must be removed from the reports flow") as Error & { statusCode?: number };
+    error.statusCode = 409;
+    throw error;
+  }
+
+  await prisma.analysis.delete({
+    where: { id },
+  });
+
+  return {
+    id,
+    message: "Analysis deleted successfully",
+  };
 }
