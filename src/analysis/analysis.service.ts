@@ -3,6 +3,28 @@ import { prisma } from "../lib/prisma";
 type AnalysisType = "COMPARISON" | "REPORT";
 type AnalysisStatus = "COMPLETED" | "IN_PROGRESS" | "ARCHIVED";
 
+type AnalysisPlayerViewModel = {
+  id: string;
+  name: string;
+  club: string;
+  positions: string[];
+  order: number;
+};
+
+type AnalysisViewModel = {
+  id: string;
+  title: string;
+  description: string | null;
+  type: AnalysisType;
+  typeLabel: string;
+  createdAt: string;
+  status: AnalysisStatus;
+  statusLabel: string;
+  analyst: string;
+  players: AnalysisPlayerViewModel[];
+  scoutReportId: string | null;
+};
+
 type CreateComparisonAnalysisInput = {
   title?: string;
   description?: string;
@@ -43,7 +65,7 @@ function getAnalysisStatusLabel(status: AnalysisStatus) {
 }
 
 function extractReportPlayers(report: {
-  player?: { id: string; name: string | null } | null;
+  player?: { id?: string; name: string | null; team?: string | null; positions?: string[] } | null;
   output?: unknown;
 }) {
   const output = report.output && typeof report.output === "object" ? (report.output as Record<string, unknown>) : {};
@@ -55,7 +77,14 @@ function extractReportPlayers(report: {
     output.players && typeof output.players === "object" ? (output.players as Record<string, unknown>) : {};
 
   const rawPlayers = [
-    report.player ? { id: report.player.id, name: normalizeText(report.player.name, "Jogador") } : null,
+    report.player
+      ? {
+          id: normalizeText(report.player.id),
+          name: normalizeText(report.player.name, "Jogador"),
+          club: normalizeText(report.player.team),
+          positions: Array.isArray(report.player.positions) ? report.player.positions : [],
+        }
+      : null,
     ...["playerA", "playerB"].map((key) => {
       const source = [playerDetails[key], playersNode[key]].find(
         (value) => value && typeof value === "object",
@@ -65,7 +94,9 @@ function extractReportPlayers(report: {
         return null;
       }
 
-      const id = normalizeText(typeof source.id === "string" ? source.id : typeof source.playerKey === "string" ? source.playerKey : "");
+      const id = normalizeText(
+        typeof source.id === "string" ? source.id : typeof source.playerKey === "string" ? source.playerKey : "",
+      );
       const name = normalizeText(
         typeof source.nomeJogador === "string" ? source.nomeJogador : typeof source.name === "string" ? source.name : "",
       );
@@ -74,66 +105,71 @@ function extractReportPlayers(report: {
         return null;
       }
 
-      return { id, name };
+      return {
+        id,
+        name,
+        club: normalizeText(typeof source.club === "string" ? source.club : typeof source.team === "string" ? source.team : ""),
+        positions: Array.isArray(source.positions) ? source.positions.filter((item): item is string => typeof item === "string") : [],
+      };
     }),
-  ].filter((player): player is { id: string; name: string } => Boolean(player?.name));
+  ].filter(
+    (
+      player,
+    ): player is {
+      id: string;
+      name: string;
+      club: string;
+      positions: string[];
+    } => Boolean(player?.name),
+  );
 
-  return rawPlayers.filter((player, index, array) => array.findIndex((candidate) => candidate.name === player.name) === index);
+  return rawPlayers
+    .filter((player, index, array) => array.findIndex((candidate) => candidate.name === player.name) === index)
+    .map((player, index) => ({
+      ...player,
+      order: index,
+    }));
 }
 
-async function syncLegacyReportAnalyses() {
-  const legacyReports = await prisma.scoutReport.findMany({
-    where: {
-      type: {
-        not: "COMPARE",
-      },
-      analysis: {
-        is: null,
-      },
-    },
-    include: {
-      player: true,
-    },
-  });
-
-  if (legacyReports.length === 0) {
-    return;
+function buildReportTitle(report: {
+  id: string;
+  player?: { id?: string; name: string | null; team?: string | null; positions?: string[] } | null;
+  output?: unknown;
+}) {
+  const players = extractReportPlayers(report);
+  if (players.length > 0) {
+    return `Relatorio - ${players.map((player) => player.name).join(" / ")}`;
   }
 
-  await prisma.$transaction(
-    legacyReports.map((report) => {
-      const reportPlayers = extractReportPlayers(report);
-      const title =
-        reportPlayers.length > 0
-          ? `Relatorio - ${reportPlayers.map((player) => player.name).join(" / ")}`
-          : `Relatorio ${report.id.slice(0, 8)}`;
-
-      const data = {
-        type: "REPORT" as const,
-        title,
-        analyst: normalizeText(report.requestedBy, "Sistema SoccerMind"),
-        status: normalizeReportStatus(report.decisionStatus),
-        scoutReportId: report.id,
-      };
-
-      return prisma.analysis.upsert({
-        where: {
-          scoutReportId: report.id,
-        },
-        update: data,
-        create: {
-          type: "REPORT",
-          title,
-          analyst: normalizeText(report.requestedBy, "Sistema SoccerMind"),
-          status: normalizeReportStatus(report.decisionStatus),
-          scoutReportId: report.id,
-        },
-      });
-    }),
-  );
+  return `Relatorio ${report.id.slice(0, 8)}`;
 }
 
-function mapAnalysisEntity(analysis: {
+function mapScoutReportToAnalysisViewModel(report: {
+  id: string;
+  createdAt: Date;
+  requestedBy: string | null;
+  decisionStatus: string | null;
+  player?: { id: string; name: string | null; team?: string | null; positions?: string[] } | null;
+  output?: unknown;
+}) : AnalysisViewModel {
+  const players = extractReportPlayers(report);
+
+  return {
+    id: report.id,
+    title: buildReportTitle(report),
+    description: null,
+    type: "REPORT",
+    typeLabel: getAnalysisTypeLabel("REPORT"),
+    createdAt: report.createdAt.toISOString(),
+    status: normalizeReportStatus(report.decisionStatus),
+    statusLabel: getAnalysisStatusLabel(normalizeReportStatus(report.decisionStatus)),
+    analyst: normalizeText(report.requestedBy, "Sistema SoccerMind"),
+    players,
+    scoutReportId: report.id,
+  };
+}
+
+function mapAnalysisToViewModel(analysis: {
   id: string;
   title: string;
   description: string | null;
@@ -150,13 +186,9 @@ function mapAnalysisEntity(analysis: {
       positions: string[];
     };
   }>;
-  scoutReport: {
-    id: string;
-    player: { id: string; name: string | null } | null;
-    output: unknown;
-  } | null;
-}) {
-  const comparisonPlayers = analysis.comparisons
+  scoutReportId?: string | null;
+}) : AnalysisViewModel {
+  const players = analysis.comparisons
     .slice()
     .sort((a, b) => a.order - b.order)
     .map((entry) => ({
@@ -166,19 +198,6 @@ function mapAnalysisEntity(analysis: {
       positions: entry.player.positions,
       order: entry.order,
     }));
-
-  const reportPlayers =
-    analysis.scoutReport?.output !== undefined
-      ? extractReportPlayers(analysis.scoutReport).map((player, index) => ({
-          id: player.id,
-          name: player.name,
-          club: "",
-          positions: [] as string[],
-          order: index,
-        }))
-      : [];
-
-  const players = analysis.type === "COMPARISON" ? comparisonPlayers : reportPlayers;
 
   return {
     id: analysis.id,
@@ -191,14 +210,43 @@ function mapAnalysisEntity(analysis: {
     statusLabel: getAnalysisStatusLabel(analysis.status),
     analyst: normalizeText(analysis.analyst, "Sistema SoccerMind"),
     players,
-    scoutReportId: analysis.scoutReport?.id ?? null,
+    scoutReportId: analysis.scoutReportId ?? null,
   };
 }
 
-async function getAnalysisQuery() {
-  await syncLegacyReportAnalyses();
+async function hasAnalysisTable() {
+  const result = await prisma.$queryRaw<Array<{ relation_name: string | null }>>`
+    SELECT to_regclass('public."Analysis"')::text AS relation_name
+  `;
 
-  return prisma.analysis.findMany({
+  return Boolean(result[0]?.relation_name);
+}
+
+async function listReportEntries() {
+  const reports = await prisma.scoutReport.findMany({
+    where: {
+      type: {
+        not: "COMPARE",
+      },
+    },
+    orderBy: { createdAt: "desc" },
+    include: {
+      player: true,
+    },
+  });
+
+  return reports.map(mapScoutReportToAnalysisViewModel);
+}
+
+async function listComparisonEntries() {
+  if (!(await hasAnalysisTable())) {
+    return [] as AnalysisViewModel[];
+  }
+
+  const analyses = await prisma.analysis.findMany({
+    where: {
+      type: "COMPARISON",
+    },
     orderBy: { createdAt: "desc" },
     include: {
       comparisons: {
@@ -206,32 +254,42 @@ async function getAnalysisQuery() {
           player: true,
         },
       },
-      scoutReport: {
-        include: {
-          player: true,
-        },
-      },
     },
   });
+
+  return analyses.map(mapAnalysisToViewModel);
 }
 
 export async function listAnalyses() {
-  const analyses = await getAnalysisQuery();
-  return analyses.map(mapAnalysisEntity);
+  const [reports, comparisons] = await Promise.all([listReportEntries(), listComparisonEntries()]);
+
+  return [...reports, ...comparisons].sort(
+    (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+  );
 }
 
 export async function getAnalysisById(id: string) {
-  await syncLegacyReportAnalyses();
+  const report = await prisma.scoutReport.findUnique({
+    where: { id },
+    include: {
+      player: true,
+    },
+  });
+
+  if (report && report.type !== "COMPARE") {
+    return mapScoutReportToAnalysisViewModel(report);
+  }
+
+  if (!(await hasAnalysisTable())) {
+    const error = new Error("Analysis not found") as Error & { statusCode?: number };
+    error.statusCode = 404;
+    throw error;
+  }
 
   const analysis = await prisma.analysis.findUnique({
     where: { id },
     include: {
       comparisons: {
-        include: {
-          player: true,
-        },
-      },
-      scoutReport: {
         include: {
           player: true,
         },
@@ -245,10 +303,16 @@ export async function getAnalysisById(id: string) {
     throw error;
   }
 
-  return mapAnalysisEntity(analysis);
+  return mapAnalysisToViewModel(analysis);
 }
 
 export async function createComparisonAnalysis(input: CreateComparisonAnalysisInput) {
+  if (!(await hasAnalysisTable())) {
+    const error = new Error("Analysis module is not initialized in the database yet") as Error & { statusCode?: number };
+    error.statusCode = 503;
+    throw error;
+  }
+
   const playerIds = input.playerIds.filter((playerId, index, array) => array.indexOf(playerId) === index);
 
   if (playerIds.length < 2) {
@@ -300,37 +364,42 @@ export async function createComparisonAnalysis(input: CreateComparisonAnalysisIn
           player: true,
         },
       },
-      scoutReport: {
-        include: {
-          player: true,
-        },
-      },
     },
   });
 
-  return mapAnalysisEntity(analysis);
+  return mapAnalysisToViewModel(analysis);
 }
 
 export async function deleteAnalysis(id: string) {
-  await syncLegacyReportAnalyses();
+  const report = await prisma.scoutReport.findUnique({
+    where: { id },
+    select: {
+      id: true,
+    },
+  });
+
+  if (report) {
+    const error = new Error("Report entries must remain managed by ScoutReport") as Error & { statusCode?: number };
+    error.statusCode = 409;
+    throw error;
+  }
+
+  if (!(await hasAnalysisTable())) {
+    const error = new Error("Analysis module is not initialized in the database yet") as Error & { statusCode?: number };
+    error.statusCode = 503;
+    throw error;
+  }
 
   const existingAnalysis = await prisma.analysis.findUnique({
     where: { id },
     select: {
       id: true,
-      scoutReportId: true,
     },
   });
 
   if (!existingAnalysis) {
     const error = new Error("Analysis not found") as Error & { statusCode?: number };
     error.statusCode = 404;
-    throw error;
-  }
-
-  if (existingAnalysis.scoutReportId) {
-    const error = new Error("Report analyses must be removed from the reports flow") as Error & { statusCode?: number };
-    error.statusCode = 409;
     throw error;
   }
 
