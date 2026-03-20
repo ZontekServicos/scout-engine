@@ -12,6 +12,36 @@ import { getPrimaryPosition } from "../utils/positions";
 import { mapPlayerRecord } from "../mappers/player.mapper";
 import { withCache } from "../lib/cache";
 
+type LatestMetricsSnapshot = {
+  overall: number;
+  potential: number;
+  pace: number;
+  shooting: number;
+  passing: number;
+  defending: number;
+  physical: number;
+  dribbling: number | null;
+  timestamp: Date;
+};
+
+type LatestFinancialSnapshot = {
+  marketValue: number | null;
+  salary: number | null;
+  transferCostEstimate: number | null;
+  contractYears: number | null;
+  timestamp: Date;
+};
+
+type LatestRiskSnapshot = {
+  structuralRisk: number;
+  financialRisk: number;
+  liquidityScore: number;
+  compositeRisk: number;
+  riskLevel: "LOW" | "MEDIUM" | "HIGH";
+  explanation: string | null;
+  timestamp: Date;
+};
+
 type ListPlayersParams = {
   search?: string;
   positions?: string[];
@@ -48,6 +78,10 @@ type PlayerSummarySource = {
   imagePath: string | null;
   attributes: any;
   contractEnd?: Date | null;
+  updatedAt?: Date;
+  metricsSnapshots?: LatestMetricsSnapshot[];
+  financialSnapshots?: LatestFinancialSnapshot[];
+  riskSnapshots?: LatestRiskSnapshot[];
 };
 
 type FifaCore = {
@@ -193,6 +227,58 @@ function buildCategoryIndex(fifa: any) {
 function resolvePlayerPosition(player: { positions?: string[] | null }) {
   const primaryPosition = getPrimaryPosition(player as any);
   return POSITION_WEIGHTS[primaryPosition] ? primaryPosition : "CM";
+}
+
+function getLatestMetricsSnapshot(player: PlayerSummarySource) {
+  return player.metricsSnapshots?.[0] ?? null;
+}
+
+function getLatestFinancialSnapshot(player: PlayerSummarySource) {
+  return player.financialSnapshots?.[0] ?? null;
+}
+
+function getLatestRiskSnapshot(player: PlayerSummarySource) {
+  return player.riskSnapshots?.[0] ?? null;
+}
+
+function hasFreshSnapshots(player: PlayerSummarySource) {
+  const updatedAt = player.updatedAt;
+  const latestMetrics = getLatestMetricsSnapshot(player);
+  const latestFinancial = getLatestFinancialSnapshot(player);
+  const latestRisk = getLatestRiskSnapshot(player);
+
+  if (!updatedAt || !latestMetrics || !latestFinancial || !latestRisk) {
+    return false;
+  }
+
+  return (
+    latestMetrics.timestamp >= updatedAt &&
+    latestFinancial.timestamp >= updatedAt &&
+    latestRisk.timestamp >= updatedAt
+  );
+}
+
+function normalizeContractYears(contractEnd?: Date | null) {
+  if (!contractEnd) {
+    return null;
+  }
+
+  const now = new Date();
+  const diffMs = contractEnd.getTime() - now.getTime();
+  if (diffMs <= 0) {
+    return 0;
+  }
+
+  return Math.max(0, Math.round(diffMs / (1000 * 60 * 60 * 24 * 365)));
+}
+
+function resolveTransferCostEstimate(marketValue: number | null, liquidityScore: number) {
+  if (!marketValue || marketValue <= 0) {
+    return null;
+  }
+
+  const liquidityPremium = liquidityScore >= 8 ? 1.15 : liquidityScore >= 6 ? 1.08 : 1.02;
+  return Number((marketValue * liquidityPremium).toFixed(2));
 }
 
 function flattenDetailedStats(detailedStats: ReturnType<typeof calculateOverallRating>["fifaStyle"]["detailedStats"]) {
@@ -371,11 +457,32 @@ export function buildPlayerSummary(player: PlayerSummarySource) {
   const playerPosition = resolvePlayerPosition(player);
   const weights = POSITION_WEIGHTS[playerPosition];
   const rawAttributes = player.attributes ?? {};
-  const fifa = resolveFifa(rawAttributes, playerPosition);
+  const latestMetrics = getLatestMetricsSnapshot(player);
+  const latestFinancial = getLatestFinancialSnapshot(player);
+  const latestRisk = getLatestRiskSnapshot(player);
+  const snapshotFifa = latestMetrics
+    ? {
+        pace: latestMetrics.pace,
+        shooting: latestMetrics.shooting,
+        passing: latestMetrics.passing,
+        dribbling: latestMetrics.dribbling ?? latestMetrics.passing,
+        defending: latestMetrics.defending,
+        physical: latestMetrics.physical,
+      }
+    : null;
+  const fifa = snapshotFifa ?? resolveFifa(rawAttributes, playerPosition);
   const categoryIndex = buildCategoryIndex(fifa);
   const performanceScore = calculateRankingScore(fifa, weights);
-  const persistedOverall = hasFiniteNumber(player.overall) ? clampFifaCore(player.overall) : null;
-  const persistedPotential = hasFiniteNumber(player.potential) ? clampFifaCore(player.potential) : null;
+  const persistedOverall = latestMetrics
+    ? clampFifaCore(latestMetrics.overall)
+    : hasFiniteNumber(player.overall)
+      ? clampFifaCore(player.overall)
+      : null;
+  const persistedPotential = latestMetrics
+    ? clampFifaCore(latestMetrics.potential)
+    : hasFiniteNumber(player.potential)
+      ? clampFifaCore(player.potential)
+      : null;
   const storedDetailedStats = resolveStoredDetailedStats(rawAttributes);
   const shouldReusePersistedProfile =
     fifa !== null &&
@@ -466,7 +573,7 @@ export function buildPlayerSummary(player: PlayerSummarySource) {
     age: player.age ?? 0,
     overall: finalOverall,
     potential,
-    marketValue: player.marketValue ?? null,
+    marketValue: latestFinancial?.marketValue ?? player.marketValue ?? null,
     imagePath: player.imagePath ?? null,
     attributes: {
       ...overall.fifaStyle.core,
@@ -487,16 +594,42 @@ export function buildPlayerSummary(player: PlayerSummarySource) {
     player: {
       ...profile,
       capitalEfficiency: analytics.capitalEfficiency.index,
-      riskLevel: analytics.normalizedRisk.risk.level,
-      risk: analytics.normalizedRisk.risk,
-      structuralRisk: analytics.normalizedRisk.structuralRisk,
+      riskLevel: latestRisk?.riskLevel ?? analytics.normalizedRisk.risk.level,
+      risk: latestRisk
+        ? {
+            score: latestRisk.compositeRisk,
+            level: latestRisk.riskLevel,
+            explanation:
+              latestRisk.explanation ??
+              analytics.normalizedRisk.risk.explanation,
+          }
+        : analytics.normalizedRisk.risk,
+      structuralRisk: latestRisk
+        ? {
+            score: latestRisk.structuralRisk,
+            level: latestRisk.riskLevel,
+            breakdown:
+              latestRisk.explanation ??
+              analytics.normalizedRisk.structuralRisk.breakdown,
+          }
+        : analytics.normalizedRisk.structuralRisk,
       antiFlopIndex: {
         flopProbability: analytics.antiFlop.flopProbability,
         safetyIndex: analytics.antiFlop.safetyIndex,
         classification: analytics.antiFlop.classification,
       },
-      liquidity: analytics.normalizedRisk.liquidity,
-      financialRisk: analytics.normalizedRisk.financialRisk,
+      liquidity: latestRisk
+        ? {
+            ...analytics.normalizedRisk.liquidity,
+            score: latestRisk.liquidityScore,
+          }
+        : analytics.normalizedRisk.liquidity,
+      financialRisk: latestRisk
+        ? {
+            ...analytics.normalizedRisk.financialRisk,
+            index: latestRisk.financialRisk,
+          }
+        : analytics.normalizedRisk.financialRisk,
     },
     position: playerPosition,
     overall,
@@ -509,9 +642,82 @@ export function buildPlayerSummary(player: PlayerSummarySource) {
   };
 }
 
+export async function persistAnalyticalSnapshots(player: PlayerSummarySource) {
+  if (hasFreshSnapshots(player)) {
+    return;
+  }
+
+  const summary = buildPlayerSummary({
+    ...player,
+    metricsSnapshots: [],
+    financialSnapshots: [],
+    riskSnapshots: [],
+  });
+
+  const contractYears = normalizeContractYears(player.contractEnd);
+  const marketValue = player.marketValue ?? null;
+  const transferCostEstimate = resolveTransferCostEstimate(
+    marketValue,
+    summary.player.liquidity.score,
+  );
+
+  await prisma.$transaction([
+    prisma.playerMetrics.create({
+      data: {
+        playerId: player.id,
+        overall: summary.overall.overall,
+        potential: summary.potential,
+        pace: summary.fifa.pace,
+        shooting: summary.fifa.shooting,
+        passing: summary.fifa.passing,
+        defending: summary.fifa.defending,
+        physical: summary.fifa.physical,
+        dribbling: summary.fifa.dribbling,
+      },
+    }),
+    prisma.playerFinancials.create({
+      data: {
+        playerId: player.id,
+        marketValue,
+        salary: null,
+        transferCostEstimate,
+        contractYears,
+      },
+    }),
+    prisma.playerRiskSnapshot.create({
+      data: {
+        playerId: player.id,
+        structuralRisk: summary.player.structuralRisk.score,
+        financialRisk: summary.player.financialRisk.index,
+        liquidityScore: summary.player.liquidity.score,
+        compositeRisk: summary.player.risk.score,
+        riskLevel: summary.player.risk.level,
+        explanation: summary.player.risk.explanation,
+      },
+    }),
+  ]);
+}
+
 export async function getPlayerProfile(id: string) {
-  const player = await prisma.player.findUnique({ where: { id } });
+  const player = await prisma.player.findUnique({
+    where: { id },
+    include: {
+      metricsSnapshots: {
+        orderBy: { timestamp: "desc" },
+        take: 1,
+      },
+      financialSnapshots: {
+        orderBy: { timestamp: "desc" },
+        take: 1,
+      },
+      riskSnapshots: {
+        orderBy: { timestamp: "desc" },
+        take: 1,
+      },
+    },
+  });
   if (!player) throw new Error("Player not found");
+  await persistAnalyticalSnapshots(player as PlayerSummarySource);
   const summary = buildPlayerSummary(player as PlayerSummarySource);
   const { risk, liquidity, financialRisk, capitalEfficiency, normalizedRisk } = summary.analytics;
 
@@ -606,6 +812,20 @@ export async function getSimilarPlayers(id: string) {
       marketValue: true,
       imagePath: true,
       attributes: true,
+      updatedAt: true,
+      contractEnd: true,
+      metricsSnapshots: {
+        orderBy: { timestamp: "desc" },
+        take: 1,
+      },
+      financialSnapshots: {
+        orderBy: { timestamp: "desc" },
+        take: 1,
+      },
+      riskSnapshots: {
+        orderBy: { timestamp: "desc" },
+        take: 1,
+      },
     },
   });
 
@@ -805,6 +1025,20 @@ export async function listPlayers(params: ListPlayersParams = {}) {
         marketValue: true,
         imagePath: true,
         attributes: true,
+        contractEnd: true,
+        updatedAt: true,
+        metricsSnapshots: {
+          orderBy: { timestamp: "desc" },
+          take: 1,
+        },
+        financialSnapshots: {
+          orderBy: { timestamp: "desc" },
+          take: 1,
+        },
+        riskSnapshots: {
+          orderBy: { timestamp: "desc" },
+          take: 1,
+        },
       },
     }),
     getPlayerFilterOptions(),

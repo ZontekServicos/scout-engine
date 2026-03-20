@@ -35,7 +35,10 @@ model Player {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  scoutReports ScoutReport[]
+  scoutReports       ScoutReport[]
+  metricsSnapshots   PlayerMetrics[]
+  financialSnapshots PlayerFinancials[]
+  riskSnapshots      PlayerRiskSnapshot[]
 
   @@index([nameNormalized])
   @@index([league])
@@ -45,6 +48,58 @@ model Player {
   @@index([source])
   @@unique([source, externalId])
   @@index([positions], type: Gin)
+}
+
+model PlayerMetrics {
+  id        String   @id @default(uuid())
+  playerId   String
+  overall    Int
+  potential  Int
+  pace       Int
+  shooting   Int
+  passing    Int
+  defending  Int
+  physical   Int
+  dribbling  Int?
+  timestamp  DateTime @default(now())
+
+  player Player @relation(fields: [playerId], references: [id], onDelete: Cascade)
+
+  @@index([playerId])
+  @@index([timestamp])
+}
+
+model PlayerFinancials {
+  id                   String   @id @default(uuid())
+  playerId             String
+  marketValue          Float?
+  salary               Float?
+  transferCostEstimate Float?
+  contractYears        Int?
+  timestamp            DateTime @default(now())
+
+  player Player @relation(fields: [playerId], references: [id], onDelete: Cascade)
+
+  @@index([playerId])
+  @@index([timestamp])
+}
+
+model PlayerRiskSnapshot {
+  id             String    @id @default(uuid())
+  playerId       String
+  structuralRisk Float
+  financialRisk  Float
+  liquidityScore Float
+  compositeRisk  Float
+  riskLevel      RiskLevel
+  explanation    String?   @db.Text
+  timestamp      DateTime  @default(now())
+
+  player Player @relation(fields: [playerId], references: [id], onDelete: Cascade)
+
+  @@index([playerId])
+  @@index([riskLevel])
+  @@index([timestamp])
 }
 
 model ScoutReport {
@@ -90,4 +145,10 @@ enum DecisionStatus {
   PENDING
   APPROVED
   REJECTED
+}
+
+enum RiskLevel {
+  LOW
+  MEDIUM
+  HIGH
 }

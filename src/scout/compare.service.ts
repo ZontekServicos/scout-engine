@@ -20,7 +20,7 @@ import { calculateGrowthProjection } from "./growth-projection.engine";
 import { buildExplainability } from "./explainability.service";
 import { logger } from "../lib/logger";
 import { getPrimaryPosition } from "../utils/positions";
-import { buildPlayerSummary } from "./player.service";
+import { buildPlayerSummary, persistAnalyticalSnapshots } from "./player.service";
 
 //------------------Busca Segura----------------------------
 async function findPlayerByNameOrThrow(name: string) {
@@ -328,14 +328,51 @@ function buildPositionContext(positionA: string, positionB: string) {
 export async function compareByIds(idA: string, idB: string) {
   const startedAt = Date.now();
   const [playerA, playerB] = await Promise.all([
-    prisma.player.findUnique({ where: { id: idA } }),
-    prisma.player.findUnique({ where: { id: idB } }),
+    prisma.player.findUnique({
+      where: { id: idA },
+      include: {
+        metricsSnapshots: {
+          orderBy: { timestamp: "desc" },
+          take: 1,
+        },
+        financialSnapshots: {
+          orderBy: { timestamp: "desc" },
+          take: 1,
+        },
+        riskSnapshots: {
+          orderBy: { timestamp: "desc" },
+          take: 1,
+        },
+      },
+    }),
+    prisma.player.findUnique({
+      where: { id: idB },
+      include: {
+        metricsSnapshots: {
+          orderBy: { timestamp: "desc" },
+          take: 1,
+        },
+        financialSnapshots: {
+          orderBy: { timestamp: "desc" },
+          take: 1,
+        },
+        riskSnapshots: {
+          orderBy: { timestamp: "desc" },
+          take: 1,
+        },
+      },
+    }),
   ]);
 
   if (!playerA || !playerB) {
     logger.warn("Compare aborted: player not found", { idA, idB });
     throw new Error("Player not found");
   }
+
+  await Promise.all([
+    persistAnalyticalSnapshots(playerA as any),
+    persistAnalyticalSnapshots(playerB as any),
+  ]);
 
   const positionA = getPrimaryPosition(playerA);
   const positionB = getPrimaryPosition(playerB);
