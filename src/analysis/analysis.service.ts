@@ -62,6 +62,18 @@ export type AnalysisViewModel = {
   scoutReportId: string | null;
 };
 
+export type AnalysisReportContentViewModel = {
+  mode: "comparison" | "single_player";
+  canExportPdf: boolean;
+  contentStatus: "ready" | "partial";
+  contentMessage: string | null;
+  comparisonData: unknown | null;
+};
+
+export type AnalysisDetailViewModel = AnalysisViewModel & {
+  reportContent: AnalysisReportContentViewModel | null;
+};
+
 export type CreateComparisonAnalysisInput = {
   title?: string;
   description?: string;
@@ -381,6 +393,42 @@ function mapAnalysisToViewModel(analysis: {
   };
 }
 
+async function buildReportContent(players: AnalysisPlayerViewModel[]): Promise<AnalysisReportContentViewModel> {
+  const orderedPlayers = players
+    .slice()
+    .sort((a, b) => a.order - b.order)
+    .filter((player) => Boolean(player.id));
+
+  if (orderedPlayers.length < 2) {
+    return {
+      mode: "single_player",
+      canExportPdf: false,
+      contentStatus: "partial",
+      contentMessage: "Este relatorio nao possui dois jogadores suficientes para reconstruir a leitura executiva completa.",
+      comparisonData: null,
+    };
+  }
+
+  try {
+    const comparisonData = await compareByIds(orderedPlayers[0].id, orderedPlayers[1].id);
+    return {
+      mode: "comparison",
+      canExportPdf: true,
+      contentStatus: "ready",
+      contentMessage: null,
+      comparisonData,
+    };
+  } catch (error) {
+    return {
+      mode: "comparison",
+      canExportPdf: false,
+      contentStatus: "partial",
+      contentMessage: error instanceof Error ? error.message : "Nao foi possivel reconstruir o conteudo do relatorio.",
+      comparisonData: null,
+    };
+  }
+}
+
 async function getAnalysisRuntimeStatus(): Promise<AnalysisRuntimeStatus> {
   const result = await prisma.$queryRaw<Array<{ analysis_table: string | null; comparison_table: string | null }>>`
     SELECT
@@ -477,7 +525,7 @@ export async function listAnalyses(filters: ListAnalysesFilters = {}) {
   );
 }
 
-export async function getAnalysisById(id: string) {
+export async function getAnalysisById(id: string): Promise<AnalysisDetailViewModel> {
   const report = await prisma.scoutReport.findUnique({
     where: { id },
     include: {
@@ -486,7 +534,10 @@ export async function getAnalysisById(id: string) {
   });
 
   if (report) {
-    return mapScoutReportToAnalysisViewModel(report);
+    return {
+      ...mapScoutReportToAnalysisViewModel(report),
+      reportContent: null,
+    };
   }
 
   const runtime = await getAnalysisRuntimeStatus();
@@ -509,7 +560,12 @@ export async function getAnalysisById(id: string) {
     throw createHttpError("Analysis not found", 404);
   }
 
-  return mapAnalysisToViewModel(analysis);
+  const viewModel = mapAnalysisToViewModel(analysis);
+
+  return {
+    ...viewModel,
+    reportContent: viewModel.type === "REPORT" ? await buildReportContent(viewModel.players) : null,
+  };
 }
 
 export async function createComparisonAnalysis(input: CreateComparisonAnalysisInput) {
