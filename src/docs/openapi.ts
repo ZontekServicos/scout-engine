@@ -531,6 +531,48 @@ export const openApiDocument = {
         },
       },
     },
+    "/api/analysis/report": {
+      post: {
+        summary: "Create a persisted executive report entry",
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  title: { type: "string" },
+                  description: { type: "string" },
+                  analyst: { type: "string" },
+                  status: { type: "string", enum: ["COMPLETED", "IN_PROGRESS", "ARCHIVED"] },
+                  playerIds: {
+                    type: "array",
+                    minItems: 1,
+                    items: { type: "string", format: "uuid" },
+                  },
+                },
+                required: ["playerIds"],
+              },
+            },
+          },
+        },
+        responses: {
+          201: {
+            description: "Created report entry",
+            content: {
+              "application/json": {
+                schema: {
+                  allOf: [
+                    { $ref: "#/components/schemas/ApiEnvelope" },
+                    { type: "object", properties: { data: { $ref: "#/components/schemas/AnalysisEntry" } } },
+                  ],
+                },
+              },
+            },
+          },
+        },
+      },
+    },
     "/api/scout-reports/{id}": {
       delete: {
         summary: "Delete a legacy ScoutReport entry",

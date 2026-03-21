@@ -1,4 +1,5 @@
 import { prisma } from "../lib/prisma";
+import { compareByIds } from "../scout/compare.service";
 
 type AnalysisType = "COMPARISON" | "REPORT";
 type AnalysisStatus = "COMPLETED" | "IN_PROGRESS" | "ARCHIVED";
@@ -69,6 +70,14 @@ export type CreateComparisonAnalysisInput = {
   playerIds: string[];
 };
 
+export type CreateReportAnalysisInput = {
+  title?: string;
+  description?: string;
+  analyst?: string;
+  status?: AnalysisStatus;
+  playerIds: string[];
+};
+
 function createHttpError(message: string, statusCode: number) {
   const error = new Error(message) as Error & { statusCode?: number };
   error.statusCode = statusCode;
@@ -104,6 +113,74 @@ function getAnalysisStatusLabel(status: AnalysisStatus) {
     case "ARCHIVED":
       return "Arquivado";
   }
+}
+
+function normalizeWinnerLabel(value: unknown) {
+  const normalized = typeof value === "string" ? value.toUpperCase() : "DRAW";
+
+  if (normalized === "A" || normalized === "PLAYERA") {
+    return "A" as const;
+  }
+
+  if (normalized === "B" || normalized === "PLAYERB") {
+    return "B" as const;
+  }
+
+  return "DRAW" as const;
+}
+
+async function buildReportAnalysisDescription(players: Array<{ id: string; name: string }>) {
+  if (players.length === 0) {
+    return "Relatorio executivo salvo na central de analises.";
+  }
+
+  if (players.length === 1) {
+    return `${players[0].name} foi salvo como relatorio executivo na central de analises para acompanhamento decisorio.`;
+  }
+
+  const [playerA, playerB] = players;
+  const comparison = (await compareByIds(playerA.id, playerB.id)) as {
+    summary?: {
+      playerA?: { name?: string; overall?: number; capitalEfficiency?: number; risk?: { explanation?: string } };
+      playerB?: { name?: string; overall?: number; capitalEfficiency?: number; risk?: { explanation?: string } };
+    };
+    riskProfile?: {
+      playerA?: { explanation?: string };
+      playerB?: { explanation?: string };
+    };
+    liquidity?: {
+      playerA?: { resaleWindow?: string };
+      playerB?: { resaleWindow?: string };
+    };
+    quantitative?: { winner?: string };
+  };
+
+  const summaryA = comparison.summary?.playerA;
+  const summaryB = comparison.summary?.playerB;
+  const winner = normalizeWinnerLabel(comparison.quantitative?.winner);
+  const preferredName =
+    winner === "A"
+      ? summaryA?.name ?? playerA.name
+      : winner === "B"
+        ? summaryB?.name ?? playerB.name
+        : "Nenhum nome isolado";
+
+  return [
+    `Relatorio executivo entre ${summaryA?.name ?? playerA.name} e ${summaryB?.name ?? playerB.name}.`,
+    winner === "DRAW"
+      ? "A leitura comparativa permaneceu equilibrada no recorte atual."
+      : `${preferredName} aparece como recomendacao principal no recorte atual.`,
+    summaryA?.risk?.explanation ?? comparison.riskProfile?.playerA?.explanation ?? "",
+    summaryB?.risk?.explanation ?? comparison.riskProfile?.playerB?.explanation ?? "",
+    comparison.liquidity?.playerA?.resaleWindow || comparison.liquidity?.playerB?.resaleWindow
+      ? `Janela de liquidez observada: ${comparison.liquidity?.playerA?.resaleWindow ?? "n/d"} vs ${comparison.liquidity?.playerB?.resaleWindow ?? "n/d"}.`
+      : "",
+    summaryA?.capitalEfficiency != null && summaryB?.capitalEfficiency != null
+      ? `Capital efficiency: ${summaryA.capitalEfficiency.toFixed(2)} vs ${summaryB.capitalEfficiency.toFixed(2)}.`
+      : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
 }
 
 function extractReportPlayers(report: {
@@ -470,6 +547,66 @@ export async function createComparisonAnalysis(input: CreateComparisonAnalysisIn
       type: "COMPARISON",
       title,
       description: normalizeText(input.description) || null,
+      analyst: normalizeText(input.analyst, "Sistema SoccerMind"),
+      status: input.status ?? "COMPLETED",
+      comparisons: {
+        create: playerIds.map((playerId, index) => ({
+          playerId,
+          order: index,
+        })),
+      },
+    },
+    include: {
+      comparisons: {
+        include: {
+          player: true,
+        },
+      },
+    },
+  });
+
+  return mapAnalysisToViewModel(analysis);
+}
+
+export async function createReportAnalysis(input: CreateReportAnalysisInput) {
+  await assertAnalysisRuntimeReady();
+
+  const playerIds = input.playerIds.filter((playerId, index, array) => array.indexOf(playerId) === index);
+
+  if (playerIds.length < 1) {
+    throw createHttpError("At least one player is required", 400);
+  }
+
+  const players = await prisma.player.findMany({
+    where: {
+      id: {
+        in: playerIds,
+      },
+    },
+    select: {
+      id: true,
+      name: true,
+    },
+  });
+
+  if (players.length !== playerIds.length) {
+    throw createHttpError("One or more players were not found", 400);
+  }
+
+  const playersById = new Map(players.map((player) => [player.id, player]));
+  const orderedPlayers = playerIds
+    .map((playerId) => playersById.get(playerId))
+    .filter((player): player is { id: string; name: string } => Boolean(player));
+
+  const title =
+    normalizeText(input.title) ||
+    `Relatorio Executivo - ${orderedPlayers.map((player) => player.name).join(" vs ")}`;
+
+  const analysis = await prisma.analysis.create({
+    data: {
+      type: "REPORT",
+      title,
+      description: normalizeText(input.description) || (await buildReportAnalysisDescription(orderedPlayers)),
       analyst: normalizeText(input.analyst, "Sistema SoccerMind"),
       status: input.status ?? "COMPLETED",
       comparisons: {
