@@ -110,6 +110,51 @@ export const openApiDocument = {
           totalPages: { type: "integer", example: 25 },
         },
       },
+      AnalysisPlayer: {
+        type: "object",
+        properties: {
+          id: { type: "string" },
+          name: { type: "string" },
+          club: { type: "string" },
+          positions: { type: "array", items: { type: "string" } },
+          order: { type: "integer" },
+        },
+      },
+      AnalysisEntry: {
+        type: "object",
+        properties: {
+          id: { type: "string", format: "uuid" },
+          title: { type: "string" },
+          description: { type: ["string", "null"] },
+          type: { type: "string", enum: ["COMPARISON", "REPORT"] },
+          typeLabel: { type: "string" },
+          createdAt: { type: "string", format: "date-time" },
+          status: { type: "string", enum: ["COMPLETED", "IN_PROGRESS", "ARCHIVED"] },
+          statusLabel: { type: "string" },
+          analyst: { type: "string" },
+          playerCount: { type: "integer" },
+          canDelete: { type: "boolean" },
+          scoutReportId: { type: ["string", "null"] },
+          players: { type: "array", items: { $ref: "#/components/schemas/AnalysisPlayer" } },
+          decisionContext: {
+            type: "object",
+            properties: {
+              analyst: { type: "string" },
+              status: { type: "string", enum: ["COMPLETED", "IN_PROGRESS", "ARCHIVED"] },
+            },
+          },
+          sourceMetadata: {
+            type: "object",
+            properties: {
+              origin: { type: "string", enum: ["ANALYSIS", "SCOUT_REPORT"] },
+              legacy: { type: "boolean" },
+              scoutReportType: { type: ["string", "null"], enum: ["SINGLE", "COMPARE", "RANKING", null] },
+              scoutReportId: { type: ["string", "null"] },
+              decisionStatus: { type: ["string", "null"] },
+            },
+          },
+        },
+      },
     },
     parameters: {
       Page: { name: "page", in: "query", schema: { type: "integer", minimum: 1 } },
@@ -370,6 +415,104 @@ export const openApiDocument = {
                   allOf: [
                     { $ref: "#/components/schemas/ApiEnvelope" },
                     { type: "object", properties: { data: { $ref: "#/components/schemas/PlayerComparison" } } },
+                  ],
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+    "/api/analysis": {
+      get: {
+        summary: "List analysis hub entries with hybrid ScoutReport compatibility",
+        parameters: [
+          { name: "type", in: "query", schema: { type: "string", enum: ["COMPARISON", "REPORT"] } },
+          { name: "status", in: "query", schema: { type: "string", enum: ["COMPLETED", "IN_PROGRESS", "ARCHIVED"] } },
+          { name: "includeLegacy", in: "query", schema: { type: "boolean", default: true } },
+        ],
+        responses: {
+          200: {
+            description: "Analysis hub entries",
+            content: {
+              "application/json": {
+                schema: {
+                  allOf: [
+                    { $ref: "#/components/schemas/ApiEnvelope" },
+                    { type: "object", properties: { data: { type: "array", items: { $ref: "#/components/schemas/AnalysisEntry" } } } },
+                  ],
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+    "/api/analysis/{id}": {
+      get: {
+        summary: "Get a single analysis or legacy ScoutReport-mapped entry",
+        parameters: [{ name: "id", in: "path", required: true, schema: { type: "string", format: "uuid" } }],
+        responses: {
+          200: {
+            description: "Analysis entry",
+            content: {
+              "application/json": {
+                schema: {
+                  allOf: [
+                    { $ref: "#/components/schemas/ApiEnvelope" },
+                    { type: "object", properties: { data: { $ref: "#/components/schemas/AnalysisEntry" } } },
+                  ],
+                },
+              },
+            },
+          },
+        },
+      },
+      delete: {
+        summary: "Delete a persisted Analysis entry",
+        parameters: [{ name: "id", in: "path", required: true, schema: { type: "string", format: "uuid" } }],
+        responses: {
+          200: {
+            description: "Delete confirmation",
+            content: { "application/json": { schema: { $ref: "#/components/schemas/ApiEnvelope" } } },
+          },
+        },
+      },
+    },
+    "/api/analysis/comparison": {
+      post: {
+        summary: "Create a comparison analysis entry",
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  title: { type: "string" },
+                  description: { type: "string" },
+                  analyst: { type: "string" },
+                  status: { type: "string", enum: ["COMPLETED", "IN_PROGRESS", "ARCHIVED"] },
+                  playerIds: {
+                    type: "array",
+                    minItems: 2,
+                    items: { type: "string", format: "uuid" },
+                  },
+                },
+                required: ["playerIds"],
+              },
+            },
+          },
+        },
+        responses: {
+          201: {
+            description: "Created analysis entry",
+            content: {
+              "application/json": {
+                schema: {
+                  allOf: [
+                    { $ref: "#/components/schemas/ApiEnvelope" },
+                    { type: "object", properties: { data: { $ref: "#/components/schemas/AnalysisEntry" } } },
                   ],
                 },
               },

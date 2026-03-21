@@ -1,5 +1,24 @@
 import { z } from "zod";
 
+export const analysisListQuerySchema = z.object({
+  type: z.enum(["COMPARISON", "REPORT"]).optional(),
+  status: z.enum(["COMPLETED", "IN_PROGRESS", "ARCHIVED"]).optional(),
+  includeLegacy: z
+    .union([z.literal("true"), z.literal("false"), z.boolean()])
+    .optional()
+    .transform((value) => {
+      if (typeof value === "boolean") {
+        return value;
+      }
+
+      if (value === "false") {
+        return false;
+      }
+
+      return true;
+    }),
+});
+
 export const analysisParamsSchema = z.object({
   id: z.string().uuid("Invalid analysis id"),
 });

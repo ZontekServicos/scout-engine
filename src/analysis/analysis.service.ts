@@ -2,6 +2,13 @@ import { prisma } from "../lib/prisma";
 
 type AnalysisType = "COMPARISON" | "REPORT";
 type AnalysisStatus = "COMPLETED" | "IN_PROGRESS" | "ARCHIVED";
+type LegacyScoutType = "SINGLE" | "COMPARE" | "RANKING";
+
+export type ListAnalysesFilters = {
+  type?: AnalysisType;
+  status?: AnalysisStatus;
+  includeLegacy?: boolean;
+};
 
 type AnalysisPlayerViewModel = {
   id: string;
@@ -11,7 +18,15 @@ type AnalysisPlayerViewModel = {
   order: number;
 };
 
-type AnalysisViewModel = {
+type AnalysisSourceMetadata = {
+  origin: "ANALYSIS" | "SCOUT_REPORT";
+  legacy: boolean;
+  scoutReportType: LegacyScoutType | null;
+  scoutReportId: string | null;
+  decisionStatus: string | null;
+};
+
+export type AnalysisViewModel = {
   id: string;
   title: string;
   description: string | null;
@@ -22,16 +37,29 @@ type AnalysisViewModel = {
   statusLabel: string;
   analyst: string;
   players: AnalysisPlayerViewModel[];
+  playerCount: number;
+  canDelete: boolean;
+  decisionContext: {
+    analyst: string;
+    status: AnalysisStatus;
+  };
+  sourceMetadata: AnalysisSourceMetadata;
   scoutReportId: string | null;
 };
 
-type CreateComparisonAnalysisInput = {
+export type CreateComparisonAnalysisInput = {
   title?: string;
   description?: string;
   analyst?: string;
   status?: AnalysisStatus;
   playerIds: string[];
 };
+
+function createHttpError(message: string, statusCode: number) {
+  const error = new Error(message) as Error & { statusCode?: number };
+  error.statusCode = statusCode;
+  return error;
+}
 
 function normalizeText(value: string | null | undefined, fallback = "") {
   const trimmed = value?.trim();
@@ -133,38 +161,58 @@ function extractReportPlayers(report: {
 
 function buildReportTitle(report: {
   id: string;
+  type: LegacyScoutType;
   player?: { id?: string; name: string | null; team?: string | null; positions?: string[] } | null;
   output?: unknown;
 }) {
   const players = extractReportPlayers(report);
+  const prefix = report.type === "COMPARE" ? "Comparacao" : "Relatorio";
+
   if (players.length > 0) {
-    return `Relatorio - ${players.map((player) => player.name).join(" / ")}`;
+    return `${prefix} - ${players.map((player) => player.name).join(" / ")}`;
   }
 
-  return `Relatorio ${report.id.slice(0, 8)}`;
+  return `${prefix} ${report.id.slice(0, 8)}`;
 }
 
 function mapScoutReportToAnalysisViewModel(report: {
   id: string;
+  type: LegacyScoutType;
   createdAt: Date;
   requestedBy: string | null;
   decisionStatus: string | null;
   player?: { id: string; name: string | null; team?: string | null; positions?: string[] } | null;
   output?: unknown;
-}) : AnalysisViewModel {
+}): AnalysisViewModel {
   const players = extractReportPlayers(report);
+  const type: AnalysisType = report.type === "COMPARE" ? "COMPARISON" : "REPORT";
+  const status = normalizeReportStatus(report.decisionStatus);
+  const analyst = normalizeText(report.requestedBy, "Sistema SoccerMind");
 
   return {
     id: report.id,
     title: buildReportTitle(report),
     description: null,
-    type: "REPORT",
-    typeLabel: getAnalysisTypeLabel("REPORT"),
+    type,
+    typeLabel: getAnalysisTypeLabel(type),
     createdAt: report.createdAt.toISOString(),
-    status: normalizeReportStatus(report.decisionStatus),
-    statusLabel: getAnalysisStatusLabel(normalizeReportStatus(report.decisionStatus)),
-    analyst: normalizeText(report.requestedBy, "Sistema SoccerMind"),
+    status,
+    statusLabel: getAnalysisStatusLabel(status),
+    analyst,
     players,
+    playerCount: players.length,
+    canDelete: false,
+    decisionContext: {
+      analyst,
+      status,
+    },
+    sourceMetadata: {
+      origin: "SCOUT_REPORT",
+      legacy: true,
+      scoutReportType: report.type,
+      scoutReportId: report.id,
+      decisionStatus: report.decisionStatus,
+    },
     scoutReportId: report.id,
   };
 }
@@ -187,7 +235,7 @@ function mapAnalysisToViewModel(analysis: {
     };
   }>;
   scoutReportId?: string | null;
-}) : AnalysisViewModel {
+}): AnalysisViewModel {
   const players = analysis.comparisons
     .slice()
     .sort((a, b) => a.order - b.order)
@@ -198,6 +246,7 @@ function mapAnalysisToViewModel(analysis: {
       positions: entry.player.positions,
       order: entry.order,
     }));
+  const analyst = normalizeText(analysis.analyst, "Sistema SoccerMind");
 
   return {
     id: analysis.id,
@@ -208,8 +257,21 @@ function mapAnalysisToViewModel(analysis: {
     createdAt: analysis.createdAt.toISOString(),
     status: analysis.status,
     statusLabel: getAnalysisStatusLabel(analysis.status),
-    analyst: normalizeText(analysis.analyst, "Sistema SoccerMind"),
+    analyst,
     players,
+    playerCount: players.length,
+    canDelete: true,
+    decisionContext: {
+      analyst,
+      status: analysis.status,
+    },
+    sourceMetadata: {
+      origin: "ANALYSIS",
+      legacy: false,
+      scoutReportType: null,
+      scoutReportId: analysis.scoutReportId ?? null,
+      decisionStatus: null,
+    },
     scoutReportId: analysis.scoutReportId ?? null,
   };
 }
@@ -222,30 +284,39 @@ async function hasAnalysisTable() {
   return Boolean(result[0]?.relation_name);
 }
 
-async function listReportEntries() {
+async function listLegacyScoutReportEntries(filters: ListAnalysesFilters) {
+  if (filters.includeLegacy === false) {
+    return [] as AnalysisViewModel[];
+  }
+
+  const desiredTypes: LegacyScoutType[] | undefined = filters.type
+    ? filters.type === "COMPARISON"
+      ? ["COMPARE"]
+      : ["SINGLE", "RANKING"]
+    : undefined;
+
   const reports = await prisma.scoutReport.findMany({
-    where: {
-      type: {
-        not: "COMPARE",
-      },
-    },
+    where: desiredTypes ? { type: { in: desiredTypes } } : undefined,
     orderBy: { createdAt: "desc" },
     include: {
       player: true,
     },
   });
 
-  return reports.map(mapScoutReportToAnalysisViewModel);
+  return reports
+    .map(mapScoutReportToAnalysisViewModel)
+    .filter((entry) => (filters.status ? entry.status === filters.status : true));
 }
 
-async function listComparisonEntries() {
+async function listAnalysisEntries(filters: ListAnalysesFilters) {
   if (!(await hasAnalysisTable())) {
     return [] as AnalysisViewModel[];
   }
 
   const analyses = await prisma.analysis.findMany({
     where: {
-      type: "COMPARISON",
+      ...(filters.type ? { type: filters.type } : {}),
+      ...(filters.status ? { status: filters.status } : {}),
     },
     orderBy: { createdAt: "desc" },
     include: {
@@ -260,10 +331,13 @@ async function listComparisonEntries() {
   return analyses.map(mapAnalysisToViewModel);
 }
 
-export async function listAnalyses() {
-  const [reports, comparisons] = await Promise.all([listReportEntries(), listComparisonEntries()]);
+export async function listAnalyses(filters: ListAnalysesFilters = {}) {
+  const [reports, analyses] = await Promise.all([
+    listLegacyScoutReportEntries(filters),
+    listAnalysisEntries(filters),
+  ]);
 
-  return [...reports, ...comparisons].sort(
+  return [...reports, ...analyses].sort(
     (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
   );
 }
@@ -276,14 +350,12 @@ export async function getAnalysisById(id: string) {
     },
   });
 
-  if (report && report.type !== "COMPARE") {
+  if (report) {
     return mapScoutReportToAnalysisViewModel(report);
   }
 
   if (!(await hasAnalysisTable())) {
-    const error = new Error("Analysis not found") as Error & { statusCode?: number };
-    error.statusCode = 404;
-    throw error;
+    throw createHttpError("Analysis not found", 404);
   }
 
   const analysis = await prisma.analysis.findUnique({
@@ -298,9 +370,7 @@ export async function getAnalysisById(id: string) {
   });
 
   if (!analysis) {
-    const error = new Error("Analysis not found") as Error & { statusCode?: number };
-    error.statusCode = 404;
-    throw error;
+    throw createHttpError("Analysis not found", 404);
   }
 
   return mapAnalysisToViewModel(analysis);
@@ -308,17 +378,13 @@ export async function getAnalysisById(id: string) {
 
 export async function createComparisonAnalysis(input: CreateComparisonAnalysisInput) {
   if (!(await hasAnalysisTable())) {
-    const error = new Error("Analysis module is not initialized in the database yet") as Error & { statusCode?: number };
-    error.statusCode = 503;
-    throw error;
+    throw createHttpError("Analysis module is not initialized in the database yet", 503);
   }
 
   const playerIds = input.playerIds.filter((playerId, index, array) => array.indexOf(playerId) === index);
 
   if (playerIds.length < 2) {
-    const error = new Error("At least two unique players are required") as Error & { statusCode?: number };
-    error.statusCode = 400;
-    throw error;
+    throw createHttpError("At least two unique players are required", 400);
   }
 
   const players = await prisma.player.findMany({
@@ -334,9 +400,7 @@ export async function createComparisonAnalysis(input: CreateComparisonAnalysisIn
   });
 
   if (players.length !== playerIds.length) {
-    const error = new Error("One or more players were not found") as Error & { statusCode?: number };
-    error.statusCode = 400;
-    throw error;
+    throw createHttpError("One or more players were not found", 400);
   }
 
   const playersById = new Map(players.map((player) => [player.id, player]));
@@ -379,15 +443,11 @@ export async function deleteAnalysis(id: string) {
   });
 
   if (report) {
-    const error = new Error("Report entries must remain managed by ScoutReport") as Error & { statusCode?: number };
-    error.statusCode = 409;
-    throw error;
+    throw createHttpError("Report entries must remain managed by ScoutReport", 409);
   }
 
   if (!(await hasAnalysisTable())) {
-    const error = new Error("Analysis module is not initialized in the database yet") as Error & { statusCode?: number };
-    error.statusCode = 503;
-    throw error;
+    throw createHttpError("Analysis module is not initialized in the database yet", 503);
   }
 
   const existingAnalysis = await prisma.analysis.findUnique({
@@ -398,9 +458,7 @@ export async function deleteAnalysis(id: string) {
   });
 
   if (!existingAnalysis) {
-    const error = new Error("Analysis not found") as Error & { statusCode?: number };
-    error.statusCode = 404;
-    throw error;
+    throw createHttpError("Analysis not found", 404);
   }
 
   await prisma.analysis.delete({
