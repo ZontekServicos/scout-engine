@@ -134,6 +134,8 @@ export const openApiDocument = {
           analyst: { type: "string" },
           playerCount: { type: "integer" },
           canDelete: { type: "boolean" },
+          deleteManagedBy: { type: "string", enum: ["analysis", "scout_report"] },
+          deleteHint: { type: "string" },
           scoutReportId: { type: ["string", "null"] },
           players: { type: "array", items: { $ref: "#/components/schemas/AnalysisPlayer" } },
           decisionContext: {
@@ -151,6 +153,14 @@ export const openApiDocument = {
               scoutReportType: { type: ["string", "null"], enum: ["SINGLE", "COMPARE", "RANKING", null] },
               scoutReportId: { type: ["string", "null"] },
               decisionStatus: { type: ["string", "null"] },
+            },
+          },
+          deletePolicy: {
+            type: "object",
+            properties: {
+              canDelete: { type: "boolean" },
+              managedBy: { type: "string", enum: ["ANALYSIS", "SCOUT_REPORT"] },
+              reason: { type: "string" },
             },
           },
         },
@@ -517,6 +527,22 @@ export const openApiDocument = {
                 },
               },
             },
+          },
+        },
+      },
+    },
+    "/api/scout-reports/{id}": {
+      delete: {
+        summary: "Delete a legacy ScoutReport entry",
+        parameters: [{ name: "id", in: "path", required: true, schema: { type: "string", format: "uuid" } }],
+        responses: {
+          200: {
+            description: "Delete confirmation",
+            content: { "application/json": { schema: { $ref: "#/components/schemas/ApiEnvelope" } } },
+          },
+          404: {
+            description: "ScoutReport not found",
+            content: { "application/json": { schema: { $ref: "#/components/schemas/ApiEnvelope" } } },
           },
         },
       },

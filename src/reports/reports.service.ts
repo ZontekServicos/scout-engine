@@ -1,5 +1,11 @@
 import { prisma } from "../lib/prisma";
 
+function createHttpError(message: string, statusCode: number) {
+  const error = new Error(message) as Error & { statusCode?: number };
+  error.statusCode = statusCode;
+  return error;
+}
+
 interface GetReportsParams {
   page?: number;
   limit?: number;
@@ -54,7 +60,7 @@ export async function getReportById(id: string) {
   });
 
   if (!report) {
-    throw new Error("Report not found");
+    throw createHttpError("Report not found", 404);
   }
 
   return {
@@ -63,13 +69,14 @@ export async function getReportById(id: string) {
     nomeJogador: report.player?.name ?? null,
   };
 }
-export async function deleteReport(id: string) {
+
+export async function deleteScoutReport(id: string) {
   const report = await prisma.scoutReport.findUnique({
     where: { id },
   });
 
   if (!report) {
-    throw new Error("Report not found");
+    throw createHttpError("Report not found", 404);
   }
 
   await prisma.scoutReport.delete({
@@ -80,4 +87,8 @@ export async function deleteReport(id: string) {
     message: "Report deleted successfully",
     id,
   };
+}
+
+export async function deleteReport(id: string) {
+  return deleteScoutReport(id);
 }

@@ -50,6 +50,8 @@ export type AnalysisViewModel = {
   players: AnalysisPlayerViewModel[];
   playerCount: number;
   canDelete: boolean;
+  deleteManagedBy: "analysis" | "scout_report";
+  deleteHint: string;
   decisionContext: {
     analyst: string;
     status: AnalysisStatus;
@@ -213,7 +215,9 @@ function mapScoutReportToAnalysisViewModel(report: {
     analyst,
     players,
     playerCount: players.length,
-    canDelete: false,
+    canDelete: true,
+    deleteManagedBy: "scout_report",
+    deleteHint: "Entrada legada removivel via ScoutReport; exclusao deve usar o endpoint dedicado de ScoutReport.",
     decisionContext: {
       analyst,
       status,
@@ -226,9 +230,9 @@ function mapScoutReportToAnalysisViewModel(report: {
       decisionStatus: report.decisionStatus,
     },
     deletePolicy: {
-      canDelete: false,
+      canDelete: true,
       managedBy: "SCOUT_REPORT",
-      reason: "Entrada legada protegida; exclusao deve continuar sendo feita pelo fluxo de ScoutReport.",
+      reason: "Entrada legada removivel via ScoutReport; exclusao deve usar o endpoint dedicado de ScoutReport.",
     },
     scoutReportId: report.id,
   };
@@ -278,6 +282,8 @@ function mapAnalysisToViewModel(analysis: {
     players,
     playerCount: players.length,
     canDelete: true,
+    deleteManagedBy: "analysis",
+    deleteHint: "Entrada persistida na central Analysis; exclusao permitida por este endpoint.",
     decisionContext: {
       analyst,
       status: analysis.status,
