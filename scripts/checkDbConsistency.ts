@@ -1,3 +1,4 @@
+import "dotenv/config";
 import { PrismaClient } from "@prisma/client";
 
 const prisma = new PrismaClient();
@@ -29,6 +30,8 @@ async function main() {
     "PlayerFinancials",
     "PlayerRiskSnapshot",
     "ScoutReport",
+    "Analysis",
+    "AnalysisComparison",
     "_prisma_migrations",
   ] as const;
 
@@ -39,7 +42,7 @@ async function main() {
   const existence = Object.fromEntries(existenceEntries);
 
   const counts: Record<string, number | null> = {};
-  for (const tableName of ["Player", "PlayerMetrics", "PlayerFinancials", "PlayerRiskSnapshot", "ScoutReport"]) {
+  for (const tableName of ["Player", "PlayerMetrics", "PlayerFinancials", "PlayerRiskSnapshot", "ScoutReport", "Analysis", "AnalysisComparison"]) {
     counts[tableName] = existence[tableName] ? await countRows(tableName) : null;
   }
 

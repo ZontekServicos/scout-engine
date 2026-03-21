@@ -10,6 +10,7 @@
     "start": "node dist/server.js",
     "test": "echo \"Error: no test specified\" && exit 1",
     "db:check": "ts-node scripts/checkDbConsistency.ts",
+    "db:check:analysis": "ts-node scripts/checkAnalysisReadiness.ts",
     "db:backfill": "ts-node scripts/backfillAnalyticalSnapshots.ts",
     "import:players": "ts-node scripts/importPlayers.ts",
     "import:fc26": "ts-node scripts/import_fc26_players.ts",
