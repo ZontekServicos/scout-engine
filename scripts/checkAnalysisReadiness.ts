@@ -49,6 +49,34 @@ const requiredColumns: Record<string, string[]> = {
   AnalysisComparison: ["id", "analysisId", "playerId", "order"],
 };
 
+function getDatabaseTarget() {
+  const rawUrl = process.env.DATABASE_URL;
+
+  if (!rawUrl) {
+    return {
+      protocol: null,
+      host: null,
+      database: null,
+    };
+  }
+
+  try {
+    const parsed = new URL(rawUrl);
+
+    return {
+      protocol: parsed.protocol.replace(":", ""),
+      host: parsed.host,
+      database: parsed.pathname.replace(/^\//, "") || null,
+    };
+  } catch {
+    return {
+      protocol: "invalid",
+      host: null,
+      database: null,
+    };
+  }
+}
+
 async function tableExists(name: string) {
   const rows = await prisma.$queryRaw<Array<{ exists: boolean }>>`
     SELECT EXISTS (
@@ -170,6 +198,7 @@ async function main() {
 
   const result = {
     databaseUrlConfigured: Boolean(process.env.DATABASE_URL),
+    databaseTarget: getDatabaseTarget(),
     runtimeReady,
     migrationHistoryAligned,
     partiallyMigrated,

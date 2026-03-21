@@ -26,6 +26,17 @@ type AnalysisSourceMetadata = {
   decisionStatus: string | null;
 };
 
+type AnalysisDeletePolicy = {
+  canDelete: boolean;
+  managedBy: "ANALYSIS" | "SCOUT_REPORT";
+  reason: string;
+};
+
+export type AnalysisRuntimeStatus = {
+  ready: boolean;
+  missingTables: string[];
+};
+
 export type AnalysisViewModel = {
   id: string;
   title: string;
@@ -44,6 +55,7 @@ export type AnalysisViewModel = {
     status: AnalysisStatus;
   };
   sourceMetadata: AnalysisSourceMetadata;
+  deletePolicy: AnalysisDeletePolicy;
   scoutReportId: string | null;
 };
 
@@ -213,6 +225,11 @@ function mapScoutReportToAnalysisViewModel(report: {
       scoutReportId: report.id,
       decisionStatus: report.decisionStatus,
     },
+    deletePolicy: {
+      canDelete: false,
+      managedBy: "SCOUT_REPORT",
+      reason: "Entrada legada protegida; exclusao deve continuar sendo feita pelo fluxo de ScoutReport.",
+    },
     scoutReportId: report.id,
   };
 }
@@ -272,16 +289,50 @@ function mapAnalysisToViewModel(analysis: {
       scoutReportId: analysis.scoutReportId ?? null,
       decisionStatus: null,
     },
+    deletePolicy: {
+      canDelete: true,
+      managedBy: "ANALYSIS",
+      reason: "Entrada persistida na central Analysis; exclusao permitida por este endpoint.",
+    },
     scoutReportId: analysis.scoutReportId ?? null,
   };
 }
 
-async function hasAnalysisTable() {
-  const result = await prisma.$queryRaw<Array<{ relation_name: string | null }>>`
-    SELECT to_regclass('public."Analysis"')::text AS relation_name
+async function getAnalysisRuntimeStatus(): Promise<AnalysisRuntimeStatus> {
+  const result = await prisma.$queryRaw<Array<{ analysis_table: string | null; comparison_table: string | null }>>`
+    SELECT
+      to_regclass('public."Analysis"')::text AS analysis_table,
+      to_regclass('public."AnalysisComparison"')::text AS comparison_table
   `;
 
-  return Boolean(result[0]?.relation_name);
+  const missingTables = [
+    !result[0]?.analysis_table ? "Analysis" : null,
+    !result[0]?.comparison_table ? "AnalysisComparison" : null,
+  ].filter((value): value is string => Boolean(value));
+
+  return {
+    ready: missingTables.length === 0,
+    missingTables,
+  };
+}
+
+function buildAnalysisRuntimeErrorMessage(runtime: AnalysisRuntimeStatus) {
+  const missingDetails =
+    runtime.missingTables.length > 0
+      ? ` Missing database objects: ${runtime.missingTables.join(", ")}.`
+      : "";
+
+  return `Analysis module is not initialized in the configured database yet.${missingDetails}`;
+}
+
+async function assertAnalysisRuntimeReady() {
+  const runtime = await getAnalysisRuntimeStatus();
+
+  if (!runtime.ready) {
+    throw createHttpError(buildAnalysisRuntimeErrorMessage(runtime), 503);
+  }
+
+  return runtime;
 }
 
 async function listLegacyScoutReportEntries(filters: ListAnalysesFilters) {
@@ -309,7 +360,8 @@ async function listLegacyScoutReportEntries(filters: ListAnalysesFilters) {
 }
 
 async function listAnalysisEntries(filters: ListAnalysesFilters) {
-  if (!(await hasAnalysisTable())) {
+  const runtime = await getAnalysisRuntimeStatus();
+  if (!runtime.ready) {
     return [] as AnalysisViewModel[];
   }
 
@@ -354,7 +406,8 @@ export async function getAnalysisById(id: string) {
     return mapScoutReportToAnalysisViewModel(report);
   }
 
-  if (!(await hasAnalysisTable())) {
+  const runtime = await getAnalysisRuntimeStatus();
+  if (!runtime.ready) {
     throw createHttpError("Analysis not found", 404);
   }
 
@@ -377,9 +430,7 @@ export async function getAnalysisById(id: string) {
 }
 
 export async function createComparisonAnalysis(input: CreateComparisonAnalysisInput) {
-  if (!(await hasAnalysisTable())) {
-    throw createHttpError("Analysis module is not initialized in the database yet", 503);
-  }
+  await assertAnalysisRuntimeReady();
 
   const playerIds = input.playerIds.filter((playerId, index, array) => array.indexOf(playerId) === index);
 
@@ -446,9 +497,7 @@ export async function deleteAnalysis(id: string) {
     throw createHttpError("Report entries must remain managed by ScoutReport", 409);
   }
 
-  if (!(await hasAnalysisTable())) {
-    throw createHttpError("Analysis module is not initialized in the database yet", 503);
-  }
+  await assertAnalysisRuntimeReady();
 
   const existingAnalysis = await prisma.analysis.findUnique({
     where: { id },
