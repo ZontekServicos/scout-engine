@@ -76,7 +76,7 @@ export async function deleteScoutReport(id: string) {
   });
 
   if (!report) {
-    throw createHttpError("Report not found", 404);
+    throw createHttpError("ScoutReport not found", 404);
   }
 
   await prisma.scoutReport.delete({
@@ -84,7 +84,7 @@ export async function deleteScoutReport(id: string) {
   });
 
   return {
-    message: "Report deleted successfully",
+    message: "ScoutReport deleted successfully",
     id,
   };
 }
