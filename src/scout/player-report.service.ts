@@ -1,4 +1,3 @@
-import { Prisma } from "@prisma/client";
 import { createReportAnalysis } from "../analysis/analysis.service";
 import { generatePlayerNarrativeReport } from "../ai/scout.service";
 import { getPlayerProfile, getPlayerProjection } from "./player.service";
@@ -41,7 +40,7 @@ function buildFallbackRecommendation(profile: PlayerProfileResponse, projection:
   const expectedPeak = typeof projection.expectedPeak === "number" ? projection.expectedPeak : profile.potential ?? profile.overall ?? 0;
 
   if (riskLevel === "LOW" && liquidityScore >= 6.5 && expectedPeak >= (profile.overall ?? 0) + 2) {
-    return "Ativo com janela favoravel para investimento, desde que o pacote financeiro permaneça dentro da disciplina de caixa do clube.";
+    return "Ativo com janela favoravel para investimento, desde que o pacote financeiro permaneÃ§a dentro da disciplina de caixa do clube.";
   }
 
   if (riskLevel === "HIGH" || liquidityScore < 4.5) {
@@ -123,22 +122,11 @@ export async function generatePlayerReportAnalysis(playerId: string, options?: {
     growthProjection: projection,
   };
 
-  const metadata = {
-    kind: "player_report",
-    analysisMode: "single_player",
-    player: profile as unknown as Prisma.InputJsonValue,
-    metrics: metrics as unknown as Prisma.InputJsonValue,
-    aiNarrative: aiResult.narrative,
-    recommendation,
-    createdAt,
-  } as unknown as Prisma.InputJsonValue;
-
   const savedAnalysis = await createReportAnalysis({
     playerIds: [playerId],
     title: `Relatorio Individual - ${profile.name}`,
     description: normalizeNarrativeDescription(aiResult.narrative),
     analyst: options?.analyst,
-    metadata,
   });
 
   return {
@@ -150,3 +138,4 @@ export async function generatePlayerReportAnalysis(playerId: string, options?: {
     createdAt,
   };
 }
+

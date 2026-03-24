@@ -1,4 +1,3 @@
-import { Prisma } from "@prisma/client";
 import { prisma } from "../lib/prisma";
 import { compareByIds } from "../scout/compare.service";
 
@@ -43,7 +42,6 @@ export type AnalysisViewModel = {
   id: string;
   title: string;
   description: string | null;
-  metadata: Prisma.JsonValue | null;
   type: AnalysisType;
   typeLabel: string;
   createdAt: string;
@@ -70,7 +68,6 @@ export type AnalysisReportContentViewModel = {
   contentStatus: "ready" | "partial";
   contentMessage: string | null;
   comparisonData: unknown | null;
-  playerReportData: Prisma.JsonValue | null;
 };
 
 export type AnalysisDetailViewModel = AnalysisViewModel & {
@@ -91,7 +88,6 @@ export type CreateReportAnalysisInput = {
   analyst?: string;
   status?: AnalysisStatus;
   playerIds: string[];
-  metadata?: Prisma.InputJsonValue | null;
 };
 
 function createHttpError(message: string, statusCode: number) {
@@ -300,7 +296,6 @@ function mapScoutReportToAnalysisViewModel(report: {
     id: report.id,
     title: buildReportTitle(report),
     description: null,
-    metadata: null,
     type,
     typeLabel: getAnalysisTypeLabel(type),
     createdAt: report.createdAt.toISOString(),
@@ -336,7 +331,6 @@ function mapAnalysisToViewModel(analysis: {
   id: string;
   title: string;
   description: string | null;
-  metadata?: Prisma.JsonValue | null;
   type: AnalysisType;
   status: AnalysisStatus;
   analyst: string | null;
@@ -368,7 +362,6 @@ function mapAnalysisToViewModel(analysis: {
     id: analysis.id,
     title: analysis.title,
     description: analysis.description,
-    metadata: analysis.metadata ?? null,
     type: analysis.type,
     typeLabel: getAnalysisTypeLabel(analysis.type),
     createdAt: analysis.createdAt.toISOString(),
@@ -402,7 +395,6 @@ function mapAnalysisToViewModel(analysis: {
 
 async function buildReportContent(
   players: AnalysisPlayerViewModel[],
-  metadata: Prisma.JsonValue | null,
 ): Promise<AnalysisReportContentViewModel> {
   const orderedPlayers = players
     .slice()
@@ -412,14 +404,10 @@ async function buildReportContent(
   if (orderedPlayers.length < 2) {
     return {
       mode: "single_player",
-      canExportPdf: metadata !== null,
-      contentStatus: metadata !== null ? "ready" : "partial",
-      contentMessage:
-        metadata !== null
-          ? null
-          : "Este relatorio nao possui dois jogadores suficientes para reconstruir a leitura executiva completa.",
+      canExportPdf: false,
+      contentStatus: "partial",
+      contentMessage: "Este relatorio nao possui dois jogadores suficientes para reconstruir a leitura executiva completa.",
       comparisonData: null,
-      playerReportData: metadata,
     };
   }
 
@@ -431,7 +419,6 @@ async function buildReportContent(
       contentStatus: "ready",
       contentMessage: null,
       comparisonData,
-      playerReportData: metadata,
     };
   } catch (error) {
     return {
@@ -440,7 +427,6 @@ async function buildReportContent(
       contentStatus: "partial",
       contentMessage: error instanceof Error ? error.message : "Nao foi possivel reconstruir o conteudo do relatorio.",
       comparisonData: null,
-      playerReportData: metadata,
     };
   }
 }
@@ -518,7 +504,15 @@ async function listAnalysisEntries(filters: ListAnalysesFilters) {
       ...(filters.status ? { status: filters.status } : {}),
     },
     orderBy: { createdAt: "desc" },
-    include: {
+    select: {
+      id: true,
+      title: true,
+      description: true,
+      type: true,
+      status: true,
+      analyst: true,
+      createdAt: true,
+      scoutReportId: true,
       comparisons: {
         include: {
           player: true,
@@ -563,7 +557,15 @@ export async function getAnalysisById(id: string): Promise<AnalysisDetailViewMod
 
   const analysis = await (prisma.analysis as any).findUnique({
     where: { id },
-    include: {
+    select: {
+      id: true,
+      title: true,
+      description: true,
+      type: true,
+      status: true,
+      analyst: true,
+      createdAt: true,
+      scoutReportId: true,
       comparisons: {
         include: {
           player: true,
@@ -580,7 +582,7 @@ export async function getAnalysisById(id: string): Promise<AnalysisDetailViewMod
 
   return {
     ...viewModel,
-    reportContent: viewModel.type === "REPORT" ? await buildReportContent(viewModel.players, viewModel.metadata) : null,
+    reportContent: viewModel.type === "REPORT" ? await buildReportContent(viewModel.players) : null,
   };
 }
 
@@ -619,7 +621,6 @@ export async function createComparisonAnalysis(input: CreateComparisonAnalysisIn
       type: "COMPARISON",
       title,
       description: normalizeText(input.description) || null,
-      metadata: null,
       analyst: normalizeText(input.analyst, "Sistema SoccerMind"),
       status: input.status ?? "COMPLETED",
       comparisons: {
@@ -629,7 +630,15 @@ export async function createComparisonAnalysis(input: CreateComparisonAnalysisIn
         })),
       },
     },
-    include: {
+    select: {
+      id: true,
+      title: true,
+      description: true,
+      type: true,
+      status: true,
+      analyst: true,
+      createdAt: true,
+      scoutReportId: true,
       comparisons: {
         include: {
           player: true,
@@ -680,7 +689,6 @@ export async function createReportAnalysis(input: CreateReportAnalysisInput) {
       type: "REPORT",
       title,
       description: normalizeText(input.description) || (await buildReportAnalysisDescription(orderedPlayers)),
-      metadata: input.metadata ?? undefined,
       analyst: normalizeText(input.analyst, "Sistema SoccerMind"),
       status: input.status ?? "COMPLETED",
       comparisons: {
@@ -690,7 +698,15 @@ export async function createReportAnalysis(input: CreateReportAnalysisInput) {
         })),
       },
     },
-    include: {
+    select: {
+      id: true,
+      title: true,
+      description: true,
+      type: true,
+      status: true,
+      analyst: true,
+      createdAt: true,
+      scoutReportId: true,
       comparisons: {
         include: {
           player: true,
