@@ -1,6 +1,7 @@
 import { Request, Response } from "express";
 import { successResponse } from "../lib/apiResponse";
 import { withCache } from "../lib/cache";
+import { generatePlayerReportAnalysis } from "../scout/player-report.service";
 import { getPlayerProfile, getPlayerProjection, getSimilarPlayers, listPlayers } from "../scout/player.service";
 import { addScoutNote, getScoutNotes } from "../scout/scout-notes.store";
 
@@ -119,4 +120,13 @@ export async function createPlayerNoteController(req: Request, res: Response) {
   const playerId = getParam(req.params.id);
   const note = addScoutNote(playerId, String(req.body.note ?? ""), String(req.body.createdBy ?? "analyst"));
   return res.json(successResponse(note));
+}
+
+export async function createPlayerReportController(req: Request, res: Response) {
+  const playerId = getParam(req.params.id);
+  const data = await generatePlayerReportAnalysis(playerId, {
+    analyst: typeof req.body?.analyst === "string" ? req.body.analyst : undefined,
+  });
+
+  return res.status(201).json(successResponse(data));
 }

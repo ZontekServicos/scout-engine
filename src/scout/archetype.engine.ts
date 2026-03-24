@@ -49,6 +49,10 @@ function classifyArchetype(attributes: Attributes): ArchetypeResult {
   return pickArchetype(attributes);
 }
 
+export function classifyPlayerArchetype(attributes: Attributes): ArchetypeResult {
+  return classifyArchetype(attributes);
+}
+
 /* =========================
    ENGINE PRINCIPAL
 ========================= */

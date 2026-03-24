@@ -2,6 +2,7 @@ import { Router } from "express";
 import { asyncHandler } from "../lib/asyncHandler";
 import {
   createPlayerNoteController,
+  createPlayerReportController,
   getPlayerProfileController,
   getPlayerProjectionController,
   getPlayerSimilarController,
@@ -17,6 +18,8 @@ router.get("/players/search", asyncHandler(searchPlayersController));
 
 router.get("/player/:id", asyncHandler(getPlayerProfileController));
 
+router.post("/player/:id/report", asyncHandler(createPlayerReportController));
+
 router.get("/player/:id/projection", asyncHandler(getPlayerProjectionController));
 
 router.get("/player/:id/similar", asyncHandler(getPlayerSimilarController));
@@ -26,4 +29,3 @@ router.get("/player/:id/notes", asyncHandler(listPlayerNotesController));
 router.post("/player/:id/notes", asyncHandler(createPlayerNoteController));
 
 export default router;
-

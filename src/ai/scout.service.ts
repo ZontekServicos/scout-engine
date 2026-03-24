@@ -1,4 +1,5 @@
 import OpenAI from "openai";
+import { buildPlayerReportPrompt } from "./player-report.prompt";
 import { buildScoutPrompt } from "./scout.prompt";
 import { getFromCache, saveToCache } from "./ai.cache";
 
@@ -15,9 +16,49 @@ interface AIReportInput {
   quantitative: any;
 }
 
-export async function generateAIReport(data: AIReportInput): Promise<string | null> {
+interface PlayerNarrativeInput {
+  name: string;
+  position: string;
+  age: number;
+  club: string;
+  league: string;
+  overall: number;
+  potential: number;
+  tier: string;
+  archetype: string;
+  riskScore: number;
+  riskLevel: string;
+  riskSummary: string;
+  financialRisk: number;
+  liquidityScore: number;
+  capitalEfficiency: number;
+  marketValue: number | null;
+  growthProjection: {
+    growthIndex: number;
+    expectedOverallNextSeason: number;
+    expectedPeak: number;
+  };
+}
+
+type PlayerNarrativeResult = {
+  narrative: string | null;
+  recommendation: string | null;
+};
+
+function getOpenAIClient() {
   if (!process.env.OPENAI_API_KEY) {
     console.warn("OPENAI_API_KEY not configured.");
+    return null;
+  }
+
+  return new OpenAI({
+    apiKey: process.env.OPENAI_API_KEY,
+  });
+}
+
+export async function generateAIReport(data: AIReportInput): Promise<string | null> {
+  const client = getOpenAIClient();
+  if (!client) {
     return null;
   }
 
@@ -30,10 +71,6 @@ export async function generateAIReport(data: AIReportInput): Promise<string | nu
   }
 
   try {
-    const client = new OpenAI({
-      apiKey: process.env.OPENAI_API_KEY,
-    });
-
     const prompt = buildScoutPrompt(data);
 
     const response = await client.chat.completions.create({
@@ -63,5 +100,74 @@ export async function generateAIReport(data: AIReportInput): Promise<string | nu
   } catch (error) {
     console.error("❌ GPT ERROR:", error);
     return null;
+  }
+}
+
+export async function generatePlayerNarrativeReport(data: PlayerNarrativeInput): Promise<PlayerNarrativeResult> {
+  const client = getOpenAIClient();
+  if (!client) {
+    return {
+      narrative: null,
+      recommendation: null,
+    };
+  }
+
+  const cacheKey = `player_report_${data.name}_${data.position}_${data.overall}_${data.potential}_${data.riskScore.toFixed(1)}`;
+  const cached = getFromCache(cacheKey);
+
+  if (cached) {
+    try {
+      return JSON.parse(cached) as PlayerNarrativeResult;
+    } catch {
+      return {
+        narrative: cached,
+        recommendation: null,
+      };
+    }
+  }
+
+  try {
+    const prompt = buildPlayerReportPrompt(data);
+
+    const response = await client.chat.completions.create({
+      model: "gpt-4o-mini",
+      response_format: { type: "json_object" },
+      messages: [
+        {
+          role: "system",
+          content:
+            "You are an elite football scouting analyst. Always return strict JSON with keys narrative and recommendation.",
+        },
+        {
+          role: "user",
+          content: prompt,
+        },
+      ],
+      temperature: 0.4,
+      max_tokens: 700,
+    });
+
+    const raw = response.choices?.[0]?.message?.content?.trim();
+    if (!raw) {
+      return {
+        narrative: null,
+        recommendation: null,
+      };
+    }
+
+    const parsed = JSON.parse(raw) as { narrative?: unknown; recommendation?: unknown };
+    const result = {
+      narrative: typeof parsed.narrative === "string" ? parsed.narrative.trim() : null,
+      recommendation: typeof parsed.recommendation === "string" ? parsed.recommendation.trim() : null,
+    };
+
+    saveToCache(cacheKey, JSON.stringify(result));
+    return result;
+  } catch (error) {
+    console.error("PLAYER REPORT GPT ERROR:", error);
+    return {
+      narrative: null,
+      recommendation: null,
+    };
   }
 }

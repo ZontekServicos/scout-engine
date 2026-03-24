@@ -1,6 +1,7 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "../lib/prisma";
 import { calculateCapitalEfficiency } from "./capital-efficiency.engine";
+import { classifyPlayerArchetype } from "./archetype.engine";
 import { calculateFinancialRisk } from "./financial-risk.engine";
 import { calculateGrowthProjection } from "./growth-projection.engine";
 import { buildNormalizedRiskPayload } from "./investment-risk.engine";
@@ -926,6 +927,21 @@ export async function getPlayerProfile(id: string) {
     aggression: raw.aggression ?? summary.detailedStats.aggression,
     positioning: raw.positioning ?? summary.detailedStats.attackPosition,
   };
+  const storedArchetype =
+    refreshedPlayer.archetype && typeof refreshedPlayer.archetype === "object"
+      ? (refreshedPlayer.archetype as Record<string, unknown>)
+      : null;
+  const computedArchetype = classifyPlayerArchetype(summary.fifa);
+  const archetype = {
+    label:
+      (typeof storedArchetype?.role === "string" && storedArchetype.role.trim()) ||
+      (typeof storedArchetype?.archetype === "string" && storedArchetype.archetype.trim()) ||
+      computedArchetype.archetype,
+    confidence:
+      typeof storedArchetype?.confidence === "number" && Number.isFinite(storedArchetype.confidence)
+        ? storedArchetype.confidence
+        : computedArchetype.confidence,
+  };
 
   return {
     player: summary.player,
@@ -946,8 +962,11 @@ export async function getPlayerProfile(id: string) {
     marketValue: summary.player.marketValue ?? null,
     contractEnd: refreshedPlayer.contractEnd ? String(refreshedPlayer.contractEnd) : null,
     overall: summary.overall.overall,
+    tier: summary.overall.tier,
+    positionRank: summary.overall.positionRank,
     fifaStyle: summary.overall.fifaStyle,
     potential: summary.potential,
+    archetype,
     capitalEfficiency: capitalEfficiency.index,
     liquidityScore: liquidity.liquidityScore,
     structuralRisk: risk.totalRisk,
