@@ -100,20 +100,13 @@ export async function generatePlayerReportAnalysis(playerId: string, options?: {
       marketValue: Number(((profile.marketValue ?? 0) / 1_000_000).toFixed(1)),
     });
   } catch (error) {
-    console.error("PLAYER REPORT AI FAILURE:", {
-      playerId,
-      playerName: profile.name,
-      message: error instanceof Error ? error.message : error,
-    });
-    throw createHttpError("IA indisponivel, tente novamente", 500);
+    console.error("OpenAI error:", error);
+    throw createHttpError("IA indisponível, tente novamente", 500);
   }
 
   if (!aiResult.narrative?.trim()) {
-    console.error("PLAYER REPORT AI FAILURE: empty narrative", {
-      playerId,
-      playerName: profile.name,
-    });
-    throw createHttpError("IA indisponivel, tente novamente", 500);
+    console.error("OpenAI error:", new Error("OpenAI returned an empty narrative for player report."));
+    throw createHttpError("IA indisponível, tente novamente", 500);
   }
 
   const recommendation = aiResult.recommendation ?? buildFallbackRecommendation(profile, projection);

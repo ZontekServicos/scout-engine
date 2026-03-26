@@ -78,7 +78,14 @@ export type AnalysisReportContentViewModel = {
       position: string | null;
       club: string | null;
       league: string | null;
+      nationality: string | null;
       age: number | null;
+      pac: number | null;
+      sho: number | null;
+      pas: number | null;
+      dri: number | null;
+      def: number | null;
+      phy: number | null;
     };
     metrics: {
       overall: number;
@@ -86,10 +93,14 @@ export type AnalysisReportContentViewModel = {
       marketValue: number | null;
       riskScore: number;
       riskLevel: string;
+      riskSummary: string;
+      financialRisk: number;
       liquidityScore: number;
       capitalEfficiency: number;
       tier: string;
+      archetype: string;
       recommendation: string;
+      growthProjection: Awaited<ReturnType<typeof getPlayerProjection>>;
     };
     aiNarrative: string;
   } | null;
@@ -466,7 +477,14 @@ async function buildReportContent(
             position: playerProfile.position ?? null,
             club: playerProfile.team ?? null,
             league: playerProfile.league ?? null,
+            nationality: playerProfile.player?.nationality ?? null,
             age: playerProfile.age ?? null,
+            pac: typeof playerProfile.attributes?.pace === "number" ? playerProfile.attributes.pace : null,
+            sho: typeof playerProfile.attributes?.shooting === "number" ? playerProfile.attributes.shooting : null,
+            pas: typeof playerProfile.attributes?.passing === "number" ? playerProfile.attributes.passing : null,
+            dri: typeof playerProfile.attributes?.dribbling === "number" ? playerProfile.attributes.dribbling : null,
+            def: typeof playerProfile.attributes?.defending === "number" ? playerProfile.attributes.defending : null,
+            phy: typeof playerProfile.attributes?.physical === "number" ? playerProfile.attributes.physical : null,
           },
           metrics: {
             overall: playerProfile.overall ?? 0,
@@ -479,15 +497,19 @@ async function buildReportContent(
               playerProfile.risk?.level === "HIGH"
                 ? playerProfile.risk.level
                 : "MEDIUM",
+            riskSummary: normalizeText(playerProfile.risk?.explanation, "Leitura de risco indisponivel."),
+            financialRisk: Number(playerProfile.financialRisk ?? 0),
             liquidityScore: Number(playerProfile.liquidityScore ?? 0),
             capitalEfficiency: Number(playerProfile.capitalEfficiency ?? 0),
             tier: toDisplayTier(playerProfile.tier),
+            archetype: normalizeText(playerProfile.archetype?.label, "Nao classificado"),
             recommendation:
               typeof projection.expectedPeak === "number" &&
               typeof playerProfile.overall === "number" &&
               projection.expectedPeak >= playerProfile.overall + 2
                 ? "Ha margem de upside esportivo, com recomendacao condicionada a disciplina de preco e aderencia tatico-financeira."
                 : "Perfil para acompanhamento executivo, com decisao final dependente de preco, risco e contexto competitivo.",
+            growthProjection: projection,
           },
           aiNarrative: normalizeText(description, "Narrativa de scouting indisponivel."),
         },

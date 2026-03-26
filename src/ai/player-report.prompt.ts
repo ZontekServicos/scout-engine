@@ -15,32 +15,32 @@ export function buildPlayerReportPrompt(player: {
   marketValue: number;
 }): string {
   return `
-Você é um analista sênior de scouting esportivo.
-Gere um relatório individual objetivo e executivo em português
+Voce e um analista senior de scouting esportivo.
+Gere um relatorio individual objetivo e executivo em portugues
 sobre o jogador abaixo. Sem elogios vagos. Tom profissional.
 
 DADOS DO JOGADOR:
 - Nome: ${player.name}
-- Posição: ${player.position}
+- Posicao: ${player.position}
 - Idade: ${player.age} anos
 - Clube: ${player.club}
 - Liga: ${player.league}
 - Overall: ${player.overall}
 - Potencial: ${player.potential}
 - Tier: ${player.tier}
-- Arquétipo: ${player.archetype || "Não classificado"}
+- Arquetipo: ${player.archetype || "Nao classificado"}
 - Risco composto: ${player.riskScore} (${player.riskLevel})
 - Liquidez: ${player.liquidityScore}/10
 - Capital Efficiency: ${player.capitalEfficiency}/10
 - Valor de mercado: EUR ${player.marketValue}M
 
-Estruture sua resposta em exatamente 4 parágrafos:
-1. Perfil técnico e posicional
-2. Perfil de risco e exposição financeira
+Estruture sua resposta em exatamente 4 paragrafos:
+1. Perfil tecnico e posicional
+2. Perfil de risco e exposicao financeira
 3. Janela de oportunidade e timing de investimento
-4. Recomendação executiva final
+4. Recomendacao executiva final
 
-Responda apenas com os 4 parágrafos, sem títulos, sem bullets,
-sem introdução. Direto ao ponto.
+Responda apenas com os 4 paragrafos, sem titulos, sem bullets,
+sem introducao. Direto ao ponto.
 `.trim();
 }
