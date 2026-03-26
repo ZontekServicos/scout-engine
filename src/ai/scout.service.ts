@@ -25,19 +25,12 @@ interface PlayerNarrativeInput {
   overall: number;
   potential: number;
   tier: string;
-  archetype: string;
+  archetype?: string;
   riskScore: number;
   riskLevel: string;
-  riskSummary: string;
-  financialRisk: number;
   liquidityScore: number;
   capitalEfficiency: number;
-  marketValue: number | null;
-  growthProjection: {
-    growthIndex: number;
-    expectedOverallNextSeason: number;
-    expectedPeak: number;
-  };
+  marketValue: number;
 }
 
 type PlayerNarrativeResult = {
@@ -47,8 +40,7 @@ type PlayerNarrativeResult = {
 
 function getOpenAIClient() {
   if (!process.env.OPENAI_API_KEY) {
-    console.warn("OPENAI_API_KEY not configured.");
-    return null;
+    throw new Error("OPENAI_API_KEY not configured.");
   }
 
   return new OpenAI({
@@ -57,8 +49,12 @@ function getOpenAIClient() {
 }
 
 export async function generateAIReport(data: AIReportInput): Promise<string | null> {
-  const client = getOpenAIClient();
-  if (!client) {
+  let client: OpenAI;
+
+  try {
+    client = getOpenAIClient();
+  } catch (error) {
+    console.error("COMPARE GPT ERROR:", error);
     return null;
   }
 
@@ -105,25 +101,34 @@ export async function generateAIReport(data: AIReportInput): Promise<string | nu
 
 export async function generatePlayerNarrativeReport(data: PlayerNarrativeInput): Promise<PlayerNarrativeResult> {
   const client = getOpenAIClient();
-  if (!client) {
-    return {
-      narrative: null,
-      recommendation: null,
-    };
-  }
 
   const cacheKey = `player_report_${data.name}_${data.position}_${data.overall}_${data.potential}_${data.riskScore.toFixed(1)}`;
   const cached = getFromCache(cacheKey);
 
   if (cached) {
-    try {
-      return JSON.parse(cached) as PlayerNarrativeResult;
-    } catch {
-      return {
-        narrative: cached,
-        recommendation: null,
-      };
+    if (cached.trim().startsWith("{")) {
+      try {
+        const parsed = JSON.parse(cached) as { narrative?: unknown; recommendation?: unknown };
+        const cachedNarrative = typeof parsed.narrative === "string" ? parsed.narrative.trim() : "";
+        const cachedRecommendation = typeof parsed.recommendation === "string" ? parsed.recommendation.trim() : "";
+
+        if (cachedNarrative) {
+          const cachedParagraphs = cachedNarrative.split(/\n{2,}/).filter(Boolean);
+          return {
+            narrative: cachedNarrative,
+            recommendation: cachedRecommendation || cachedParagraphs[cachedParagraphs.length - 1] || null,
+          };
+        }
+      } catch {
+        // Falls through to plain-text cache handling below.
+      }
     }
+
+    const cachedParagraphs = cached.split(/\n{2,}/).filter(Boolean);
+    return {
+      narrative: cached,
+      recommendation: cachedParagraphs[cachedParagraphs.length - 1] || null,
+    };
   }
 
   try {
@@ -131,12 +136,11 @@ export async function generatePlayerNarrativeReport(data: PlayerNarrativeInput):
 
     const response = await client.chat.completions.create({
       model: "gpt-4o-mini",
-      response_format: { type: "json_object" },
       messages: [
         {
           role: "system",
           content:
-            "You are an elite football scouting analyst. Always return strict JSON with keys narrative and recommendation.",
+            "Voce e um analista senior de scouting esportivo. Responda em portugues com exatamente 4 paragrafos corridos e sem titulos.",
         },
         {
           role: "user",
@@ -149,25 +153,21 @@ export async function generatePlayerNarrativeReport(data: PlayerNarrativeInput):
 
     const raw = response.choices?.[0]?.message?.content?.trim();
     if (!raw) {
-      return {
-        narrative: null,
-        recommendation: null,
-      };
+      throw new Error("OpenAI returned an empty narrative for player report.");
     }
 
-    const parsed = JSON.parse(raw) as { narrative?: unknown; recommendation?: unknown };
-    const result = {
-      narrative: typeof parsed.narrative === "string" ? parsed.narrative.trim() : null,
-      recommendation: typeof parsed.recommendation === "string" ? parsed.recommendation.trim() : null,
-    };
+    const paragraphs = raw.split(/\n{2,}/).map((paragraph) => paragraph.trim()).filter(Boolean);
+    if (paragraphs.length !== 4) {
+      throw new Error(`OpenAI returned ${paragraphs.length} paragraphs instead of 4.`);
+    }
 
-    saveToCache(cacheKey, JSON.stringify(result));
-    return result;
+    saveToCache(cacheKey, raw);
+    return {
+      narrative: raw,
+      recommendation: paragraphs[3] ?? null,
+    };
   } catch (error) {
     console.error("PLAYER REPORT GPT ERROR:", error);
-    return {
-      narrative: null,
-      recommendation: null,
-    };
+    throw error;
   }
 }

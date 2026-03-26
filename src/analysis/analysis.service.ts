@@ -1,5 +1,6 @@
 import { prisma } from "../lib/prisma";
 import { compareByIds } from "../scout/compare.service";
+import { getPlayerProfile, getPlayerProjection } from "../scout/player.service";
 
 type AnalysisType = "COMPARISON" | "REPORT";
 type AnalysisStatus = "COMPLETED" | "IN_PROGRESS" | "ARCHIVED";
@@ -42,6 +43,8 @@ export type AnalysisViewModel = {
   id: string;
   title: string;
   description: string | null;
+  playerAId: string | null;
+  playerBId: string | null;
   type: AnalysisType;
   typeLabel: string;
   createdAt: string;
@@ -68,6 +71,28 @@ export type AnalysisReportContentViewModel = {
   contentStatus: "ready" | "partial";
   contentMessage: string | null;
   comparisonData: unknown | null;
+  playerReportData?: {
+    player: {
+      id: string;
+      name: string;
+      position: string | null;
+      club: string | null;
+      league: string | null;
+      age: number | null;
+    };
+    metrics: {
+      overall: number;
+      potential: number;
+      marketValue: number | null;
+      riskScore: number;
+      riskLevel: string;
+      liquidityScore: number;
+      capitalEfficiency: number;
+      tier: string;
+      recommendation: string;
+    };
+    aiNarrative: string;
+  } | null;
 };
 
 export type AnalysisDetailViewModel = AnalysisViewModel & {
@@ -124,6 +149,20 @@ function getAnalysisStatusLabel(status: AnalysisStatus) {
       return "Em andamento";
     case "ARCHIVED":
       return "Arquivado";
+  }
+}
+
+function toDisplayTier(tier: string | null | undefined) {
+  switch (tier) {
+    case "ELITE":
+      return "ELITE";
+    case "A":
+      return "PREMIUM";
+    case "B":
+    case "C":
+      return "STANDARD";
+    default:
+      return "PROSPECT";
   }
 }
 
@@ -296,6 +335,8 @@ function mapScoutReportToAnalysisViewModel(report: {
     id: report.id,
     title: buildReportTitle(report),
     description: null,
+    playerAId: players[0]?.id ?? null,
+    playerBId: players[1]?.id ?? null,
     type,
     typeLabel: getAnalysisTypeLabel(type),
     createdAt: report.createdAt.toISOString(),
@@ -362,6 +403,8 @@ function mapAnalysisToViewModel(analysis: {
     id: analysis.id,
     title: analysis.title,
     description: analysis.description,
+    playerAId: players[0]?.id ?? null,
+    playerBId: players[1]?.id ?? null,
     type: analysis.type,
     typeLabel: getAnalysisTypeLabel(analysis.type),
     createdAt: analysis.createdAt.toISOString(),
@@ -395,19 +438,80 @@ function mapAnalysisToViewModel(analysis: {
 
 async function buildReportContent(
   players: AnalysisPlayerViewModel[],
+  description: string | null,
 ): Promise<AnalysisReportContentViewModel> {
   const orderedPlayers = players
     .slice()
     .sort((a, b) => a.order - b.order)
     .filter((player) => Boolean(player.id));
 
+  if (orderedPlayers.length === 1) {
+    try {
+      const playerId = orderedPlayers[0].id;
+      const [playerProfile, projection] = await Promise.all([
+        getPlayerProfile(playerId),
+        getPlayerProjection(playerId),
+      ]);
+
+      return {
+        mode: "single_player",
+        canExportPdf: true,
+        contentStatus: "ready",
+        contentMessage: null,
+        comparisonData: null,
+        playerReportData: {
+          player: {
+            id: playerProfile.id,
+            name: playerProfile.name,
+            position: playerProfile.position ?? null,
+            club: playerProfile.team ?? null,
+            league: playerProfile.league ?? null,
+            age: playerProfile.age ?? null,
+          },
+          metrics: {
+            overall: playerProfile.overall ?? 0,
+            potential: playerProfile.potential ?? playerProfile.overall ?? 0,
+            marketValue: typeof playerProfile.marketValue === "number" ? playerProfile.marketValue : null,
+            riskScore: Number(playerProfile.risk?.score ?? 0),
+            riskLevel:
+              playerProfile.risk?.level === "LOW" ||
+              playerProfile.risk?.level === "MEDIUM" ||
+              playerProfile.risk?.level === "HIGH"
+                ? playerProfile.risk.level
+                : "MEDIUM",
+            liquidityScore: Number(playerProfile.liquidityScore ?? 0),
+            capitalEfficiency: Number(playerProfile.capitalEfficiency ?? 0),
+            tier: toDisplayTier(playerProfile.tier),
+            recommendation:
+              typeof projection.expectedPeak === "number" &&
+              typeof playerProfile.overall === "number" &&
+              projection.expectedPeak >= playerProfile.overall + 2
+                ? "Ha margem de upside esportivo, com recomendacao condicionada a disciplina de preco e aderencia tatico-financeira."
+                : "Perfil para acompanhamento executivo, com decisao final dependente de preco, risco e contexto competitivo.",
+          },
+          aiNarrative: normalizeText(description, "Narrativa de scouting indisponivel."),
+        },
+      };
+    } catch (error) {
+      return {
+        mode: "single_player",
+        canExportPdf: false,
+        contentStatus: "partial",
+        contentMessage: error instanceof Error ? error.message : "Nao foi possivel carregar o relatorio individual.",
+        comparisonData: null,
+        playerReportData: null,
+      };
+    }
+  }
+
   if (orderedPlayers.length < 2) {
     return {
       mode: "single_player",
       canExportPdf: false,
       contentStatus: "partial",
-      contentMessage: "Este relatorio nao possui dois jogadores suficientes para reconstruir a leitura executiva completa.",
+      contentMessage: "Este relatorio nao possui jogadores suficientes para reconstruir a leitura executiva completa.",
       comparisonData: null,
+      playerReportData: null,
     };
   }
 
@@ -419,6 +523,7 @@ async function buildReportContent(
       contentStatus: "ready",
       contentMessage: null,
       comparisonData,
+      playerReportData: null,
     };
   } catch (error) {
     return {
@@ -427,6 +532,7 @@ async function buildReportContent(
       contentStatus: "partial",
       contentMessage: error instanceof Error ? error.message : "Nao foi possivel reconstruir o conteudo do relatorio.",
       comparisonData: null,
+      playerReportData: null,
     };
   }
 }
@@ -582,7 +688,7 @@ export async function getAnalysisById(id: string): Promise<AnalysisDetailViewMod
 
   return {
     ...viewModel,
-    reportContent: viewModel.type === "REPORT" ? await buildReportContent(viewModel.players) : null,
+    reportContent: viewModel.type === "REPORT" ? await buildReportContent(viewModel.players, viewModel.description) : null,
   };
 }
 

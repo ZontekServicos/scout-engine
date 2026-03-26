@@ -1,4 +1,4 @@
-interface PlayerReportPromptInput {
+export function buildPlayerReportPrompt(player: {
   name: string;
   position: string;
   age: number;
@@ -7,64 +7,40 @@ interface PlayerReportPromptInput {
   overall: number;
   potential: number;
   tier: string;
-  archetype: string;
-  riskScore: number;
+  archetype?: string;
   riskLevel: string;
+  riskScore: number;
   liquidityScore: number;
-  marketValue: number | null;
-  growthProjection: {
-    growthIndex: number;
-    expectedOverallNextSeason: number;
-    expectedPeak: number;
-  };
   capitalEfficiency: number;
-  financialRisk: number;
-  riskSummary: string;
-}
+  marketValue: number;
+}): string {
+  return `
+Você é um analista sênior de scouting esportivo.
+Gere um relatório individual objetivo e executivo em português
+sobre o jogador abaixo. Sem elogios vagos. Tom profissional.
 
-function formatCurrency(value: number | null) {
-  if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) {
-    return "Nao informado";
-  }
+DADOS DO JOGADOR:
+- Nome: ${player.name}
+- Posição: ${player.position}
+- Idade: ${player.age} anos
+- Clube: ${player.club}
+- Liga: ${player.league}
+- Overall: ${player.overall}
+- Potencial: ${player.potential}
+- Tier: ${player.tier}
+- Arquétipo: ${player.archetype || "Não classificado"}
+- Risco composto: ${player.riskScore} (${player.riskLevel})
+- Liquidez: ${player.liquidityScore}/10
+- Capital Efficiency: ${player.capitalEfficiency}/10
+- Valor de mercado: EUR ${player.marketValue}M
 
-  if (value >= 1_000_000) {
-    return `EUR ${(value / 1_000_000).toFixed(1)}M`;
-  }
+Estruture sua resposta em exatamente 4 parágrafos:
+1. Perfil técnico e posicional
+2. Perfil de risco e exposição financeira
+3. Janela de oportunidade e timing de investimento
+4. Recomendação executiva final
 
-  if (value >= 1_000) {
-    return `EUR ${(value / 1_000).toFixed(0)}K`;
-  }
-
-  return `EUR ${value.toFixed(0)}`;
-}
-
-export function buildPlayerReportPrompt(data: PlayerReportPromptInput): string {
-  return [
-    "Voce e um scout executivo de futebol produzindo um relatorio individual para uma diretoria profissional.",
-    "Escreva em portugues do Brasil, com tom objetivo, executivo e sem elogios vagos.",
-    "Retorne JSON valido com as chaves narrative e recommendation.",
-    "A chave narrative deve conter 3 a 4 paragrafos corridos, separados por \\n\\n.",
-    "A chave recommendation deve conter 1 paragrafo curto com a recomendacao executiva final.",
-    "A narrativa precisa cobrir: perfil tecnico, perfil de risco, janela de oportunidade e recomendacao executiva.",
-    "Nao invente dados e use apenas os numeros fornecidos abaixo.",
-    "",
-    `Nome: ${data.name}`,
-    `Posicao: ${data.position}`,
-    `Idade: ${data.age}`,
-    `Clube: ${data.club}`,
-    `Liga: ${data.league}`,
-    `Overall: ${data.overall}`,
-    `Potencial: ${data.potential}`,
-    `Tier: ${data.tier}`,
-    `Arquetipo: ${data.archetype}`,
-    `Risco composto: ${data.riskScore.toFixed(1)} (${data.riskLevel})`,
-    `Resumo de risco estrutural: ${data.riskSummary}`,
-    `Risco financeiro: ${data.financialRisk.toFixed(1)}`,
-    `Liquidez: ${data.liquidityScore.toFixed(1)}`,
-    `Capital Efficiency: ${data.capitalEfficiency.toFixed(1)}`,
-    `Valor de mercado: ${formatCurrency(data.marketValue)}`,
-    `Growth Index: ${data.growthProjection.growthIndex}`,
-    `Overall projetado na proxima temporada: ${data.growthProjection.expectedOverallNextSeason}`,
-    `Pico projetado: ${data.growthProjection.expectedPeak}`,
-  ].join("\n");
+Responda apenas com os 4 parágrafos, sem títulos, sem bullets,
+sem introdução. Direto ao ponto.
+`.trim();
 }

@@ -28,10 +28,10 @@ function toDisplayTier(tier: string | null | undefined) {
 
 function normalizeNarrativeDescription(value: string | null) {
   if (!value) {
-    return "Relatorio individual gerado sem narrativa de IA. Consulte as metricas consolidadas para a decisao executiva.";
+    return "";
   }
 
-  return value.replace(/\s+/g, " ").trim().slice(0, 200);
+  return value.trim().slice(0, 4000);
 }
 
 function buildFallbackRecommendation(profile: PlayerProfileResponse, projection: PlayerProjectionResponse) {
@@ -80,29 +80,41 @@ export async function generatePlayerReportAnalysis(playerId: string, options?: {
     factors: [],
   });
 
-  const aiResult = await generatePlayerNarrativeReport({
-    name: profile.name,
-    position: profile.position ?? "N/A",
-    age: profile.age ?? 0,
-    club: profile.team ?? "Sem clube",
-    league: profile.league ?? "Sem liga",
-    overall: profile.overall ?? 0,
-    potential: profile.potential ?? profile.overall ?? 0,
-    tier: displayTier,
-    archetype: profile.archetype?.label ?? "Balanced Player",
-    riskScore: Number(profile.risk?.score ?? 0),
-    riskLevel: normalizedRiskLevel,
-    riskSummary,
-    financialRisk: Number(profile.financialRisk ?? 0),
-    liquidityScore: Number(profile.liquidityScore ?? 0),
-    capitalEfficiency: Number(profile.capitalEfficiency ?? 0),
-    marketValue: typeof profile.marketValue === "number" ? profile.marketValue : null,
-    growthProjection: {
-      growthIndex: projection.growthIndex,
-      expectedOverallNextSeason: projection.expectedOverallNextSeason,
-      expectedPeak: projection.expectedPeak,
-    },
-  });
+  let aiResult;
+
+  try {
+    aiResult = await generatePlayerNarrativeReport({
+      name: profile.name,
+      position: profile.position ?? "N/A",
+      age: profile.age ?? 0,
+      club: profile.team ?? "Sem clube",
+      league: profile.league ?? "Sem liga",
+      overall: profile.overall ?? 0,
+      potential: profile.potential ?? profile.overall ?? 0,
+      tier: displayTier,
+      archetype: profile.archetype?.label ?? "Balanced Player",
+      riskScore: Number(profile.risk?.score ?? 0),
+      riskLevel: normalizedRiskLevel,
+      liquidityScore: Number(profile.liquidityScore ?? 0),
+      capitalEfficiency: Number(profile.capitalEfficiency ?? 0),
+      marketValue: Number(((profile.marketValue ?? 0) / 1_000_000).toFixed(1)),
+    });
+  } catch (error) {
+    console.error("PLAYER REPORT AI FAILURE:", {
+      playerId,
+      playerName: profile.name,
+      message: error instanceof Error ? error.message : error,
+    });
+    throw createHttpError("IA indisponivel, tente novamente", 500);
+  }
+
+  if (!aiResult.narrative?.trim()) {
+    console.error("PLAYER REPORT AI FAILURE: empty narrative", {
+      playerId,
+      playerName: profile.name,
+    });
+    throw createHttpError("IA indisponivel, tente novamente", 500);
+  }
 
   const recommendation = aiResult.recommendation ?? buildFallbackRecommendation(profile, projection);
   const createdAt = new Date().toISOString();
