@@ -100,6 +100,11 @@ export async function generateAIReport(data: AIReportInput): Promise<string | nu
 }
 
 export async function generatePlayerNarrativeReport(data: PlayerNarrativeInput): Promise<PlayerNarrativeResult> {
+  console.log("OPENAI_API_KEY existe?", !!process.env.OPENAI_API_KEY);
+  console.log(
+    "OPENAI_API_KEY primeiros 8 chars:",
+    process.env.OPENAI_API_KEY?.substring(0, 8),
+  );
   const client = getOpenAIClient();
 
   const cacheKey = `player_report_${data.name}_${data.position}_${data.overall}_${data.potential}_${data.riskScore.toFixed(1)}`;
@@ -167,6 +172,18 @@ export async function generatePlayerNarrativeReport(data: PlayerNarrativeInput):
       recommendation: paragraphs[3] ?? null,
     };
   } catch (error) {
+    const openAiError = error as {
+      message?: string;
+      status?: number;
+      code?: string;
+      type?: string;
+    };
+    console.error("OpenAI error completo:", {
+      message: openAiError?.message,
+      status: openAiError?.status,
+      code: openAiError?.code,
+      type: openAiError?.type,
+    });
     console.error("PLAYER REPORT GPT ERROR:", error);
     throw error;
   }
