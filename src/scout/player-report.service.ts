@@ -21,7 +21,6 @@ export async function generatePlayerReportAnalysis(playerId: string, options?: {
 
   return {
     analysisId: analysis.id,
-    scoutReportId: null,
     player: {
       ...playerReport.player,
       nomeJogador: playerReport.player.name,
