@@ -1,153 +1,44 @@
-import { createReportAnalysis } from "../analysis/analysis.service";
-import { generatePlayerNarrativeReport } from "../ai/scout.service";
-import { getPlayerProfile, getPlayerProjection } from "./player.service";
-import { buildExecutiveRiskSummary } from "./risk.summary";
-import { getPlayerDisplayName, normalizeReportLiquidityScore } from "../utils/player-display";
+import { ScoutReportService } from "../modules/scout-report/scout-report.service";
 
-type PlayerProfileResponse = Awaited<ReturnType<typeof getPlayerProfile>>;
-type PlayerProjectionResponse = Awaited<ReturnType<typeof getPlayerProjection>>;
+const scoutReportService = new ScoutReportService();
 
-function createHttpError(message: string, statusCode: number) {
-  const error = new Error(message) as Error & { statusCode?: number };
-  error.statusCode = statusCode;
-  return error;
-}
-
-function toDisplayTier(tier: string | null | undefined) {
-  switch (tier) {
-    case "ELITE":
-      return "ELITE";
-    case "A":
-      return "PREMIUM";
-    case "B":
-    case "C":
-      return "STANDARD";
-    default:
-      return "PROSPECT";
-  }
-}
-
-function normalizeNarrativeDescription(value: string | null) {
-  if (!value) {
-    return "";
-  }
-
-  return value.trim().slice(0, 4000);
-}
-
-function buildFallbackRecommendation(profile: PlayerProfileResponse, projection: PlayerProjectionResponse) {
-  const riskLevel = String(profile.risk?.level ?? "MEDIUM");
-  const liquidityScore = normalizeReportLiquidityScore(profile.liquidityScore);
-  const expectedPeak = typeof projection.expectedPeak === "number" ? projection.expectedPeak : profile.potential ?? profile.overall ?? 0;
-
-  if (riskLevel === "LOW" && liquidityScore >= 6.5 && expectedPeak >= (profile.overall ?? 0) + 2) {
-    return "Ativo com janela favoravel para investimento, desde que o pacote financeiro permaneça dentro da disciplina de caixa do clube.";
-  }
-
-  if (riskLevel === "HIGH" || liquidityScore < 4.5) {
-    return "Recomendacao condicionada a desconto relevante de entrada e validacao adicional do contexto competitivo antes de avancar.";
-  }
-
-  return "Perfil elegivel para acompanhamento executivo, com decisao final dependente de preco, timing de oportunidade e encaixe esportivo.";
+function asRecord(value: unknown) {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
 }
 
 export async function generatePlayerReportAnalysis(playerId: string, options?: { analyst?: string }) {
-  let profile: PlayerProfileResponse;
-
-  try {
-    profile = await getPlayerProfile(playerId);
-  } catch (error) {
-    if (error instanceof Error && error.message === "Player not found") {
-      throw createHttpError("Player not found", 404);
-    }
-
-    throw error;
-  }
-
-  const projection = await getPlayerProjection(playerId);
-  const displayName = getPlayerDisplayName(profile.name);
-  const liquidityScore = normalizeReportLiquidityScore(profile.liquidityScore);
-  const displayTier = toDisplayTier(profile.tier);
-  const normalizedRiskLevel =
-    profile.risk?.level === "LOW" || profile.risk?.level === "MEDIUM" || profile.risk?.level === "HIGH"
-      ? profile.risk.level
-      : "MEDIUM";
-  const riskSummary = buildExecutiveRiskSummary(displayName, {
-    totalRisk: Number(profile.structuralRisk ?? 0),
-    riskLevel: normalizedRiskLevel,
-    breakdown: {
-      age: Number(profile.structuralRisk ?? 0) * 0.4,
-      competitive: Number(profile.structuralRisk ?? 0) * 0.6,
-      structural: Number(profile.structuralRisk ?? 0),
-    },
-    factors: [],
-  });
-
-  let aiResult;
-
-  try {
-    aiResult = await generatePlayerNarrativeReport({
-      name: displayName,
-      position: profile.position ?? "N/A",
-      age: profile.age ?? 0,
-      club: profile.team ?? "Sem clube",
-      league: profile.league ?? "Sem liga",
-      overall: profile.overall ?? 0,
-      potential: profile.potential ?? profile.overall ?? 0,
-      tier: displayTier,
-      archetype: profile.archetype?.label ?? "Balanced Player",
-      riskScore: Number(profile.risk?.score ?? 0),
-      riskLevel: normalizedRiskLevel,
-      liquidityScore,
-      capitalEfficiency: Number(profile.capitalEfficiency ?? 0),
-      marketValue: Number(((profile.marketValue ?? 0) / 1_000_000).toFixed(1)),
-    });
-  } catch (error) {
-    console.error("OpenAI error:", error);
-    throw createHttpError("IA indisponível, tente novamente", 500);
-  }
-
-  if (!aiResult.narrative?.trim()) {
-    console.error("OpenAI error:", new Error("OpenAI returned an empty narrative for player report."));
-    throw createHttpError("IA indisponível, tente novamente", 500);
-  }
-
-  const recommendation = aiResult.recommendation ?? buildFallbackRecommendation(profile, projection);
-  const createdAt = new Date().toISOString();
-  const metrics = {
-    overall: profile.overall ?? 0,
-    potential: profile.potential ?? profile.overall ?? 0,
-    tier: displayTier,
-    archetype: profile.archetype?.label ?? "Balanced Player",
-    archetypeConfidence: profile.archetype?.confidence ?? null,
-    riskScore: Number(profile.risk?.score ?? 0),
-    riskLevel: normalizedRiskLevel,
-    riskSummary,
-    financialRisk: Number(profile.financialRisk ?? 0),
-    liquidityScore,
-    capitalEfficiency: Number(profile.capitalEfficiency ?? 0),
-    marketValue: typeof profile.marketValue === "number" ? profile.marketValue : null,
-    growthProjection: projection,
-  };
-
-  const savedAnalysis = await createReportAnalysis({
+  const report = await scoutReportService.generateReport({
     playerIds: [playerId],
-    title: `Relatorio Individual - ${displayName}`,
-    description: normalizeNarrativeDescription(aiResult.narrative),
     analyst: options?.analyst,
   });
+  if (!report) {
+    throw new Error("ScoutReport could not be generated");
+  }
+
+  const player = asRecord(report.players[0]) ?? {};
+  const content = asRecord(report.content) ?? {};
+  const decisionSummary = asRecord(content.decisionSummary);
+  const metrics = asRecord(content.metrics) ?? {};
 
   return {
-    analysisId: savedAnalysis.id,
+    analysisId: report.id,
+    scoutReportId: report.id,
     player: {
-      ...profile,
-      name: displayName,
-      nomeJogador: displayName,
+      ...player,
+      id: String(player.id ?? playerId),
+      name: String(player.name ?? "Jogador"),
+      nomeJogador: String(player.name ?? "Jogador"),
     },
     metrics,
-    aiNarrative: aiResult.narrative,
-    recommendation,
-    createdAt,
+    aiNarrative: typeof content.aiNarrative === "string" ? content.aiNarrative : null,
+    recommendation:
+      typeof content.recommendation === "string"
+        ? content.recommendation
+        : typeof decisionSummary?.decision === "string"
+          ? decisionSummary.decision
+          : "Recomendacao executiva indisponivel.",
+    createdAt: report.createdAt,
   };
 }
-

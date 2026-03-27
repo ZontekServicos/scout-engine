@@ -105,8 +105,15 @@ model PlayerRiskSnapshot {
 
 model ScoutReport {
   id          String   @id @default(uuid())
-  playerId    String
+  playerId    String?
   type        ScoutType
+  reportType  ReportType?
+  title       String?
+  description String?  @db.Text
+  content     Json?
+  players     Json?
+  analyst     String?
+  status      ReportStatus @default(COMPLETED)
 
   input       Json
   output      Json
@@ -127,8 +134,9 @@ model ScoutReport {
   decisionAt      DateTime?
 
   createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
-  player Player @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  player Player? @relation(fields: [playerId], references: [id], onDelete: Cascade)
   analysis Analysis?
 
   @@index([playerId])
@@ -175,6 +183,18 @@ enum ScoutType {
   SINGLE
   COMPARE
   RANKING
+  REPORT
+  COMPARISON
+}
+
+enum ReportType {
+  REPORT
+  COMPARISON
+}
+
+enum ReportStatus {
+  COMPLETED
+  IN_PROGRESS
 }
 
 enum DecisionStatus {
