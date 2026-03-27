@@ -5,7 +5,7 @@ import { getPlayerDisplayName, normalizeReportLiquidityScore } from "../utils/pl
 
 type AnalysisType = "COMPARISON" | "REPORT";
 type AnalysisStatus = "COMPLETED" | "IN_PROGRESS" | "ARCHIVED";
-type LegacyScoutType = "SINGLE" | "COMPARE" | "RANKING";
+type LegacyScoutType = "SINGLE" | "COMPARE" | "RANKING" | "REPORT" | "COMPARISON";
 
 export type ListAnalysesFilters = {
   type?: AnalysisType;
@@ -149,6 +149,18 @@ function normalizeReportStatus(value: string | null | undefined): AnalysisStatus
   }
 }
 
+function isComparisonScoutType(type: string | null | undefined) {
+  return type === "COMPARE" || type === "COMPARISON";
+}
+
+function isReportScoutType(type: string | null | undefined) {
+  return type === "SINGLE" || type === "REPORT";
+}
+
+function normalizeScoutReportType(type: string | null | undefined): AnalysisType {
+  return isComparisonScoutType(type) ? "COMPARISON" : "REPORT";
+}
+
 function getAnalysisTypeLabel(type: AnalysisType) {
   return type === "COMPARISON" ? "Comparacao" : "Relatorio";
 }
@@ -267,8 +279,8 @@ function extractReportPlayers(report: {
           positions: Array.isArray(report.player.positions) ? report.player.positions : [],
         }
       : null,
-    ...["playerA", "playerB"].map((key) => {
-      const source = [playerDetails[key], playersNode[key]].find(
+    ...(["playerA", "playerB"] as const).map((key) => {
+      const source = [playerDetails[key ?? "playerA"], playersNode[key ?? "playerA"]].find(
         (value) => value && typeof value === "object",
       ) as Record<string, unknown> | undefined;
 
@@ -320,7 +332,7 @@ function buildReportTitle(report: {
   output?: unknown;
 }) {
   const players = extractReportPlayers(report);
-  const prefix = report.type === "COMPARE" ? "Comparacao" : "Relatorio";
+  const prefix = isComparisonScoutType(report.type) ? "Comparacao" : "Relatorio";
 
   if (players.length > 0) {
     return `${prefix} - ${players.map((player) => player.name).join(" / ")}`;
@@ -339,7 +351,7 @@ function mapScoutReportToAnalysisViewModel(report: {
   output?: unknown;
 }): AnalysisViewModel {
   const players = extractReportPlayers(report);
-  const type: AnalysisType = report.type === "COMPARE" ? "COMPARISON" : "REPORT";
+  const type = normalizeScoutReportType(report.type);
   const status = normalizeReportStatus(report.decisionStatus);
   const analyst = normalizeText(report.requestedBy, "Analista SoccerMind");
 
@@ -602,14 +614,15 @@ async function listLegacyScoutReportEntries(filters: ListAnalysesFilters) {
     return [] as AnalysisViewModel[];
   }
 
-  const desiredTypes: LegacyScoutType[] | undefined = filters.type
+  const desiredTypes: string[] | undefined = filters.type
     ? filters.type === "COMPARISON"
-      ? ["COMPARE"]
-      : ["SINGLE", "RANKING"]
+      ? ["COMPARE", "COMPARISON"]
+      : ["SINGLE", "REPORT", "RANKING"]
     : undefined;
+  const where = desiredTypes ? ({ type: { in: desiredTypes } } as any) : undefined;
 
   const reports = await prisma.scoutReport.findMany({
-    where: desiredTypes ? { type: { in: desiredTypes } } : undefined,
+    where,
     orderBy: { createdAt: "desc" },
     include: {
       player: true,

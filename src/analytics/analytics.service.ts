@@ -79,7 +79,7 @@ export async function getAnalyticsOverview(params: AnalyticsParams) {
   const playerMap: Record<string, number> = {};
 
   reports.forEach((r) => {
-    const id = r.playerId;
+    const id = r.playerId ?? "__unknown_player__";
     playerMap[id] = (playerMap[id] || 0) + 1;
   });
 

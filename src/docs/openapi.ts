@@ -150,7 +150,7 @@ export const openApiDocument = {
             properties: {
               origin: { type: "string", enum: ["ANALYSIS", "SCOUT_REPORT"] },
               legacy: { type: "boolean" },
-              scoutReportType: { type: ["string", "null"], enum: ["SINGLE", "COMPARE", "RANKING", null] },
+                scoutReportType: { type: ["string", "null"], enum: ["SINGLE", "COMPARE", "RANKING", "REPORT", "COMPARISON", null] },
               scoutReportId: { type: ["string", "null"] },
               decisionStatus: { type: ["string", "null"] },
             },
