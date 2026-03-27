@@ -33,7 +33,6 @@ export class ScoutReportRepository {
       data: {
         playerId: input.playerId ?? undefined,
         type: input.type === "COMPARISON" ? "COMPARE" : "SINGLE",
-        reportType: input.type,
         title: input.title,
         description: input.description ?? null,
         content: input.content as any,

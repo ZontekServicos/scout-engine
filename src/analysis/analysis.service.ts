@@ -5,8 +5,6 @@ import { getPlayerDisplayName, normalizeReportLiquidityScore } from "../utils/pl
 
 type AnalysisType = "COMPARISON" | "REPORT";
 type AnalysisStatus = "COMPLETED" | "IN_PROGRESS" | "ARCHIVED";
-type LegacyScoutType = "SINGLE" | "COMPARE" | "RANKING" | "REPORT" | "COMPARISON";
-
 export type ListAnalysesFilters = {
   type?: AnalysisType;
   status?: AnalysisStatus;
@@ -24,7 +22,7 @@ type AnalysisPlayerViewModel = {
 type AnalysisSourceMetadata = {
   origin: "ANALYSIS" | "SCOUT_REPORT";
   legacy: boolean;
-  scoutReportType: LegacyScoutType | null;
+  scoutReportType: string | null;
   scoutReportId: string | null;
   decisionStatus: string | null;
 };
@@ -149,18 +147,6 @@ function normalizeReportStatus(value: string | null | undefined): AnalysisStatus
   }
 }
 
-function isComparisonScoutType(type: string | null | undefined) {
-  return type === "COMPARE" || type === "COMPARISON";
-}
-
-function isReportScoutType(type: string | null | undefined) {
-  return type === "SINGLE" || type === "REPORT";
-}
-
-function normalizeScoutReportType(type: string | null | undefined): AnalysisType {
-  return isComparisonScoutType(type) ? "COMPARISON" : "REPORT";
-}
-
 function getAnalysisTypeLabel(type: AnalysisType) {
   return type === "COMPARISON" ? "Comparacao" : "Relatorio";
 }
@@ -256,140 +242,6 @@ async function buildReportAnalysisDescription(players: Array<{ id: string; name:
   ]
     .filter(Boolean)
     .join(" ");
-}
-
-function extractReportPlayers(report: {
-  player?: { id?: string; name: string | null; team?: string | null; positions?: string[] } | null;
-  output?: unknown;
-}) {
-  const output = report.output && typeof report.output === "object" ? (report.output as Record<string, unknown>) : {};
-  const playerDetails =
-    output.playerDetails && typeof output.playerDetails === "object"
-      ? (output.playerDetails as Record<string, unknown>)
-      : {};
-  const playersNode =
-    output.players && typeof output.players === "object" ? (output.players as Record<string, unknown>) : {};
-
-  const rawPlayers = [
-    report.player
-      ? {
-          id: normalizeText(report.player.id),
-          name: getPlayerDisplayName(normalizeText(report.player.name, "Jogador")),
-          club: normalizeText(report.player.team),
-          positions: Array.isArray(report.player.positions) ? report.player.positions : [],
-        }
-      : null,
-    ...(["playerA", "playerB"] as const).map((key) => {
-      const source = [playerDetails[key ?? "playerA"], playersNode[key ?? "playerA"]].find(
-        (value) => value && typeof value === "object",
-      ) as Record<string, unknown> | undefined;
-
-      if (!source) {
-        return null;
-      }
-
-      const id = normalizeText(
-        typeof source.id === "string" ? source.id : typeof source.playerKey === "string" ? source.playerKey : "",
-      );
-      const name = getPlayerDisplayName(normalizeText(
-        typeof source.nomeJogador === "string" ? source.nomeJogador : typeof source.name === "string" ? source.name : "",
-      ));
-
-      if (!name) {
-        return null;
-      }
-
-      return {
-        id,
-        name,
-        club: normalizeText(typeof source.club === "string" ? source.club : typeof source.team === "string" ? source.team : ""),
-        positions: Array.isArray(source.positions) ? source.positions.filter((item): item is string => typeof item === "string") : [],
-      };
-    }),
-  ].filter(
-    (
-      player,
-    ): player is {
-      id: string;
-      name: string;
-      club: string;
-      positions: string[];
-    } => Boolean(player?.name),
-  );
-
-  return rawPlayers
-    .filter((player, index, array) => array.findIndex((candidate) => candidate.name === player.name) === index)
-    .map((player, index) => ({
-      ...player,
-      order: index,
-    }));
-}
-
-function buildReportTitle(report: {
-  id: string;
-  type: LegacyScoutType;
-  player?: { id?: string; name: string | null; team?: string | null; positions?: string[] } | null;
-  output?: unknown;
-}) {
-  const players = extractReportPlayers(report);
-  const prefix = isComparisonScoutType(report.type) ? "Comparacao" : "Relatorio";
-
-  if (players.length > 0) {
-    return `${prefix} - ${players.map((player) => player.name).join(" / ")}`;
-  }
-
-  return `${prefix} ${report.id.slice(0, 8)}`;
-}
-
-function mapScoutReportToAnalysisViewModel(report: {
-  id: string;
-  type: LegacyScoutType;
-  createdAt: Date;
-  requestedBy: string | null;
-  decisionStatus: string | null;
-  player?: { id: string; name: string | null; team?: string | null; positions?: string[] } | null;
-  output?: unknown;
-}): AnalysisViewModel {
-  const players = extractReportPlayers(report);
-  const type = normalizeScoutReportType(report.type);
-  const status = normalizeReportStatus(report.decisionStatus);
-  const analyst = normalizeText(report.requestedBy, "Analista SoccerMind");
-
-  return {
-    id: report.id,
-    title: buildReportTitle(report),
-    description: null,
-    playerAId: players[0]?.id ?? null,
-    playerBId: players[1]?.id ?? null,
-    type,
-    typeLabel: getAnalysisTypeLabel(type),
-    createdAt: report.createdAt.toISOString(),
-    status,
-    statusLabel: getAnalysisStatusLabel(status),
-    analyst,
-    players,
-    playerCount: players.length,
-    canDelete: true,
-    deleteManagedBy: "scout_report",
-    deleteHint: "Entrada legada removivel via ScoutReport; exclusao deve usar o endpoint dedicado de ScoutReport.",
-    decisionContext: {
-      analyst,
-      status,
-    },
-    sourceMetadata: {
-      origin: "SCOUT_REPORT",
-      legacy: true,
-      scoutReportType: report.type,
-      scoutReportId: report.id,
-      decisionStatus: report.decisionStatus,
-    },
-    deletePolicy: {
-      canDelete: true,
-      managedBy: "SCOUT_REPORT",
-      reason: "Entrada legada removivel via ScoutReport; exclusao deve usar o endpoint dedicado de ScoutReport.",
-    },
-    scoutReportId: report.id,
-  };
 }
 
 function mapAnalysisToViewModel(analysis: {
@@ -609,31 +461,6 @@ async function assertAnalysisRuntimeReady() {
   return runtime;
 }
 
-async function listLegacyScoutReportEntries(filters: ListAnalysesFilters) {
-  if (filters.includeLegacy === false) {
-    return [] as AnalysisViewModel[];
-  }
-
-  const desiredTypes: string[] | undefined = filters.type
-    ? filters.type === "COMPARISON"
-      ? ["COMPARE", "COMPARISON"]
-      : ["SINGLE", "REPORT", "RANKING"]
-    : undefined;
-  const where = desiredTypes ? ({ type: { in: desiredTypes } } as any) : undefined;
-
-  const reports = await prisma.scoutReport.findMany({
-    where,
-    orderBy: { createdAt: "desc" },
-    include: {
-      player: true,
-    },
-  });
-
-  return reports
-    .map(mapScoutReportToAnalysisViewModel)
-    .filter((entry) => (filters.status ? entry.status === filters.status : true));
-}
-
 async function listAnalysisEntries(filters: ListAnalysesFilters) {
   const runtime = await getAnalysisRuntimeStatus();
   if (!runtime.ready) {
@@ -667,31 +494,13 @@ async function listAnalysisEntries(filters: ListAnalysesFilters) {
 }
 
 export async function listAnalyses(filters: ListAnalysesFilters = {}) {
-  const [reports, analyses] = await Promise.all([
-    listLegacyScoutReportEntries(filters),
-    listAnalysisEntries(filters),
-  ]);
-
-  return [...reports, ...analyses].sort(
-    (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+  const analyses = await listAnalysisEntries(filters);
+  return analyses.sort(
+    (a: AnalysisViewModel, b: AnalysisViewModel) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
   );
 }
 
 export async function getAnalysisById(id: string): Promise<AnalysisDetailViewModel> {
-  const report = await prisma.scoutReport.findUnique({
-    where: { id },
-    include: {
-      player: true,
-    },
-  });
-
-  if (report) {
-    return {
-      ...mapScoutReportToAnalysisViewModel(report),
-      reportContent: null,
-    };
-  }
-
   const runtime = await getAnalysisRuntimeStatus();
   if (!runtime.ready) {
     throw createHttpError("Analysis not found", 404);
@@ -865,17 +674,6 @@ export async function createReportAnalysis(input: CreateReportAnalysisInput) {
 }
 
 export async function deleteAnalysis(id: string) {
-  const report = await prisma.scoutReport.findUnique({
-    where: { id },
-    select: {
-      id: true,
-    },
-  });
-
-  if (report) {
-    throw createHttpError("Report entries must remain managed by ScoutReport", 409);
-  }
-
   await assertAnalysisRuntimeReady();
 
   const existingAnalysis = await prisma.analysis.findUnique({
