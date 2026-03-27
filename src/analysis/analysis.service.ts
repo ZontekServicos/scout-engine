@@ -1,6 +1,7 @@
 import { prisma } from "../lib/prisma";
 import { compareByIds } from "../scout/compare.service";
 import { getPlayerProfile, getPlayerProjection } from "../scout/player.service";
+import { getPlayerDisplayName, normalizeReportLiquidityScore } from "../utils/player-display";
 
 type AnalysisType = "COMPARISON" | "REPORT";
 type AnalysisStatus = "COMPLETED" | "IN_PROGRESS" | "ARCHIVED";
@@ -261,7 +262,7 @@ function extractReportPlayers(report: {
     report.player
       ? {
           id: normalizeText(report.player.id),
-          name: normalizeText(report.player.name, "Jogador"),
+          name: getPlayerDisplayName(normalizeText(report.player.name, "Jogador")),
           club: normalizeText(report.player.team),
           positions: Array.isArray(report.player.positions) ? report.player.positions : [],
         }
@@ -278,9 +279,9 @@ function extractReportPlayers(report: {
       const id = normalizeText(
         typeof source.id === "string" ? source.id : typeof source.playerKey === "string" ? source.playerKey : "",
       );
-      const name = normalizeText(
+      const name = getPlayerDisplayName(normalizeText(
         typeof source.nomeJogador === "string" ? source.nomeJogador : typeof source.name === "string" ? source.name : "",
-      );
+      ));
 
       if (!name) {
         return null;
@@ -340,7 +341,7 @@ function mapScoutReportToAnalysisViewModel(report: {
   const players = extractReportPlayers(report);
   const type: AnalysisType = report.type === "COMPARE" ? "COMPARISON" : "REPORT";
   const status = normalizeReportStatus(report.decisionStatus);
-  const analyst = normalizeText(report.requestedBy, "Sistema SoccerMind");
+  const analyst = normalizeText(report.requestedBy, "Analista SoccerMind");
 
   return {
     id: report.id,
@@ -403,12 +404,12 @@ function mapAnalysisToViewModel(analysis: {
     .sort((a, b) => a.order - b.order)
     .map((entry) => ({
       id: entry.player.id,
-      name: entry.player.name,
+      name: getPlayerDisplayName(entry.player.name),
       club: normalizeText(entry.player.team),
       positions: entry.player.positions,
       order: entry.order,
     }));
-  const analyst = normalizeText(analysis.analyst, "Sistema SoccerMind");
+  const analyst = normalizeText(analysis.analyst, "Analista SoccerMind");
 
   return {
     id: analysis.id,
@@ -473,7 +474,7 @@ async function buildReportContent(
         playerReportData: {
           player: {
             id: playerProfile.id,
-            name: playerProfile.name,
+            name: getPlayerDisplayName(playerProfile.name),
             position: playerProfile.position ?? null,
             club: playerProfile.team ?? null,
             league: playerProfile.league ?? null,
@@ -499,7 +500,7 @@ async function buildReportContent(
                 : "MEDIUM",
             riskSummary: normalizeText(playerProfile.risk?.explanation, "Leitura de risco indisponivel."),
             financialRisk: Number(playerProfile.financialRisk ?? 0),
-            liquidityScore: Number(playerProfile.liquidityScore ?? 0),
+            liquidityScore: normalizeReportLiquidityScore(playerProfile.liquidityScore),
             capitalEfficiency: Number(playerProfile.capitalEfficiency ?? 0),
             tier: toDisplayTier(playerProfile.tier),
             archetype: normalizeText(playerProfile.archetype?.label, "Nao classificado"),
@@ -749,7 +750,7 @@ export async function createComparisonAnalysis(input: CreateComparisonAnalysisIn
       type: "COMPARISON",
       title,
       description: normalizeText(input.description) || null,
-      analyst: normalizeText(input.analyst, "Sistema SoccerMind"),
+      analyst: normalizeText(input.analyst, "Analista SoccerMind"),
       status: input.status ?? "COMPLETED",
       comparisons: {
         create: playerIds.map((playerId, index) => ({
@@ -806,7 +807,11 @@ export async function createReportAnalysis(input: CreateReportAnalysisInput) {
   const playersById = new Map(players.map((player) => [player.id, player]));
   const orderedPlayers = playerIds
     .map((playerId) => playersById.get(playerId))
-    .filter((player): player is { id: string; name: string } => Boolean(player));
+    .filter((player): player is { id: string; name: string } => Boolean(player))
+    .map((player) => ({
+      ...player,
+      name: getPlayerDisplayName(player.name),
+    }));
 
   const title =
     normalizeText(input.title) ||
@@ -817,7 +822,7 @@ export async function createReportAnalysis(input: CreateReportAnalysisInput) {
       type: "REPORT",
       title,
       description: normalizeText(input.description) || (await buildReportAnalysisDescription(orderedPlayers)),
-      analyst: normalizeText(input.analyst, "Sistema SoccerMind"),
+      analyst: normalizeText(input.analyst, "Analista SoccerMind"),
       status: input.status ?? "COMPLETED",
       comparisons: {
         create: playerIds.map((playerId, index) => ({

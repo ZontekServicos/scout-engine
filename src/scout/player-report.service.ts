@@ -2,6 +2,7 @@ import { createReportAnalysis } from "../analysis/analysis.service";
 import { generatePlayerNarrativeReport } from "../ai/scout.service";
 import { getPlayerProfile, getPlayerProjection } from "./player.service";
 import { buildExecutiveRiskSummary } from "./risk.summary";
+import { getPlayerDisplayName, normalizeReportLiquidityScore } from "../utils/player-display";
 
 type PlayerProfileResponse = Awaited<ReturnType<typeof getPlayerProfile>>;
 type PlayerProjectionResponse = Awaited<ReturnType<typeof getPlayerProjection>>;
@@ -36,7 +37,7 @@ function normalizeNarrativeDescription(value: string | null) {
 
 function buildFallbackRecommendation(profile: PlayerProfileResponse, projection: PlayerProjectionResponse) {
   const riskLevel = String(profile.risk?.level ?? "MEDIUM");
-  const liquidityScore = typeof profile.liquidityScore === "number" ? profile.liquidityScore : 0;
+  const liquidityScore = normalizeReportLiquidityScore(profile.liquidityScore);
   const expectedPeak = typeof projection.expectedPeak === "number" ? projection.expectedPeak : profile.potential ?? profile.overall ?? 0;
 
   if (riskLevel === "LOW" && liquidityScore >= 6.5 && expectedPeak >= (profile.overall ?? 0) + 2) {
@@ -64,12 +65,14 @@ export async function generatePlayerReportAnalysis(playerId: string, options?: {
   }
 
   const projection = await getPlayerProjection(playerId);
+  const displayName = getPlayerDisplayName(profile.name);
+  const liquidityScore = normalizeReportLiquidityScore(profile.liquidityScore);
   const displayTier = toDisplayTier(profile.tier);
   const normalizedRiskLevel =
     profile.risk?.level === "LOW" || profile.risk?.level === "MEDIUM" || profile.risk?.level === "HIGH"
       ? profile.risk.level
       : "MEDIUM";
-  const riskSummary = buildExecutiveRiskSummary(profile.name, {
+  const riskSummary = buildExecutiveRiskSummary(displayName, {
     totalRisk: Number(profile.structuralRisk ?? 0),
     riskLevel: normalizedRiskLevel,
     breakdown: {
@@ -84,7 +87,7 @@ export async function generatePlayerReportAnalysis(playerId: string, options?: {
 
   try {
     aiResult = await generatePlayerNarrativeReport({
-      name: profile.name,
+      name: displayName,
       position: profile.position ?? "N/A",
       age: profile.age ?? 0,
       club: profile.team ?? "Sem clube",
@@ -95,7 +98,7 @@ export async function generatePlayerReportAnalysis(playerId: string, options?: {
       archetype: profile.archetype?.label ?? "Balanced Player",
       riskScore: Number(profile.risk?.score ?? 0),
       riskLevel: normalizedRiskLevel,
-      liquidityScore: Number(profile.liquidityScore ?? 0),
+      liquidityScore,
       capitalEfficiency: Number(profile.capitalEfficiency ?? 0),
       marketValue: Number(((profile.marketValue ?? 0) / 1_000_000).toFixed(1)),
     });
@@ -121,7 +124,7 @@ export async function generatePlayerReportAnalysis(playerId: string, options?: {
     riskLevel: normalizedRiskLevel,
     riskSummary,
     financialRisk: Number(profile.financialRisk ?? 0),
-    liquidityScore: Number(profile.liquidityScore ?? 0),
+    liquidityScore,
     capitalEfficiency: Number(profile.capitalEfficiency ?? 0),
     marketValue: typeof profile.marketValue === "number" ? profile.marketValue : null,
     growthProjection: projection,
@@ -129,14 +132,18 @@ export async function generatePlayerReportAnalysis(playerId: string, options?: {
 
   const savedAnalysis = await createReportAnalysis({
     playerIds: [playerId],
-    title: `Relatorio Individual - ${profile.name}`,
+    title: `Relatorio Individual - ${displayName}`,
     description: normalizeNarrativeDescription(aiResult.narrative),
     analyst: options?.analyst,
   });
 
   return {
     analysisId: savedAnalysis.id,
-    player: profile,
+    player: {
+      ...profile,
+      name: displayName,
+      nomeJogador: displayName,
+    },
     metrics,
     aiNarrative: aiResult.narrative,
     recommendation,
