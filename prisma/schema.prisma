@@ -147,9 +147,10 @@ model ScoutReport {
 
 model Analysis {
   id            String               @id @default(uuid())
-  type          AnalysisType
+  type          String
   title         String
   description   String?              @db.Text
+  payload       Json?
   createdAt     DateTime             @default(now())
   updatedAt     DateTime             @updatedAt
   status        AnalysisStatus       @default(COMPLETED)
@@ -207,11 +208,6 @@ enum RiskLevel {
   LOW
   MEDIUM
   HIGH
-}
-
-enum AnalysisType {
-  COMPARISON
-  REPORT
 }
 
 enum AnalysisStatus {

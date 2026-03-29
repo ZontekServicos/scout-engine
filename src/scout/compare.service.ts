@@ -4,6 +4,10 @@ import { compareAttributes, type CompareResult } from "./compare.engine";
 import { type Attributes } from "./ranking.engine";
 import { getPlayerProfile } from "./player.service";
 import type { NormalizedPlayerIntelligenceProfile } from "./player-intelligence.service";
+import {
+  comparePlayers as comparePlayersWithIntelligenceProfile,
+  comparePlayersByName as comparePlayersByNameWithIntelligenceProfile,
+} from "../services/playerComparison.service";
 
 function average(values: number[]) {
   if (values.length === 0) return 0;
@@ -324,15 +328,14 @@ function buildExecutiveRecommendation(
 }
 
 export async function compareByNames(nameA: string, nameB: string) {
-  const [playerA, playerB] = await Promise.all([
-    findPlayerByNameOrThrow(nameA),
-    findPlayerByNameOrThrow(nameB),
-  ]);
-
-  return compareByIds(playerA.id, playerB.id);
+  return comparePlayersByNameWithIntelligenceProfile(nameA, nameB);
 }
 
 export async function compareByIds(idA: string, idB: string) {
+  return comparePlayersWithIntelligenceProfile(idA, idB);
+}
+
+export async function compareByIdsLegacy(idA: string, idB: string) {
   const startedAt = Date.now();
   const [playerAProfile, playerBProfile] = await Promise.all([
     getPlayerProfile(idA),
