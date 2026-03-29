@@ -435,7 +435,7 @@ export const openApiDocument = {
     },
     "/api/analysis": {
       get: {
-        summary: "List analysis hub entries with hybrid ScoutReport compatibility",
+        summary: "List analysis hub entries",
         parameters: [
           { name: "type", in: "query", schema: { type: "string", enum: ["COMPARISON", "REPORT"] } },
           { name: "status", in: "query", schema: { type: "string", enum: ["COMPLETED", "IN_PROGRESS", "ARCHIVED"] } },
@@ -460,7 +460,7 @@ export const openApiDocument = {
     },
     "/api/analysis/{id}": {
       get: {
-        summary: "Get a single analysis or legacy ScoutReport-mapped entry",
+        summary: "Get a single analysis entry",
         parameters: [{ name: "id", in: "path", required: true, schema: { type: "string", format: "uuid" } }],
         responses: {
           200: {
@@ -569,22 +569,6 @@ export const openApiDocument = {
                 },
               },
             },
-          },
-        },
-      },
-    },
-    "/api/scout-reports/{id}": {
-      delete: {
-        summary: "Delete a legacy ScoutReport entry",
-        parameters: [{ name: "id", in: "path", required: true, schema: { type: "string", format: "uuid" } }],
-        responses: {
-          200: {
-            description: "Delete confirmation",
-            content: { "application/json": { schema: { $ref: "#/components/schemas/ApiEnvelope" } } },
-          },
-          404: {
-            description: "ScoutReport not found",
-            content: { "application/json": { schema: { $ref: "#/components/schemas/ApiEnvelope" } } },
           },
         },
       },
