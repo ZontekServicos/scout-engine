@@ -20,7 +20,7 @@ export interface PlayerIdentity {
   imagePath: string | null;
 }
 
-export interface ExecutiveSnapshot {
+export interface PlayerIntelligenceSummary {
   status: "elite_target" | "priority_watch" | "monitor" | "data_gap";
   recommendation: string;
   confidence: number;
@@ -31,6 +31,8 @@ export interface ExecutiveSnapshot {
   risk: ScoreBand;
   marketOpportunity: ScoreBand;
 }
+
+export type ExecutiveSnapshot = PlayerIntelligenceSummary;
 
 export interface TechnicalBlock {
   overall: number;
@@ -94,19 +96,22 @@ export interface ProjectionBlock {
   resaleOutlook: ScoreBand;
 }
 
-export interface SoccerMindDNATrait {
+export interface PlayerIntelligenceDnaTrait {
   key: string;
   label: string;
   value: number;
   interpretation: string;
 }
 
-export interface SoccerMindDNA {
+export interface PlayerIntelligenceDna {
   archetype: string;
   profileLabel: string;
   dominantTraits: string[];
-  traits: SoccerMindDNATrait[];
+  traits: PlayerIntelligenceDnaTrait[];
 }
+
+export type SoccerMindDNATrait = PlayerIntelligenceDnaTrait;
+export type SoccerMindDNA = PlayerIntelligenceDna;
 
 export interface FieldZoneIntensity {
   x: number;
@@ -162,15 +167,17 @@ export interface NarrativeBlock {
 export interface PlayerIntelligenceProfile {
   generatedAt: string;
   identity: PlayerIdentity;
-  executiveSnapshot: ExecutiveSnapshot;
+  summary: PlayerIntelligenceSummary;
   technical: TechnicalBlock;
   physical: PhysicalBlock;
   tactical: TacticalBlock;
   market: MarketBlock;
   risk: RiskBlock;
   projection: ProjectionBlock;
-  soccerMindDNA: SoccerMindDNA;
+  dna: PlayerIntelligenceDna;
   fieldIntelligence: FieldIntelligence;
   context: ContextBlock;
   narrative: NarrativeBlock;
+  executiveSnapshot: PlayerIntelligenceSummary;
+  soccerMindDNA: PlayerIntelligenceDna;
 }

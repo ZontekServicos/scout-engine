@@ -6,7 +6,6 @@ import {
 } from "../../scout/player.service";
 import type {
   ContextBlock,
-  ExecutiveSnapshot,
   FieldEventPoint,
   FieldIntelligence,
   FieldZoneIntensity,
@@ -14,11 +13,12 @@ import type {
   NarrativeBlock,
   PhysicalBlock,
   PlayerIdentity,
+  PlayerIntelligenceDna,
   PlayerIntelligenceProfile,
+  PlayerIntelligenceSummary,
   ProjectionBlock,
   RiskBlock,
   ScoreBand,
-  SoccerMindDNA,
   TacticalBlock,
   TechnicalBlock,
 } from "./types";
@@ -338,12 +338,12 @@ function buildProjectionBlock(
   };
 }
 
-function buildSoccerMindDNA(
+function buildDna(
   technical: TechnicalBlock,
   physical: PhysicalBlock,
   tactical: TacticalBlock,
   identity: PlayerIdentity,
-): SoccerMindDNA {
+): PlayerIntelligenceDna {
   const traits = [
     {
       key: "progression",
@@ -556,12 +556,12 @@ function buildMockFieldIntelligence(
   };
 }
 
-function buildExecutiveSnapshot(
+function buildSummary(
   identity: PlayerIdentity,
   projection: ProjectionBlock,
   market: MarketBlock,
   risk: RiskBlock,
-): ExecutiveSnapshot {
+): PlayerIntelligenceSummary {
   const confidence = clamp(
     average([
       projection.growthIndex,
@@ -570,7 +570,7 @@ function buildExecutiveSnapshot(
       projection.currentOverall,
     ], 56),
   );
-  const status: ExecutiveSnapshot["status"] =
+  const status: PlayerIntelligenceSummary["status"] =
     projection.expectedPeakOverall >= 84 && risk.overall.score <= 45
       ? "elite_target"
       : projection.growthIndex >= 60 && risk.overall.score <= 60
@@ -666,7 +666,7 @@ function buildContextBlock(
 
 function buildNarrativeBlock(
   identity: PlayerIdentity,
-  executiveSnapshot: ExecutiveSnapshot,
+  summary: PlayerIntelligenceSummary,
   technical: TechnicalBlock,
   tactical: TacticalBlock,
   risk: RiskBlock,
@@ -700,12 +700,12 @@ function buildNarrativeBlock(
     reportNarrative,
     description,
     ...reportInsights,
-    executiveSnapshot.summary,
+    summary.summary,
   ].filter((value): value is string => typeof value === "string" && value.trim().length > 0);
 
   return {
-    headline: `${identity.name}: ${executiveSnapshot.status.replace(/_/g, " ")}`,
-    executiveSummary: executiveSnapshot.recommendation,
+    headline: `${identity.name}: ${summary.status.replace(/_/g, " ")}`,
+    executiveSummary: summary.recommendation,
     strengths,
     concerns,
     developmentFocus,
@@ -713,7 +713,7 @@ function buildNarrativeBlock(
       aiInsights.length > 0
         ? aiInsights
         : [
-            `${identity.name} profiles as a ${executiveSnapshot.status.replace(/_/g, " ")} candidate with ${projection.growthIndex} growth index.`,
+            `${identity.name} profiles as a ${summary.status.replace(/_/g, " ")} candidate with ${projection.growthIndex} growth index.`,
             `Technical score ${technical.overall} and tactical score ${tactical.overall} frame the current role fit.`,
           ],
   };
@@ -738,15 +738,15 @@ export async function buildPlayerIntelligenceProfile(playerId: string): Promise<
   const market = buildMarketBlock(summary, player);
   const risk = buildRiskBlock(summary, physical, tactical, market);
   const projection = buildProjectionBlock(summary, identity, risk);
-  const soccerMindDNA = buildSoccerMindDNA(technical, physical, tactical, identity);
+  const dna = buildDna(technical, physical, tactical, identity);
   const fieldIntelligence =
     extractFieldIntelligenceFromAnalysis(latestAnalysis) ??
     buildMockFieldIntelligence(playerId, identity, technical);
-  const executiveSnapshot = buildExecutiveSnapshot(identity, projection, market, risk);
+  const summaryBlock = buildSummary(identity, projection, market, risk);
   const context = buildContextBlock(latestAnalysis, summary, player, risk);
   const narrative = buildNarrativeBlock(
     identity,
-    executiveSnapshot,
+    summaryBlock,
     technical,
     tactical,
     risk,
@@ -757,16 +757,18 @@ export async function buildPlayerIntelligenceProfile(playerId: string): Promise<
   return {
     generatedAt: new Date().toISOString(),
     identity,
-    executiveSnapshot,
+    summary: summaryBlock,
     technical,
     physical,
     tactical,
     market,
     risk,
     projection,
-    soccerMindDNA,
+    dna,
     fieldIntelligence,
     context,
     narrative,
+    executiveSnapshot: summaryBlock,
+    soccerMindDNA: dna,
   };
 }
