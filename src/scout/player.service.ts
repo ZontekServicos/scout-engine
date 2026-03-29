@@ -13,6 +13,7 @@ import { calculateRiskScore } from "./risk.engine";
 import { getPrimaryPosition } from "../utils/positions";
 import { mapPlayerRecord } from "../mappers/player.mapper";
 import { withCache } from "../lib/cache";
+import { buildPlayerIntelligenceProfile } from "./player-intelligence.service";
 
 type LatestMetricsSnapshot = {
   overall: number;
@@ -898,6 +899,21 @@ export async function persistAnalyticalSnapshots(player: PlayerSummarySource) {
   };
 }
 
+function buildProjectionFromProfile(profile: {
+  age?: number | null;
+  position?: string | null;
+  overall?: number | null;
+}) {
+  return calculateGrowthProjection({
+    age: profile.age ?? 25,
+    position: profile.position ?? "CM",
+    currentOverall: profile.overall ?? 60,
+    performanceHistory: [profile.overall ?? 60],
+    physicalLoad: 55,
+    performanceStability: 60,
+  });
+}
+
 export async function getPlayerProfile(id: string) {
   const player = await findPlayerWithSnapshots(id);
   if (!player) throw new Error("Player not found");
@@ -943,7 +959,7 @@ export async function getPlayerProfile(id: string) {
         : computedArchetype.confidence,
   };
 
-  return {
+  const baseProfile = {
     player: summary.player,
     attributes: summary.fifa,
     technical,
@@ -977,19 +993,29 @@ export async function getPlayerProfile(id: string) {
     liquidityNormalized: normalizedRisk.liquidity,
     image: refreshedPlayer.imagePath ?? null,
   };
+
+  const [projection, similarPlayers] = await Promise.all([
+    Promise.resolve(buildProjectionFromProfile(baseProfile)),
+    getSimilarPlayers(id).catch(() => []),
+  ]);
+
+  const intelligenceProfile = buildPlayerIntelligenceProfile({
+    playerProfile: baseProfile,
+    projection,
+    similarPlayers,
+  });
+
+  return {
+    ...baseProfile,
+    projection,
+    similarPlayers,
+    intelligenceProfile,
+  };
 }
 
 export async function getPlayerProjection(id: string) {
   const profile = await getPlayerProfile(id);
-
-  return calculateGrowthProjection({
-    age: profile.age ?? 25,
-    position: profile.position ?? "CM",
-    currentOverall: profile.overall ?? 60,
-    performanceHistory: [profile.overall ?? 60],
-    physicalLoad: 55,
-    performanceStability: 60,
-  });
+  return buildProjectionFromProfile(profile);
 }
 
 export async function getSimilarPlayers(id: string) {

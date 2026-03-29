@@ -223,6 +223,47 @@ function buildComparisonDecisionSummary(comparison: Awaited<ReturnType<typeof co
       : winnerKey === "playerA"
         ? comparison.antiFlop.playerA
         : comparison.antiFlop.playerB;
+  const riskNodeAny = riskNode as Record<string, unknown>;
+  const antiFlopNodeAny = antiFlopNode as Record<string, unknown>;
+
+  const normalizedRiskNode = {
+    totalRisk: typeof riskNode.totalRisk === "number" ? riskNode.totalRisk : 0,
+    riskLevel: riskNode.riskLevel,
+    breakdown:
+      typeof riskNodeAny.breakdown === "object" && riskNodeAny.breakdown
+        ? (riskNodeAny.breakdown as { competitive: number; age: number; structural: number })
+        : { competitive: 0, age: 0, structural: 0 },
+    factors: Array.isArray(riskNodeAny.factors) ? (riskNodeAny.factors as string[]) : [],
+  };
+
+  const normalizedAntiFlopNode = {
+    flopProbability: typeof antiFlopNode.flopProbability === "number" ? antiFlopNode.flopProbability : 0,
+    safetyIndex: typeof antiFlopNode.safetyIndex === "number" ? antiFlopNode.safetyIndex : 0,
+    confidenceScore: typeof antiFlopNodeAny.confidenceScore === "number" ? (antiFlopNodeAny.confidenceScore as number) : 80,
+    classification: antiFlopNode.classification,
+    decisionHint: (
+      antiFlopNodeAny.decisionHint === "PROCEED_WITH_GUARDRAILS" || antiFlopNodeAny.decisionHint === "HIGH_CAUTION"
+        ? antiFlopNodeAny.decisionHint
+        : "PROCEED"
+    ) as "PROCEED" | "PROCEED_WITH_GUARDRAILS" | "HIGH_CAUTION",
+    keyDrivers: Array.isArray(antiFlopNodeAny.keyDrivers) ? (antiFlopNodeAny.keyDrivers as string[]) : [],
+    breakdown:
+      typeof antiFlopNodeAny.breakdown === "object" && antiFlopNodeAny.breakdown
+        ? (antiFlopNodeAny.breakdown as {
+            structural: number;
+            competitive: number;
+            ageCurve: number;
+            medical: number;
+            uncertainty: number;
+          })
+        : {
+            structural: 0,
+            competitive: 0,
+            ageCurve: 0,
+            medical: 0,
+            uncertainty: 0,
+          },
+  };
 
   const decision =
     comparison.quantitative.winner === "DRAW"
@@ -233,8 +274,8 @@ function buildComparisonDecisionSummary(comparison: Awaited<ReturnType<typeof co
             comparison.quantitative.winner === "A" ? comparison.quantitative.scoreA : comparison.quantitative.scoreB,
           averagePositionScore:
             (comparison.quantitative.scoreA + comparison.quantitative.scoreB) / 2,
-          risk: riskNode,
-          antiFlop: antiFlopNode,
+          risk: normalizedRiskNode,
+          antiFlop: normalizedAntiFlopNode,
         });
 
   return {
