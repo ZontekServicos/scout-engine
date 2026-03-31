@@ -19,7 +19,7 @@ type FinalDecisionEntry = {
   playerName: string;
 };
 
-export type PlayerComparisonAnalysisResult = {
+export type PlayerComparisonResult = {
   playerAProfile: PlayerIntelligenceProfile;
   playerBProfile: PlayerIntelligenceProfile;
   comparison: {
@@ -33,6 +33,8 @@ export type PlayerComparisonAnalysisResult = {
     summaryInsights: string[];
   };
 };
+
+export type PlayerComparisonAnalysisResult = PlayerComparisonResult;
 
 function average(values: number[]) {
   if (values.length === 0) {
@@ -160,17 +162,17 @@ function scoreDna(profile: PlayerIntelligenceProfile) {
   return average(profile.dna.traits.map((trait) => trait.value));
 }
 
-function buildBlockWinner(
+function compareBlock(
   block: ComparisonBlockKey,
-  playerA: number,
-  playerB: number,
+  playerAScore: number,
+  playerBScore: number,
   inverse = false,
 ): BlockWinner {
   return {
     block,
-    playerA: roundScore(playerA),
-    playerB: roundScore(playerB),
-    winner: normalizeWinner(playerA, playerB, inverse),
+    playerA: roundScore(playerAScore),
+    playerB: roundScore(playerBScore),
+    winner: normalizeWinner(playerAScore, playerBScore, inverse),
   };
 }
 
@@ -239,13 +241,13 @@ function buildComparison(
   playerAProfile: PlayerIntelligenceProfile,
   playerBProfile: PlayerIntelligenceProfile,
 ) {
-  const technical = buildBlockWinner("technical", scoreTechnical(playerAProfile), scoreTechnical(playerBProfile));
-  const physical = buildBlockWinner("physical", scorePhysical(playerAProfile), scorePhysical(playerBProfile));
-  const tactical = buildBlockWinner("tactical", scoreTactical(playerAProfile), scoreTactical(playerBProfile));
-  const market = buildBlockWinner("market", scoreMarket(playerAProfile), scoreMarket(playerBProfile));
-  const risk = buildBlockWinner("risk", scoreRisk(playerAProfile), scoreRisk(playerBProfile), true);
-  const projection = buildBlockWinner("projection", scoreProjection(playerAProfile), scoreProjection(playerBProfile));
-  const dna = buildBlockWinner("dna", scoreDna(playerAProfile), scoreDna(playerBProfile));
+  const technical = compareBlock("technical", scoreTechnical(playerAProfile), scoreTechnical(playerBProfile));
+  const physical = compareBlock("physical", scorePhysical(playerAProfile), scorePhysical(playerBProfile));
+  const tactical = compareBlock("tactical", scoreTactical(playerAProfile), scoreTactical(playerBProfile));
+  const market = compareBlock("market", scoreMarket(playerAProfile), scoreMarket(playerBProfile));
+  const risk = compareBlock("risk", scoreRisk(playerAProfile), scoreRisk(playerBProfile), true);
+  const projection = compareBlock("projection", scoreProjection(playerAProfile), scoreProjection(playerBProfile));
+  const dna = compareBlock("dna", scoreDna(playerAProfile), scoreDna(playerBProfile));
 
   const winnersByBlock = {
     technical,
@@ -384,13 +386,13 @@ async function findPlayerByNameOrThrow(name: string) {
   return fallback;
 }
 
-export async function comparePlayers(playerAId: string, playerBId: string): Promise<PlayerComparisonAnalysisResult> {
+export async function comparePlayers(playerAId: string, playerBId: string): Promise<PlayerComparisonResult> {
   const [playerAProfile, playerBProfile] = await Promise.all([
     buildPlayerIntelligenceProfile(playerAId),
     buildPlayerIntelligenceProfile(playerBId),
   ]);
 
-  const result: PlayerComparisonAnalysisResult = {
+  const result: PlayerComparisonResult = {
     playerAProfile,
     playerBProfile,
     comparison: buildComparison(playerAProfile, playerBProfile),

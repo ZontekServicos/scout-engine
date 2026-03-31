@@ -2,6 +2,7 @@ import { type AnalysisStatus, Prisma } from "@prisma/client";
 import { prisma } from "../lib/prisma";
 import { compareByIds } from "../scout/compare.service";
 import { getPlayerProfile, getPlayerProjection } from "../scout/player.service";
+import type { PlayerComparisonResult } from "../services/playerComparison.service";
 import { getPlayerDisplayName, normalizeReportLiquidityScore } from "../utils/player-display";
 import { normalizeText as normalizeAnalysisText } from "../utils/normalizeText";
 
@@ -267,14 +268,18 @@ function normalizeWinnerLabel(value: unknown) {
   const normalized = typeof value === "string" ? value.toUpperCase() : "DRAW";
 
   if (normalized === "A" || normalized === "PLAYERA") {
-    return "A" as const;
+    return "playerA" as const;
   }
 
   if (normalized === "B" || normalized === "PLAYERB") {
-    return "B" as const;
+    return "playerB" as const;
   }
 
-  return "DRAW" as const;
+  if (normalized === "PLAYERA" || normalized === "PLAYERB" || normalized === "DRAW") {
+    return normalized.toLowerCase() as "playerA" | "playerB" | "draw";
+  }
+
+  return "draw" as const;
 }
 
 async function buildReportAnalysisDescription(players: Array<{ id: string; name: string }>) {
@@ -287,44 +292,33 @@ async function buildReportAnalysisDescription(players: Array<{ id: string; name:
   }
 
   const [playerA, playerB] = players;
-  const comparison = (await compareByIds(playerA.id, playerB.id)) as {
-    summary?: {
-      playerA?: { name?: string; capitalEfficiency?: number; risk?: { explanation?: string } };
-      playerB?: { name?: string; capitalEfficiency?: number; risk?: { explanation?: string } };
-    };
-    riskProfile?: {
-      playerA?: { explanation?: string };
-      playerB?: { explanation?: string };
-    };
-    liquidity?: {
-      playerA?: { resaleWindow?: string };
-      playerB?: { resaleWindow?: string };
-    };
-    quantitative?: { winner?: string };
-  };
+  const comparison = (await compareByIds(playerA.id, playerB.id)) as PlayerComparisonResult;
 
-  const summaryA = comparison.summary?.playerA;
-  const summaryB = comparison.summary?.playerB;
-  const winner = normalizeWinnerLabel(comparison.quantitative?.winner);
+  const winner = normalizeWinnerLabel(comparison.comparison.finalDecision.betterPlayer.playerId === playerA.id
+    ? "PLAYERA"
+    : comparison.comparison.finalDecision.betterPlayer.playerId === playerB.id
+      ? "PLAYERB"
+      : "DRAW");
   const preferredName =
-    winner === "A"
-      ? summaryA?.name ?? playerA.name
-      : winner === "B"
-        ? summaryB?.name ?? playerB.name
+    winner === "playerA"
+      ? comparison.playerAProfile.identity.name
+      : winner === "playerB"
+        ? comparison.playerBProfile.identity.name
         : "Nenhum nome isolado";
 
   return [
-    `Relatorio executivo entre ${summaryA?.name ?? playerA.name} e ${summaryB?.name ?? playerB.name}.`,
-    winner === "DRAW"
+    `Relatorio executivo entre ${comparison.playerAProfile.identity.name} e ${comparison.playerBProfile.identity.name}.`,
+    winner === "draw"
       ? "A leitura comparativa permaneceu equilibrada no recorte atual."
       : `${preferredName} aparece como recomendacao principal no recorte atual.`,
-    summaryA?.risk?.explanation ?? comparison.riskProfile?.playerA?.explanation ?? "",
-    summaryB?.risk?.explanation ?? comparison.riskProfile?.playerB?.explanation ?? "",
-    comparison.liquidity?.playerA?.resaleWindow || comparison.liquidity?.playerB?.resaleWindow
-      ? `Janela de liquidez observada: ${comparison.liquidity?.playerA?.resaleWindow ?? "n/d"} vs ${comparison.liquidity?.playerB?.resaleWindow ?? "n/d"}.`
+    comparison.playerAProfile.risk.overall.summary,
+    comparison.playerBProfile.risk.overall.summary,
+    comparison.playerAProfile.projection.resaleOutlook.summary || comparison.playerBProfile.projection.resaleOutlook.summary
+      ? `Janela de liquidez observada: ${comparison.playerAProfile.projection.resaleOutlook.label} vs ${comparison.playerBProfile.projection.resaleOutlook.label}.`
       : "",
-    summaryA?.capitalEfficiency != null && summaryB?.capitalEfficiency != null
-      ? `Capital efficiency: ${summaryA.capitalEfficiency.toFixed(2)} vs ${summaryB.capitalEfficiency.toFixed(2)}.`
+    comparison.playerAProfile.summary.marketOpportunity.score != null &&
+    comparison.playerBProfile.summary.marketOpportunity.score != null
+      ? `Market opportunity: ${comparison.playerAProfile.summary.marketOpportunity.score.toFixed(2)} vs ${comparison.playerBProfile.summary.marketOpportunity.score.toFixed(2)}.`
       : "",
   ]
     .filter(Boolean)
