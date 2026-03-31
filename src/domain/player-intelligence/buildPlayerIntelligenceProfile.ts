@@ -1,4 +1,5 @@
 import { prisma } from "../../lib/prisma";
+import { normalizeLegacyAnalysisTypes } from "../../analysis/analysis.service";
 import {
   buildPlayerSummary,
   PLAYER_SNAPSHOT_INCLUDE,
@@ -112,6 +113,7 @@ async function fetchPlayerRecord(playerId: string) {
 }
 
 async function fetchLatestAnalysisForPlayer(playerId: string) {
+  await normalizeLegacyAnalysisTypes();
   return prisma.analysis.findFirst({
     where: {
       comparisons: {

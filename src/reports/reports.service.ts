@@ -1,6 +1,6 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "../lib/prisma";
-import { type AnalysisType, validateAnalysisType } from "../analysis/analysis.service";
+import { normalizeLegacyAnalysisTypes, type AnalysisType, validateAnalysisType } from "../analysis/analysis.service";
 
 const PLAYER_REPORT_TYPE: AnalysisType = "PLAYER_REPORT";
 
@@ -111,6 +111,7 @@ interface GetReportsParams {
 }
 
 export async function getReports({ page = 1, limit = 10, playerId }: GetReportsParams) {
+  await normalizeLegacyAnalysisTypes();
   const skip = (page - 1) * limit;
   const type = validateAnalysisType(PLAYER_REPORT_TYPE);
 
@@ -161,6 +162,7 @@ export async function getReports({ page = 1, limit = 10, playerId }: GetReportsP
 }
 
 export async function getReportById(id: string) {
+  await normalizeLegacyAnalysisTypes();
   const report = await prisma.analysis.findFirst({
     where: {
       id,
@@ -201,6 +203,7 @@ export async function applyReportDecision(
     engineVersion?: string;
   },
 ) {
+  await normalizeLegacyAnalysisTypes();
   const report = await prisma.analysis.findFirst({
     where: {
       id,
@@ -239,6 +242,7 @@ export async function applyReportDecision(
 }
 
 export async function deleteReport(id: string) {
+  await normalizeLegacyAnalysisTypes();
   const report = await prisma.analysis.findFirst({
     where: {
       id,

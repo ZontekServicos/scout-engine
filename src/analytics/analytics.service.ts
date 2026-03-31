@@ -1,5 +1,6 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "../lib/prisma";
+import { normalizeLegacyAnalysisTypes } from "../analysis/analysis.service";
 import { getPrimaryPosition } from "../utils/positions";
 
 const PLAYER_COMPARISON_TYPE = "PLAYER_COMPARISON";
@@ -26,6 +27,7 @@ function getComparisonDifference(payload: Prisma.JsonValue) {
 }
 
 export async function getAnalyticsOverview(params: AnalyticsParams) {
+  await normalizeLegacyAnalysisTypes();
   const { from, to, days } = params;
 
   let dateFilter: Prisma.AnalysisWhereInput = {};

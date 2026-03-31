@@ -9,6 +9,7 @@ export type AnalysisType = "PLAYER_REPORT" | "PLAYER_COMPARISON";
 
 const PLAYER_REPORT_TYPE: AnalysisType = "PLAYER_REPORT";
 const PLAYER_COMPARISON_TYPE: AnalysisType = "PLAYER_COMPARISON";
+let legacyAnalysisTypesNormalized = false;
 
 export type ListAnalysesFilters = {
   type?: AnalysisType;
@@ -154,6 +155,83 @@ function assertSupportedAnalysisType(type: string): asserts type is AnalysisType
 export function validateAnalysisType(type: string): AnalysisType {
   assertSupportedAnalysisType(type);
   return type;
+}
+
+export async function normalizeLegacyAnalysisTypes() {
+  if (legacyAnalysisTypesNormalized) {
+    return;
+  }
+
+  await prisma.$executeRawUnsafe(`
+    DO $$
+    BEGIN
+      IF EXISTS (
+        SELECT 1
+        FROM pg_type t
+        JOIN pg_enum e ON e.enumtypid = t.oid
+        WHERE t.typname = 'AnalysisType' AND e.enumlabel = 'REPORT'
+      ) THEN
+        ALTER TYPE "AnalysisType" RENAME VALUE 'REPORT' TO 'PLAYER_REPORT';
+      END IF;
+
+      IF EXISTS (
+        SELECT 1
+        FROM pg_type t
+        JOIN pg_enum e ON e.enumtypid = t.oid
+        WHERE t.typname = 'AnalysisType' AND e.enumlabel = 'COMPARISON'
+      ) THEN
+        ALTER TYPE "AnalysisType" RENAME VALUE 'COMPARISON' TO 'PLAYER_COMPARISON';
+      END IF;
+    END $$;
+  `);
+
+  await prisma.$executeRawUnsafe(`
+    DO $$
+    BEGIN
+      IF EXISTS (
+        SELECT 1
+        FROM information_schema.columns
+        WHERE table_schema = 'public'
+          AND table_name = 'Analysis'
+          AND column_name = 'type'
+          AND data_type = 'text'
+      ) THEN
+        UPDATE "Analysis"
+        SET "type" = CASE
+          WHEN "type" = 'REPORT' THEN 'PLAYER_REPORT'
+          WHEN "type" = 'COMPARISON' THEN 'PLAYER_COMPARISON'
+          ELSE "type"
+        END
+        WHERE "type" IN ('REPORT', 'COMPARISON');
+      END IF;
+    END $$;
+  `);
+
+  await prisma.$executeRawUnsafe(`
+    DO $$
+    BEGIN
+      IF EXISTS (
+        SELECT 1
+        FROM information_schema.columns
+        WHERE table_schema = 'public'
+          AND table_name = 'Analysis'
+          AND column_name = 'type'
+          AND udt_name = 'AnalysisType'
+      ) THEN
+        EXECUTE '
+          UPDATE "Analysis"
+          SET "type" = CASE
+            WHEN "type"::text = ''REPORT'' THEN ''PLAYER_REPORT''::"AnalysisType"
+            WHEN "type"::text = ''COMPARISON'' THEN ''PLAYER_COMPARISON''::"AnalysisType"
+            ELSE "type"
+          END
+          WHERE "type"::text IN (''REPORT'', ''COMPARISON'')
+        ';
+      END IF;
+    END $$;
+  `);
+
+  legacyAnalysisTypesNormalized = true;
 }
 
 function getAnalysisTypeLabel(type: AnalysisType) {
@@ -469,6 +547,7 @@ function buildAnalysisRuntimeErrorMessage(runtime: AnalysisRuntimeStatus) {
 }
 
 async function assertAnalysisRuntimeReady() {
+  await normalizeLegacyAnalysisTypes();
   const runtime = await getAnalysisRuntimeStatus();
 
   if (!runtime.ready) {
@@ -479,6 +558,7 @@ async function assertAnalysisRuntimeReady() {
 }
 
 async function listAnalysisEntries(filters: ListAnalysesFilters) {
+  await normalizeLegacyAnalysisTypes();
   const runtime = await getAnalysisRuntimeStatus();
   if (!runtime.ready) {
     return [] as AnalysisViewModel[];
@@ -517,6 +597,7 @@ export async function listAnalyses(filters: ListAnalysesFilters = {}) {
 }
 
 export async function getAnalysisById(id: string): Promise<AnalysisDetailViewModel> {
+  await normalizeLegacyAnalysisTypes();
   const runtime = await getAnalysisRuntimeStatus();
   if (!runtime.ready) {
     throw createHttpError("Analysis not found", 404);
@@ -696,6 +777,7 @@ export async function createReportAnalysis(input: CreateReportAnalysisInput) {
 }
 
 export async function deleteAnalysis(id: string) {
+  await normalizeLegacyAnalysisTypes();
   await assertAnalysisRuntimeReady();
 
   const existingAnalysis = await prisma.analysis.findUnique({
