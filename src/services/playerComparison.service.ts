@@ -19,7 +19,7 @@ type FinalDecisionEntry = {
   playerName: string;
 };
 
-export type PlayerComparisonResult = {
+export type PlayerComparisonAnalysisResult = {
   playerAProfile: PlayerIntelligenceProfile;
   playerBProfile: PlayerIntelligenceProfile;
   comparison: {
@@ -292,7 +292,7 @@ function buildComparison(
 function buildAnalysisDescription(
   playerAProfile: PlayerIntelligenceProfile,
   playerBProfile: PlayerIntelligenceProfile,
-  comparison: PlayerComparisonResult["comparison"],
+  comparison: PlayerComparisonAnalysisResult["comparison"],
 ) {
   return [
     `${playerAProfile.identity.name} vs ${playerBProfile.identity.name}.`,
@@ -303,7 +303,7 @@ function buildAnalysisDescription(
   ].join(" ");
 }
 
-async function persistComparisonAnalysis(result: PlayerComparisonResult) {
+async function persistComparisonAnalysis(result: PlayerComparisonAnalysisResult) {
   await prisma.analysis.create({
     data: {
       type: "PLAYER_COMPARISON",
@@ -311,7 +311,10 @@ async function persistComparisonAnalysis(result: PlayerComparisonResult) {
       description: normalizeText(buildAnalysisDescription(result.playerAProfile, result.playerBProfile, result.comparison)),
       analyst: normalizeText("SoccerMind Comparison Engine"),
       status: "COMPLETED",
-      payload: JSON.parse(JSON.stringify(result)) as Prisma.InputJsonValue,
+      payload: {
+        type: "PLAYER_COMPARISON",
+        ...JSON.parse(JSON.stringify(result)),
+      } as Prisma.InputJsonValue,
       comparisons: {
         create: [
           {
@@ -381,13 +384,13 @@ async function findPlayerByNameOrThrow(name: string) {
   return fallback;
 }
 
-export async function comparePlayers(playerAId: string, playerBId: string): Promise<PlayerComparisonResult> {
+export async function comparePlayers(playerAId: string, playerBId: string): Promise<PlayerComparisonAnalysisResult> {
   const [playerAProfile, playerBProfile] = await Promise.all([
     buildPlayerIntelligenceProfile(playerAId),
     buildPlayerIntelligenceProfile(playerBId),
   ]);
 
-  const result: PlayerComparisonResult = {
+  const result: PlayerComparisonAnalysisResult = {
     playerAProfile,
     playerBProfile,
     comparison: buildComparison(playerAProfile, playerBProfile),

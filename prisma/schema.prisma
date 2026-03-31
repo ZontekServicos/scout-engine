@@ -35,7 +35,6 @@ model Player {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  scoutReports       ScoutReport[]
   comparisonEntries  AnalysisComparison[]
   metricsSnapshots   PlayerMetrics[]
   financialSnapshots PlayerFinancials[]
@@ -52,7 +51,7 @@ model Player {
 }
 
 model PlayerMetrics {
-  id        String   @id @default(uuid())
+  id         String   @id @default(uuid())
   playerId   String
   overall    Int
   potential  Int
@@ -86,15 +85,15 @@ model PlayerFinancials {
 }
 
 model PlayerRiskSnapshot {
-  id             String    @id @default(uuid())
+  id             String   @id @default(uuid())
   playerId       String
   structuralRisk Float
   financialRisk  Float
   liquidityScore Float
   compositeRisk  Float
   riskLevel      RiskLevel
-  explanation    String?   @db.Text
-  timestamp      DateTime  @default(now())
+  explanation    String?  @db.Text
+  timestamp      DateTime @default(now())
 
   player Player @relation(fields: [playerId], references: [id], onDelete: Cascade)
 
@@ -103,62 +102,18 @@ model PlayerRiskSnapshot {
   @@index([timestamp])
 }
 
-model ScoutReport {
-  id          String   @id @default(uuid())
-  playerId    String?
-  type        ScoutType
-  reportType  ReportType?
-  title       String?
-  description String?  @db.Text
-  content     Json?
-  players     Json?
-  analyst     String?
-  status      ReportStatus @default(COMPLETED)
-
-  input       Json
-  output      Json
-  risk        Json?
-  aiNarrative String?  @db.Text
-
-  // 🔵 GOVERNANÇA & AUDITORIA
-  requestedBy     String?
-  decisionBy      String?
-  decisionReason  String? @db.Text
-  decisionDate    DateTime?
-  modelVersion    String?
-  riskVersion     String?
-  antiFlopVersion String?
-  engineVersion   String?
-  technicalReason String? @db.Text
-  decisionStatus  DecisionStatus @default(PENDING)
-  decisionAt      DateTime?
-
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  player Player? @relation(fields: [playerId], references: [id], onDelete: Cascade)
-  analysis Analysis?
-
-  @@index([playerId])
-  @@index([type])
-  @@index([createdAt])
-  @@index([decisionStatus])
-}
-
 model Analysis {
-  id            String               @id @default(uuid())
-  type          String
-  title         String
-  description   String?              @db.Text
-  payload       Json?
-  createdAt     DateTime             @default(now())
-  updatedAt     DateTime             @updatedAt
-  status        AnalysisStatus       @default(COMPLETED)
-  analyst       String?
-  scoutReportId String?              @unique @map("scout_report_id")
+  id          String             @id @default(cuid())
+  type        AnalysisType
+  title       String
+  description String?            @db.Text
+  payload     Json
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
+  status      AnalysisStatus     @default(COMPLETED)
+  analyst     String?
 
-  scoutReport   ScoutReport?         @relation(fields: [scoutReportId], references: [id], onDelete: SetNull)
-  comparisons   AnalysisComparison[]
+  comparisons AnalysisComparison[]
 
   @@index([type])
   @@index([createdAt])
@@ -171,8 +126,8 @@ model AnalysisComparison {
   playerId   String
   order      Int
 
-  analysis   Analysis @relation(fields: [analysisId], references: [id], onDelete: Cascade)
-  player     Player    @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  analysis Analysis @relation(fields: [analysisId], references: [id], onDelete: Cascade)
+  player   Player    @relation(fields: [playerId], references: [id], onDelete: Cascade)
 
   @@index([analysisId])
   @@index([playerId])
@@ -180,34 +135,15 @@ model AnalysisComparison {
   @@unique([analysisId, playerId])
 }
 
-enum ScoutType {
-  SINGLE
-  COMPARE
-  RANKING
-  REPORT
-  COMPARISON
-}
-
-enum ReportType {
-  REPORT
-  COMPARISON
-}
-
-enum ReportStatus {
-  COMPLETED
-  IN_PROGRESS
-}
-
-enum DecisionStatus {
-  PENDING
-  APPROVED
-  REJECTED
-}
-
 enum RiskLevel {
   LOW
   MEDIUM
   HIGH
+}
+
+enum AnalysisType {
+  PLAYER_REPORT
+  PLAYER_COMPARISON
 }
 
 enum AnalysisStatus {

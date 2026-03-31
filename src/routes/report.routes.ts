@@ -1,26 +1,19 @@
 import { Router, Request, Response, NextFunction } from "express";
-import { getReports, getReportById, deleteReport } from "../reports/reports.service";
-import { applyDecision } from "../scout/decision.service";
+import { applyReportDecision, deleteReport, getReportById, getReports } from "../reports/reports.service";
 import { decisionSchema } from "../validators/decision.validator";
 import { validate } from "../lib/validate";
 import { successResponse } from "../lib/apiResponse";
 
 const router = Router();
 
-/**
- * GET /api/reports
- */
 router.get("/", async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { page, limit, type, playerId } = req.query;
 
-    // 🔒 Mantém compatibilidade com o reports.service
-    const validType = type === "COMPARE" || type === "RANKING" ? type : undefined;
-
     const result = await getReports({
       page: Number(page) || 1,
       limit: Number(limit) || 10,
-      type: validType,
+      type: typeof type === "string" ? type : undefined,
       playerId: typeof playerId === "string" ? playerId : undefined,
     });
 
@@ -30,9 +23,6 @@ router.get("/", async (req: Request, res: Response, next: NextFunction) => {
   }
 });
 
-/**
- * GET /api/reports/:id
- */
 router.get("/:id", async (req: Request, res: Response, next: NextFunction) => {
   try {
     const reportId = typeof req.params.id === "string" ? req.params.id : req.params.id[0];
@@ -44,9 +34,6 @@ router.get("/:id", async (req: Request, res: Response, next: NextFunction) => {
   }
 });
 
-/**
- * GET /api/reports/:id/explainability
- */
 router.get("/:id/explainability", async (req: Request, res: Response, next: NextFunction) => {
   try {
     const reportId = typeof req.params.id === "string" ? req.params.id : req.params.id[0];
@@ -73,7 +60,7 @@ router.patch(
     try {
       const reportId = typeof req.params.id === "string" ? req.params.id : req.params.id[0];
 
-      const updated = await applyDecision(reportId, req.body);
+      const updated = await applyReportDecision(reportId, req.body);
 
       res.json(successResponse(updated));
     } catch (error) {

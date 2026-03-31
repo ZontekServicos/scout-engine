@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 export const analysisListQuerySchema = z.object({
-  type: z.enum(["COMPARISON", "REPORT"]).optional(),
+  type: z.enum(["PLAYER_COMPARISON", "PLAYER_REPORT"]).optional(),
   status: z.enum(["COMPLETED", "IN_PROGRESS", "ARCHIVED"]).optional(),
   includeLegacy: z
     .union([z.literal("true"), z.literal("false"), z.boolean()])
@@ -20,7 +20,7 @@ export const analysisListQuerySchema = z.object({
 });
 
 export const analysisParamsSchema = z.object({
-  id: z.string().uuid("Invalid analysis id"),
+  id: z.string().min(1, "Invalid analysis id"),
 });
 
 export const createComparisonAnalysisSchema = z.object({

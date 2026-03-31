@@ -1,5 +1,8 @@
+import { Prisma } from "@prisma/client";
 import { prisma } from "../lib/prisma";
 import { getPrimaryPosition } from "../utils/positions";
+
+const PLAYER_COMPARISON_TYPE = "PLAYER_COMPARISON";
 
 interface AnalyticsParams {
   from?: string;
@@ -7,10 +10,25 @@ interface AnalyticsParams {
   days?: number;
 }
 
+function getComparisonDifference(payload: Prisma.JsonValue) {
+  const record = (payload ?? {}) as Prisma.JsonObject;
+  const comparison = (record.comparison ?? {}) as Prisma.JsonObject;
+  const winnersByBlock = (comparison.winnersByBlock ?? {}) as Prisma.JsonObject;
+
+  return Object.values(winnersByBlock).reduce<number>((sum, block) => {
+    const entry = block && typeof block === "object" && !Array.isArray(block)
+      ? (block as Prisma.JsonObject)
+      : {};
+    const playerA = typeof entry.playerA === "number" ? entry.playerA : 0;
+    const playerB = typeof entry.playerB === "number" ? entry.playerB : 0;
+    return sum + Math.abs(playerA - playerB);
+  }, 0);
+}
+
 export async function getAnalyticsOverview(params: AnalyticsParams) {
   const { from, to, days } = params;
 
-  let dateFilter: any = {};
+  let dateFilter: Prisma.AnalysisWhereInput = {};
 
   if (days) {
     const startDate = new Date();
@@ -32,31 +50,32 @@ export async function getAnalyticsOverview(params: AnalyticsParams) {
     };
   }
 
-  const reports = await prisma.scoutReport.findMany({
+  const reports = await prisma.analysis.findMany({
     where: {
       ...dateFilter,
-      type: "COMPARE",
+      type: PLAYER_COMPARISON_TYPE,
     },
     include: {
-      player: true,
+      comparisons: {
+        include: {
+          player: true,
+        },
+      },
     },
   });
 
   const totalComparisons = reports.length;
-  const totalWithAI = reports.filter((r) => r.aiNarrative !== null).length;
+  const totalWithAI = reports.filter((report) => report.description !== null).length;
 
   const averageDifference =
-    reports.reduce((acc: number, report: any) => {
-      const diff = report.output?.quantitative?.difference ?? 0;
-      return acc + diff;
-    }, 0) / (totalComparisons || 1);
+    reports.reduce((acc, report) => acc + getComparisonDifference(report.payload), 0) / (totalComparisons || 1);
 
-  // 📊 Comparações por posição
   const positionMap: Record<string, { count: number; totalDiff: number }> = {};
 
-  reports.forEach((r: any) => {
-    const pos = getPrimaryPosition(r.player as any);
-    const diff = r.output?.quantitative?.difference ?? 0;
+  reports.forEach((report) => {
+    const leadPlayer = report.comparisons[0]?.player;
+    const pos = leadPlayer ? getPrimaryPosition(leadPlayer as never) : "UNK";
+    const diff = getComparisonDifference(report.payload);
 
     if (!positionMap[pos]) {
       positionMap[pos] = { count: 0, totalDiff: 0 };
@@ -75,12 +94,13 @@ export async function getAnalyticsOverview(params: AnalyticsParams) {
   const mostComparedPosition =
     comparisonsByPosition.sort((a, b) => b.count - a.count)[0]?.position ?? null;
 
-  // 🏆 Top 5 jogadores mais comparados
   const playerMap: Record<string, number> = {};
 
-  reports.forEach((r) => {
-    const id = r.playerId ?? "__unknown_player__";
-    playerMap[id] = (playerMap[id] || 0) + 1;
+  reports.forEach((report) => {
+    report.comparisons.forEach((entry) => {
+      const id = entry.player.id;
+      playerMap[id] = (playerMap[id] || 0) + 1;
+    });
   });
 
   const topPlayers = await Promise.all(
@@ -100,8 +120,7 @@ export async function getAnalyticsOverview(params: AnalyticsParams) {
       }),
   );
 
-  // 💰 Estimativa simples de custo IA (exemplo)
-  const estimatedCostPerCall = 0.002; // exemplo hipotético
+  const estimatedCostPerCall = 0.002;
   const estimatedAITotalCost = Number((totalWithAI * estimatedCostPerCall).toFixed(4));
 
   return {

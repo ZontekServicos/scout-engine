@@ -128,7 +128,6 @@ async function fetchLatestAnalysisForPlayer(playerId: string) {
           player: true,
         },
       },
-      scoutReport: true,
     },
   });
 }
@@ -477,10 +476,10 @@ function buildDefensiveActions(position: string, defending: number, random: () =
 }
 
 function extractFieldIntelligenceFromAnalysis(analysis: AnalysisWithContext): FieldIntelligence | null {
-  const scoutReportRecord = asRecord(analysis?.scoutReport?.output);
-  const comparisonData = asRecord(scoutReportRecord?.comparisonData);
+  const payloadRecord = asRecord(analysis?.payload);
+  const comparisonData = asRecord(payloadRecord?.comparison);
   const fieldNode =
-    asRecord(scoutReportRecord?.fieldIntelligence) ??
+    asRecord(payloadRecord?.fieldIntelligence) ??
     asRecord(comparisonData?.fieldIntelligence);
 
   const heatmap = Array.isArray(fieldNode?.heatmap) ? fieldNode?.heatmap : null;
@@ -673,9 +672,13 @@ function buildNarrativeBlock(
   projection: ProjectionBlock,
   analysis: AnalysisWithContext,
 ): NarrativeBlock {
-  const scoutReportOutput = asRecord(analysis?.scoutReport?.output);
-  const reportNarrative = typeof analysis?.scoutReport?.aiNarrative === "string" ? analysis.scoutReport.aiNarrative : null;
-  const reportInsights = asStringArray(scoutReportOutput?.insights);
+  const payloadRecord = asRecord(analysis?.payload);
+  const reportNarrative = typeof payloadRecord?.aiNarrative === "string" ? payloadRecord.aiNarrative : null;
+  const comparisonRecord = asRecord(payloadRecord?.comparison);
+  const reportInsights = [
+    ...asStringArray(payloadRecord?.insights),
+    ...asStringArray(comparisonRecord?.summaryInsights),
+  ];
   const description = analysis?.description ?? null;
 
   const strengths = [

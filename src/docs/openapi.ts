@@ -126,7 +126,7 @@ export const openApiDocument = {
           id: { type: "string", format: "uuid" },
           title: { type: "string" },
           description: { type: ["string", "null"] },
-          type: { type: "string", enum: ["COMPARISON", "REPORT"] },
+          type: { type: "string", enum: ["PLAYER_COMPARISON", "PLAYER_REPORT"] },
           typeLabel: { type: "string" },
           createdAt: { type: "string", format: "date-time" },
           status: { type: "string", enum: ["COMPLETED", "IN_PROGRESS", "ARCHIVED"] },
@@ -134,7 +134,7 @@ export const openApiDocument = {
           analyst: { type: "string" },
           playerCount: { type: "integer" },
           canDelete: { type: "boolean" },
-          deleteManagedBy: { type: "string", enum: ["analysis", "scout_report"] },
+          deleteManagedBy: { type: "string", enum: ["analysis"] },
           deleteHint: { type: "string" },
           scoutReportId: { type: ["string", "null"] },
           players: { type: "array", items: { $ref: "#/components/schemas/AnalysisPlayer" } },
@@ -148,9 +148,9 @@ export const openApiDocument = {
           sourceMetadata: {
             type: "object",
             properties: {
-              origin: { type: "string", enum: ["ANALYSIS", "SCOUT_REPORT"] },
+              origin: { type: "string", enum: ["ANALYSIS"] },
               legacy: { type: "boolean" },
-                scoutReportType: { type: ["string", "null"], enum: ["SINGLE", "COMPARE", "RANKING", "REPORT", "COMPARISON", null] },
+                scoutReportType: { type: ["string", "null"], enum: ["PLAYER_REPORT", "PLAYER_COMPARISON", null] },
               scoutReportId: { type: ["string", "null"] },
               decisionStatus: { type: ["string", "null"] },
             },
@@ -159,7 +159,7 @@ export const openApiDocument = {
             type: "object",
             properties: {
               canDelete: { type: "boolean" },
-              managedBy: { type: "string", enum: ["ANALYSIS", "SCOUT_REPORT"] },
+              managedBy: { type: "string", enum: ["ANALYSIS"] },
               reason: { type: "string" },
             },
           },
@@ -437,7 +437,7 @@ export const openApiDocument = {
       get: {
         summary: "List analysis hub entries",
         parameters: [
-          { name: "type", in: "query", schema: { type: "string", enum: ["COMPARISON", "REPORT"] } },
+          { name: "type", in: "query", schema: { type: "string", enum: ["PLAYER_COMPARISON", "PLAYER_REPORT"] } },
           { name: "status", in: "query", schema: { type: "string", enum: ["COMPLETED", "IN_PROGRESS", "ARCHIVED"] } },
           { name: "includeLegacy", in: "query", schema: { type: "boolean", default: true } },
         ],

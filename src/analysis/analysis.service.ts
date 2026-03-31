@@ -1,11 +1,15 @@
+import { type AnalysisStatus, Prisma } from "@prisma/client";
 import { prisma } from "../lib/prisma";
 import { compareByIds } from "../scout/compare.service";
 import { getPlayerProfile, getPlayerProjection } from "../scout/player.service";
 import { getPlayerDisplayName, normalizeReportLiquidityScore } from "../utils/player-display";
 import { normalizeText as normalizeAnalysisText } from "../utils/normalizeText";
 
-type AnalysisType = "COMPARISON" | "REPORT";
-type AnalysisStatus = "COMPLETED" | "IN_PROGRESS" | "ARCHIVED";
+export type AnalysisType = "PLAYER_REPORT" | "PLAYER_COMPARISON";
+
+const PLAYER_REPORT_TYPE: AnalysisType = "PLAYER_REPORT";
+const PLAYER_COMPARISON_TYPE: AnalysisType = "PLAYER_COMPARISON";
+
 export type ListAnalysesFilters = {
   type?: AnalysisType;
   status?: AnalysisStatus;
@@ -21,7 +25,7 @@ type AnalysisPlayerViewModel = {
 };
 
 type AnalysisSourceMetadata = {
-  origin: "ANALYSIS" | "SCOUT_REPORT";
+  origin: "ANALYSIS";
   legacy: boolean;
   scoutReportType: string | null;
   scoutReportId: string | null;
@@ -30,7 +34,7 @@ type AnalysisSourceMetadata = {
 
 type AnalysisDeletePolicy = {
   canDelete: boolean;
-  managedBy: "ANALYSIS" | "SCOUT_REPORT";
+  managedBy: "ANALYSIS";
   reason: string;
 };
 
@@ -54,7 +58,7 @@ export type AnalysisViewModel = {
   players: AnalysisPlayerViewModel[];
   playerCount: number;
   canDelete: boolean;
-  deleteManagedBy: "analysis" | "scout_report";
+  deleteManagedBy: "analysis";
   deleteHint: string;
   decisionContext: {
     analyst: string;
@@ -62,7 +66,7 @@ export type AnalysisViewModel = {
   };
   sourceMetadata: AnalysisSourceMetadata;
   deletePolicy: AnalysisDeletePolicy;
-  scoutReportId: string | null;
+  scoutReportId: null;
 };
 
 export type AnalysisReportContentViewModel = {
@@ -137,19 +141,23 @@ function normalizeText(value: string | null | undefined, fallback = "") {
   return trimmed ? normalizeAnalysisText(trimmed) : fallback;
 }
 
-function normalizeReportStatus(value: string | null | undefined): AnalysisStatus {
-  switch (value) {
-    case "APPROVED":
-      return "COMPLETED";
-    case "REJECTED":
-      return "ARCHIVED";
-    default:
-      return "IN_PROGRESS";
+function assertSupportedAnalysisType(type: string): asserts type is AnalysisType {
+  if (type === "REPORT") {
+    throw new Error("Invalid Analysis type: REPORT is deprecated");
+  }
+
+  if (type !== PLAYER_REPORT_TYPE && type !== PLAYER_COMPARISON_TYPE) {
+    throw new Error(`Invalid Analysis type: ${type}`);
   }
 }
 
+export function validateAnalysisType(type: string): AnalysisType {
+  assertSupportedAnalysisType(type);
+  return type;
+}
+
 function getAnalysisTypeLabel(type: AnalysisType) {
-  return type === "COMPARISON" ? "Comparacao" : "Relatorio";
+  return type === PLAYER_COMPARISON_TYPE ? "Comparacao" : "Relatorio";
 }
 
 function getAnalysisStatusLabel(status: AnalysisStatus) {
@@ -203,8 +211,8 @@ async function buildReportAnalysisDescription(players: Array<{ id: string; name:
   const [playerA, playerB] = players;
   const comparison = (await compareByIds(playerA.id, playerB.id)) as {
     summary?: {
-      playerA?: { name?: string; overall?: number; capitalEfficiency?: number; risk?: { explanation?: string } };
-      playerB?: { name?: string; overall?: number; capitalEfficiency?: number; risk?: { explanation?: string } };
+      playerA?: { name?: string; capitalEfficiency?: number; risk?: { explanation?: string } };
+      playerB?: { name?: string; capitalEfficiency?: number; risk?: { explanation?: string } };
     };
     riskProfile?: {
       playerA?: { explanation?: string };
@@ -245,11 +253,19 @@ async function buildReportAnalysisDescription(players: Array<{ id: string; name:
     .join(" ");
 }
 
+function buildAnalysisPayload(type: AnalysisType, playerIds: string[], extras: Record<string, unknown> = {}) {
+  return {
+    type,
+    playerIds,
+    ...extras,
+  } as Prisma.InputJsonValue;
+}
+
 function mapAnalysisToViewModel(analysis: {
   id: string;
   title: string;
   description: string | null;
-  type: AnalysisType;
+  type: string;
   status: AnalysisStatus;
   analyst: string | null;
   createdAt: Date;
@@ -262,7 +278,6 @@ function mapAnalysisToViewModel(analysis: {
       positions: string[];
     };
   }>;
-  scoutReportId?: string | null;
 }): AnalysisViewModel {
   const players = analysis.comparisons
     .slice()
@@ -275,6 +290,7 @@ function mapAnalysisToViewModel(analysis: {
       order: entry.order,
     }));
   const analyst = normalizeText(analysis.analyst, "Analista SoccerMind");
+  const type = validateAnalysisType(analysis.type);
 
   return {
     id: analysis.id,
@@ -282,8 +298,8 @@ function mapAnalysisToViewModel(analysis: {
     description: analysis.description,
     playerAId: players[0]?.id ?? null,
     playerBId: players[1]?.id ?? null,
-    type: analysis.type,
-    typeLabel: getAnalysisTypeLabel(analysis.type),
+    type,
+    typeLabel: getAnalysisTypeLabel(type),
     createdAt: analysis.createdAt.toISOString(),
     status: analysis.status,
     statusLabel: getAnalysisStatusLabel(analysis.status),
@@ -301,7 +317,7 @@ function mapAnalysisToViewModel(analysis: {
       origin: "ANALYSIS",
       legacy: false,
       scoutReportType: null,
-      scoutReportId: analysis.scoutReportId ?? null,
+      scoutReportId: null,
       decisionStatus: null,
     },
     deletePolicy: {
@@ -309,7 +325,7 @@ function mapAnalysisToViewModel(analysis: {
       managedBy: "ANALYSIS",
       reason: "Entrada persistida na central Analysis; exclusao permitida por este endpoint.",
     },
-    scoutReportId: analysis.scoutReportId ?? null,
+    scoutReportId: null,
   };
 }
 
@@ -468,9 +484,9 @@ async function listAnalysisEntries(filters: ListAnalysesFilters) {
     return [] as AnalysisViewModel[];
   }
 
-  const analyses = await (prisma.analysis as any).findMany({
+  const analyses = await prisma.analysis.findMany({
     where: {
-      ...(filters.type ? { type: filters.type } : {}),
+      ...(filters.type ? { type: validateAnalysisType(filters.type) } : {}),
       ...(filters.status ? { status: filters.status } : {}),
     },
     orderBy: { createdAt: "desc" },
@@ -482,7 +498,6 @@ async function listAnalysisEntries(filters: ListAnalysesFilters) {
       status: true,
       analyst: true,
       createdAt: true,
-      scoutReportId: true,
       comparisons: {
         include: {
           player: true,
@@ -497,7 +512,7 @@ async function listAnalysisEntries(filters: ListAnalysesFilters) {
 export async function listAnalyses(filters: ListAnalysesFilters = {}) {
   const analyses = await listAnalysisEntries(filters);
   return analyses.sort(
-    (a: AnalysisViewModel, b: AnalysisViewModel) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+    (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
   );
 }
 
@@ -507,7 +522,7 @@ export async function getAnalysisById(id: string): Promise<AnalysisDetailViewMod
     throw createHttpError("Analysis not found", 404);
   }
 
-  const analysis = await (prisma.analysis as any).findUnique({
+  const analysis = await prisma.analysis.findUnique({
     where: { id },
     select: {
       id: true,
@@ -517,7 +532,6 @@ export async function getAnalysisById(id: string): Promise<AnalysisDetailViewMod
       status: true,
       analyst: true,
       createdAt: true,
-      scoutReportId: true,
       comparisons: {
         include: {
           player: true,
@@ -534,7 +548,8 @@ export async function getAnalysisById(id: string): Promise<AnalysisDetailViewMod
 
   return {
     ...viewModel,
-    reportContent: viewModel.type === "REPORT" ? await buildReportContent(viewModel.players, viewModel.description) : null,
+    reportContent:
+      viewModel.type === PLAYER_REPORT_TYPE ? await buildReportContent(viewModel.players, viewModel.description) : null,
   };
 }
 
@@ -568,13 +583,17 @@ export async function createComparisonAnalysis(input: CreateComparisonAnalysisIn
     normalizeText(input.title) ||
     `Comparacao - ${playerIds.map((playerId) => playersById.get(playerId)?.name ?? playerId).join(" vs ")}`;
 
-  const analysis = await (prisma.analysis as any).create({
+  const type = validateAnalysisType(PLAYER_COMPARISON_TYPE);
+  const analysis = await prisma.analysis.create({
     data: {
-      type: "COMPARISON",
+      type,
       title,
       description: normalizeText(input.description) || null,
       analyst: normalizeText(input.analyst, "Analista SoccerMind"),
       status: input.status ?? "COMPLETED",
+      payload: buildAnalysisPayload(type, playerIds, {
+        createdBy: "manual_comparison",
+      }),
       comparisons: {
         create: playerIds.map((playerId, index) => ({
           playerId,
@@ -590,7 +609,6 @@ export async function createComparisonAnalysis(input: CreateComparisonAnalysisIn
       status: true,
       analyst: true,
       createdAt: true,
-      scoutReportId: true,
       comparisons: {
         include: {
           player: true,
@@ -640,13 +658,17 @@ export async function createReportAnalysis(input: CreateReportAnalysisInput) {
     normalizeText(input.title) ||
     `Relatorio Executivo - ${orderedPlayers.map((player) => player.name).join(" vs ")}`;
 
-  const analysis = await (prisma.analysis as any).create({
+  const type = validateAnalysisType(PLAYER_REPORT_TYPE);
+  const analysis = await prisma.analysis.create({
     data: {
-      type: "REPORT",
+      type,
       title,
       description: normalizeText(input.description) || (await buildReportAnalysisDescription(orderedPlayers)),
       analyst: normalizeText(input.analyst, "Analista SoccerMind"),
       status: input.status ?? "COMPLETED",
+      payload: buildAnalysisPayload(type, playerIds, {
+        createdBy: "manual_report",
+      }),
       comparisons: {
         create: playerIds.map((playerId, index) => ({
           playerId,
@@ -662,7 +684,6 @@ export async function createReportAnalysis(input: CreateReportAnalysisInput) {
       status: true,
       analyst: true,
       createdAt: true,
-      scoutReportId: true,
       comparisons: {
         include: {
           player: true,
