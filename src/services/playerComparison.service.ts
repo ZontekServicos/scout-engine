@@ -2,6 +2,7 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "../lib/prisma";
 import { buildPlayerIntelligenceProfile } from "../domain/player-intelligence/buildPlayerIntelligenceProfile";
 import type { PlayerIntelligenceProfile } from "../domain/player-intelligence/types";
+import { normalizeText } from "../utils/normalizeText";
 
 type WinnerKey = "playerA" | "playerB" | "draw";
 type ComparisonBlockKey = "technical" | "physical" | "tactical" | "market" | "risk" | "projection" | "dna";
@@ -306,9 +307,9 @@ async function persistComparisonAnalysis(result: PlayerComparisonResult) {
   await prisma.analysis.create({
     data: {
       type: "PLAYER_COMPARISON",
-      title: `${result.playerAProfile.identity.name} vs ${result.playerBProfile.identity.name}`,
-      description: buildAnalysisDescription(result.playerAProfile, result.playerBProfile, result.comparison),
-      analyst: "SoccerMind Comparison Engine",
+      title: normalizeText(`${result.playerAProfile.identity.name} vs ${result.playerBProfile.identity.name}`),
+      description: normalizeText(buildAnalysisDescription(result.playerAProfile, result.playerBProfile, result.comparison)),
+      analyst: normalizeText("SoccerMind Comparison Engine"),
       status: "COMPLETED",
       payload: JSON.parse(JSON.stringify(result)) as Prisma.InputJsonValue,
       comparisons: {

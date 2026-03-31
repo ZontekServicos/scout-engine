@@ -2,6 +2,7 @@ import { prisma } from "../lib/prisma";
 import { compareByIds } from "../scout/compare.service";
 import { getPlayerProfile, getPlayerProjection } from "../scout/player.service";
 import { getPlayerDisplayName, normalizeReportLiquidityScore } from "../utils/player-display";
+import { normalizeText as normalizeAnalysisText } from "../utils/normalizeText";
 
 type AnalysisType = "COMPARISON" | "REPORT";
 type AnalysisStatus = "COMPLETED" | "IN_PROGRESS" | "ARCHIVED";
@@ -133,7 +134,7 @@ function createHttpError(message: string, statusCode: number) {
 
 function normalizeText(value: string | null | undefined, fallback = "") {
   const trimmed = value?.trim();
-  return trimmed ? trimmed : fallback;
+  return trimmed ? normalizeAnalysisText(trimmed) : fallback;
 }
 
 function normalizeReportStatus(value: string | null | undefined): AnalysisStatus {
