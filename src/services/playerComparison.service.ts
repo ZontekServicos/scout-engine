@@ -4,31 +4,26 @@ import { buildPlayerIntelligenceProfile } from "../domain/player-intelligence/bu
 import type { PlayerIntelligenceProfile } from "../domain/player-intelligence/types";
 import { normalizeText } from "../utils/normalizeText";
 
-type WinnerKey = "playerA" | "playerB" | "draw";
+type WinnerKey = "A" | "B" | "tie";
 type ComparisonBlockKey = "technical" | "physical" | "tactical" | "market" | "risk" | "projection" | "dna";
 
-type BlockWinner = {
+type InternalBlockScore = {
   block: ComparisonBlockKey;
-  playerA: number;
-  playerB: number;
+  scoreA: number;
+  scoreB: number;
   winner: WinnerKey;
-};
-
-type FinalDecisionEntry = {
-  playerId: string | null;
-  playerName: string;
 };
 
 export type PlayerComparisonResult = {
   playerAProfile: PlayerIntelligenceProfile;
   playerBProfile: PlayerIntelligenceProfile;
   comparison: {
-    winnersByBlock: Record<ComparisonBlockKey, BlockWinner>;
+    winnersByBlock: Record<string, "A" | "B" | "tie">;
     finalDecision: {
-      betterPlayer: FinalDecisionEntry;
-      saferPlayer: FinalDecisionEntry;
-      higherUpside: FinalDecisionEntry;
-      bestTacticalFit: FinalDecisionEntry;
+      betterPlayer: "A" | "B";
+      saferPlayer: "A" | "B";
+      higherUpside: "A" | "B";
+      bestTacticalFit: "A" | "B";
     };
     summaryInsights: string[];
   };
@@ -37,280 +32,287 @@ export type PlayerComparisonResult = {
 export type PlayerComparisonAnalysisResult = PlayerComparisonResult;
 
 function average(values: number[]) {
-  if (values.length === 0) {
-    return 0;
-  }
-
-  return values.reduce((sum, value) => sum + value, 0) / values.length;
+  if (values.length === 0) return 0;
+  return values.reduce((sum, v) => sum + v, 0) / values.length;
 }
 
-function roundScore(value: number) {
+function round(value: number) {
   return Number(value.toFixed(2));
 }
 
-function normalizeWinner(playerA: number, playerB: number, inverse = false): WinnerKey {
-  if (Math.abs(playerA - playerB) < 0.01) {
-    return "draw";
-  }
-
-  if (inverse) {
-    return playerA < playerB ? "playerA" : "playerB";
-  }
-
-  return playerA > playerB ? "playerA" : "playerB";
+// TASK 2 — core compareBlock helper
+function compareBlock(a: number, b: number, invert = false): WinnerKey {
+  if (Math.abs(a - b) < 0.01) return "tie";
+  if (invert) return a < b ? "A" : "B";
+  return a > b ? "A" : "B";
 }
 
-function toDecisionEntry(profile: PlayerIntelligenceProfile | null): FinalDecisionEntry {
-  if (!profile) {
-    return {
-      playerId: null,
-      playerName: "No clear edge",
-    };
-  }
-
-  return {
-    playerId: profile.identity.id,
-    playerName: profile.identity.name,
-  };
-}
-
-function resolveDecisionProfile(
-  winner: WinnerKey,
-  playerAProfile: PlayerIntelligenceProfile,
-  playerBProfile: PlayerIntelligenceProfile,
-) {
-  if (winner === "playerA") {
-    return playerAProfile;
-  }
-
-  if (winner === "playerB") {
-    return playerBProfile;
-  }
-
-  return null;
-}
-
-function scoreTechnical(profile: PlayerIntelligenceProfile) {
-  return average([
-    profile.technical.overall,
-    profile.technical.ballStriking,
-    profile.technical.passing,
-    profile.technical.carrying,
-    profile.technical.firstTouch,
-    profile.technical.creativity,
-    profile.technical.defending,
-  ]);
-}
-
-function scorePhysical(profile: PlayerIntelligenceProfile) {
-  return average([
-    profile.physical.overall,
-    profile.physical.acceleration,
-    profile.physical.sprintSpeed,
-    profile.physical.agility,
-    profile.physical.balance,
-    profile.physical.strength,
-    profile.physical.stamina,
-    profile.physical.aerial,
-  ]);
-}
-
-function scoreTactical(profile: PlayerIntelligenceProfile) {
-  return average([
-    profile.tactical.overall,
-    profile.tactical.positioning,
-    profile.tactical.decisionMaking,
-    profile.tactical.defensiveAwareness,
-    profile.tactical.transitionImpact,
-    profile.tactical.tacticalFlexibility,
-    profile.tactical.roleDiscipline,
-  ]);
-}
-
-function scoreMarket(profile: PlayerIntelligenceProfile) {
-  return average([
-    profile.market.liquidity.score,
-    profile.market.valueRetention.score,
-    profile.market.contractPressure.score,
-    profile.summary.marketOpportunity.score,
-  ]);
-}
-
-function scoreRisk(profile: PlayerIntelligenceProfile) {
-  return average([
-    profile.risk.overall.score,
-    profile.risk.physical.score,
-    profile.risk.tactical.score,
-    profile.risk.financial.score,
-    profile.risk.availability.score,
-    profile.risk.volatility.score,
-  ]);
-}
-
-function scoreProjection(profile: PlayerIntelligenceProfile) {
-  return average([
-    profile.projection.currentOverall,
-    profile.projection.nextSeasonOverall,
-    profile.projection.expectedPeakOverall,
-    profile.projection.growthIndex,
-    profile.projection.resaleOutlook.score,
-    profile.summary.upside.score,
-  ]);
-}
-
-function scoreDna(profile: PlayerIntelligenceProfile) {
-  return average(profile.dna.traits.map((trait) => trait.value));
-}
-
-function compareBlock(
+function buildBlockScore(
   block: ComparisonBlockKey,
-  playerAScore: number,
-  playerBScore: number,
-  inverse = false,
-): BlockWinner {
-  return {
-    block,
-    playerA: roundScore(playerAScore),
-    playerB: roundScore(playerBScore),
-    winner: normalizeWinner(playerAScore, playerBScore, inverse),
-  };
+  scoreA: number,
+  scoreB: number,
+  invert = false,
+): InternalBlockScore {
+  return { block, scoreA: round(scoreA), scoreB: round(scoreB), winner: compareBlock(scoreA, scoreB, invert) };
 }
 
-function buildInsightFromBlock(
+// TASK 3 — per-block scoring using PlayerIntelligenceProfile attributes
+
+function scoreTechnical(p: PlayerIntelligenceProfile): number {
+  // key passes → passing + creativity; xG → ballStriking; xA → firstTouch + carrying
+  return average([
+    p.technical.overall,
+    p.technical.passing,
+    p.technical.creativity,
+    p.technical.ballStriking,
+    p.technical.firstTouch,
+    p.technical.carrying,
+    p.technical.defending,
+  ]);
+}
+
+function scorePhysical(p: PlayerIntelligenceProfile): number {
+  return average([
+    p.physical.overall,
+    p.physical.stamina,
+    p.physical.strength,
+    p.physical.acceleration,
+    p.physical.sprintSpeed,
+    p.physical.agility,
+    p.physical.balance,
+    p.physical.aerial,
+  ]);
+}
+
+function scoreTactical(p: PlayerIntelligenceProfile): number {
+  return average([
+    p.tactical.overall,
+    p.tactical.positioning,
+    p.tactical.decisionMaking,
+    p.tactical.defensiveAwareness,
+    p.tactical.transitionImpact,
+    p.tactical.tacticalFlexibility,
+    p.tactical.roleDiscipline,
+  ]);
+}
+
+function scoreMarket(p: PlayerIntelligenceProfile): number {
+  return average([
+    p.market.liquidity.score,
+    p.market.valueRetention.score,
+    p.market.contractPressure.score,
+    p.summary.marketOpportunity.score,
+  ]);
+}
+
+function scoreRisk(p: PlayerIntelligenceProfile): number {
+  // lower is better — invert=true in compareBlock
+  return average([
+    p.risk.overall.score,
+    p.risk.physical.score,
+    p.risk.tactical.score,
+    p.risk.financial.score,
+    p.risk.availability.score,
+    p.risk.volatility.score,
+  ]);
+}
+
+function scoreProjection(p: PlayerIntelligenceProfile): number {
+  return average([
+    p.projection.currentOverall,
+    p.projection.nextSeasonOverall,
+    p.projection.expectedPeakOverall,
+    p.projection.growthIndex,
+    p.projection.resaleOutlook.score,
+    p.summary.upside.score,
+  ]);
+}
+
+function scoreDna(p: PlayerIntelligenceProfile): number {
+  // progression + pressing proxied through trait values
+  if (p.dna.traits.length === 0) return 0;
+  return average(p.dna.traits.map((t) => t.value));
+}
+
+// TASK 4 — final decision helpers
+
+function countBlockWins(scores: InternalBlockScore[], side: "A" | "B"): number {
+  return scores.filter((s) => s.winner === side).length;
+}
+
+function resolveFinalWinner(winner: WinnerKey, tiebreaker: WinnerKey): "A" | "B" {
+  if (winner === "A" || winner === "B") return winner;
+  return tiebreaker === "B" ? "B" : "A";
+}
+
+// TASK 5 — summary insights
+
+function buildInsight(
   winnerProfile: PlayerIntelligenceProfile,
   loserProfile: PlayerIntelligenceProfile,
   block: ComparisonBlockKey,
   delta: number,
-) {
-  if (block === "technical") {
-    return `${winnerProfile.identity.name} leads the technical block with stronger passing, carrying and final-action quality than ${loserProfile.identity.name}.`;
-  }
+): string {
+  const wName = winnerProfile.identity.name;
+  const lName = loserProfile.identity.name;
 
-  if (block === "physical") {
-    return `${winnerProfile.identity.name} shows the stronger physical base through acceleration, speed endurance and duel support.`;
+  switch (block) {
+    case "technical":
+      return `${wName} shows stronger offensive progression with superior passing, carrying and final-action quality over ${lName}.`;
+    case "physical":
+      return `${wName} holds a physical edge in stamina and strength, giving better coverage and duel support than ${lName}.`;
+    case "tactical":
+      return `${wName} owns a clear tactical advantage — better decision-making, transition impact and role discipline compared to ${lName}.`;
+    case "market":
+      return `${wName} is the cleaner market opportunity with better liquidity and value retention (${round(delta)}-pt edge).`;
+    case "risk":
+      return `${wName} presents lower financial and physical risk, making them the safer acquisition over ${lName}.`;
+    case "projection":
+      return `${wName} projects the higher upside, with a stronger growth index and expected peak than ${lName}.`;
+    case "dna":
+      return `Significant difference in DNA profile — ${wName} leads in ${winnerProfile.dna.dominantTraits.slice(0, 2).join(" and ").toLowerCase()}.`;
   }
-
-  if (block === "tactical") {
-    return `${winnerProfile.identity.name} owns the clearer tactical edge with better decision-making, positioning and role discipline.`;
-  }
-
-  if (block === "market") {
-    return `${winnerProfile.identity.name} is the cleaner market opportunity with better liquidity, retention and contract timing.`;
-  }
-
-  if (block === "risk") {
-    return `${winnerProfile.identity.name} profiles as the safer choice with lower overall exposure across physical, tactical and financial risk.`;
-  }
-
-  if (block === "projection") {
-    return `${winnerProfile.identity.name} projects the better upside with a stronger growth index and higher expected peak.`;
-  }
-
-  return `${winnerProfile.identity.name} has the stronger DNA profile, especially in ${winnerProfile.dna.dominantTraits.slice(0, 2).join(" and ").toLowerCase()}, creating a ${roundScore(delta)}-point edge.`;
 }
 
 function buildSummaryInsights(
   playerAProfile: PlayerIntelligenceProfile,
   playerBProfile: PlayerIntelligenceProfile,
-  winnersByBlock: Record<ComparisonBlockKey, BlockWinner>,
-) {
-  const rankedBlocks = (Object.values(winnersByBlock) as BlockWinner[])
-    .filter((entry) => entry.winner !== "draw")
-    .map((entry) => ({
-      ...entry,
-      delta: Math.abs(entry.playerA - entry.playerB),
-    }))
-    .sort((left, right) => right.delta - left.delta)
+  scores: InternalBlockScore[],
+): string[] {
+  const decisive = scores
+    .filter((s) => s.winner !== "tie")
+    .map((s) => ({ ...s, delta: Math.abs(s.scoreA - s.scoreB) }))
+    .sort((a, b) => b.delta - a.delta)
     .slice(0, 5);
 
-  if (rankedBlocks.length === 0) {
+  if (decisive.length === 0) {
     return [
-      `${playerAProfile.identity.name} and ${playerBProfile.identity.name} are effectively level across the comparison model.`,
+      `${playerAProfile.identity.name} and ${playerBProfile.identity.name} are effectively level across all comparison blocks.`,
     ];
   }
 
-  return rankedBlocks.map((entry) => {
-    const winnerProfile = entry.winner === "playerA" ? playerAProfile : playerBProfile;
-    const loserProfile = entry.winner === "playerA" ? playerBProfile : playerAProfile;
-
-    return buildInsightFromBlock(winnerProfile, loserProfile, entry.block, entry.delta);
+  const insights = decisive.map((entry) => {
+    const winner = entry.winner === "A" ? playerAProfile : playerBProfile;
+    const loser = entry.winner === "A" ? playerBProfile : playerAProfile;
+    return buildInsight(winner, loser, entry.block, entry.delta);
   });
+
+  // Add a tactical context insight if both bestSystem / bestRole differ
+  const roleA = playerAProfile.tactical.bestRole;
+  const roleB = playerBProfile.tactical.bestRole;
+  if (roleA && roleB && roleA !== roleB && insights.length < 5) {
+    insights.push(
+      `${playerAProfile.identity.name} is best suited as ${roleA} while ${playerBProfile.identity.name} fits ${roleB} — context matters for positional fit.`,
+    );
+  }
+
+  return insights.slice(0, 5);
 }
 
 function buildComparison(
   playerAProfile: PlayerIntelligenceProfile,
   playerBProfile: PlayerIntelligenceProfile,
-) {
-  const technical = compareBlock("technical", scoreTechnical(playerAProfile), scoreTechnical(playerBProfile));
-  const physical = compareBlock("physical", scorePhysical(playerAProfile), scorePhysical(playerBProfile));
-  const tactical = compareBlock("tactical", scoreTactical(playerAProfile), scoreTactical(playerBProfile));
-  const market = compareBlock("market", scoreMarket(playerAProfile), scoreMarket(playerBProfile));
-  const risk = compareBlock("risk", scoreRisk(playerAProfile), scoreRisk(playerBProfile), true);
-  const projection = compareBlock("projection", scoreProjection(playerAProfile), scoreProjection(playerBProfile));
-  const dna = compareBlock("dna", scoreDna(playerAProfile), scoreDna(playerBProfile));
+): PlayerComparisonResult["comparison"] {
+  const scores: InternalBlockScore[] = [
+    buildBlockScore("technical", scoreTechnical(playerAProfile), scoreTechnical(playerBProfile)),
+    buildBlockScore("physical", scorePhysical(playerAProfile), scorePhysical(playerBProfile)),
+    buildBlockScore("tactical", scoreTactical(playerAProfile), scoreTactical(playerBProfile)),
+    buildBlockScore("market", scoreMarket(playerAProfile), scoreMarket(playerBProfile)),
+    buildBlockScore("risk", scoreRisk(playerAProfile), scoreRisk(playerBProfile), true), // lower is better
+    buildBlockScore("projection", scoreProjection(playerAProfile), scoreProjection(playerBProfile)),
+    buildBlockScore("dna", scoreDna(playerAProfile), scoreDna(playerBProfile)),
+  ];
 
-  const winnersByBlock = {
-    technical,
-    physical,
-    tactical,
-    market,
-    risk,
-    projection,
-    dna,
-  } satisfies Record<ComparisonBlockKey, BlockWinner>;
+  const winnersByBlock: Record<string, "A" | "B" | "tie"> = Object.fromEntries(
+    scores.map((s) => [s.block, s.winner]),
+  );
 
-  const weightedScoreA =
-    technical.playerA * 0.24 +
-    physical.playerA * 0.14 +
-    tactical.playerA * 0.2 +
-    market.playerA * 0.1 +
-    (100 - risk.playerA) * 0.12 +
-    projection.playerA * 0.14 +
-    dna.playerA * 0.06;
+  // TASK 4 — betterPlayer: who wins the most blocks
+  const winsA = countBlockWins(scores, "A");
+  const winsB = countBlockWins(scores, "B");
+  const blockCountWinner: WinnerKey = winsA > winsB ? "A" : winsB > winsA ? "B" : "tie";
 
-  const weightedScoreB =
-    technical.playerB * 0.24 +
-    physical.playerB * 0.14 +
-    tactical.playerB * 0.2 +
-    market.playerB * 0.1 +
-    (100 - risk.playerB) * 0.12 +
-    projection.playerB * 0.14 +
-    dna.playerB * 0.06;
+  // Weighted score as tiebreaker for betterPlayer
+  const riskA = scores.find((s) => s.block === "risk")!.scoreA;
+  const riskB = scores.find((s) => s.block === "risk")!.scoreB;
+  const technicalScore = scores.find((s) => s.block === "technical")!;
+  const physicalScore = scores.find((s) => s.block === "physical")!;
+  const tacticalScore = scores.find((s) => s.block === "tactical")!;
+  const marketScore = scores.find((s) => s.block === "market")!;
+  const projectionScore = scores.find((s) => s.block === "projection")!;
+  const dnaScore = scores.find((s) => s.block === "dna")!;
+  const riskScore = scores.find((s) => s.block === "risk")!;
+
+  const weightedA =
+    technicalScore.scoreA * 0.24 +
+    physicalScore.scoreA * 0.14 +
+    tacticalScore.scoreA * 0.20 +
+    marketScore.scoreA * 0.10 +
+    (100 - riskA) * 0.12 +
+    projectionScore.scoreA * 0.14 +
+    dnaScore.scoreA * 0.06;
+
+  const weightedB =
+    technicalScore.scoreB * 0.24 +
+    physicalScore.scoreB * 0.14 +
+    tacticalScore.scoreB * 0.20 +
+    marketScore.scoreB * 0.10 +
+    (100 - riskB) * 0.12 +
+    projectionScore.scoreB * 0.14 +
+    dnaScore.scoreB * 0.06;
+
+  const weightedWinner: WinnerKey = compareBlock(weightedA, weightedB);
+
+  // saferPlayer → lower total risk (invert)
+  const saferWinner: WinnerKey = riskScore.winner;
+
+  // higherUpside → higher projection + upside score
+  const upsideA = average([playerAProfile.projection.growthIndex, playerAProfile.summary.upside.score]);
+  const upsideB = average([playerBProfile.projection.growthIndex, playerBProfile.summary.upside.score]);
+  const upsideWinner: WinnerKey = compareBlock(upsideA, upsideB);
+
+  // bestTacticalFit → higher tactical overall + flexibility
+  const fitA = average([playerAProfile.tactical.overall, playerAProfile.tactical.tacticalFlexibility, playerAProfile.tactical.roleDiscipline]);
+  const fitB = average([playerBProfile.tactical.overall, playerBProfile.tactical.tacticalFlexibility, playerBProfile.tactical.roleDiscipline]);
+  const tacticalFitWinner: WinnerKey = compareBlock(fitA, fitB);
 
   return {
     winnersByBlock,
     finalDecision: {
-      betterPlayer: toDecisionEntry(
-        resolveDecisionProfile(normalizeWinner(weightedScoreA, weightedScoreB), playerAProfile, playerBProfile),
-      ),
-      saferPlayer: toDecisionEntry(resolveDecisionProfile(risk.winner, playerAProfile, playerBProfile)),
-      higherUpside: toDecisionEntry(resolveDecisionProfile(projection.winner, playerAProfile, playerBProfile)),
-      bestTacticalFit: toDecisionEntry(resolveDecisionProfile(tactical.winner, playerAProfile, playerBProfile)),
+      betterPlayer: resolveFinalWinner(blockCountWinner, weightedWinner),
+      saferPlayer: resolveFinalWinner(saferWinner, weightedWinner),
+      higherUpside: resolveFinalWinner(upsideWinner, weightedWinner),
+      bestTacticalFit: resolveFinalWinner(tacticalFitWinner, weightedWinner),
     },
-    summaryInsights: buildSummaryInsights(playerAProfile, playerBProfile, winnersByBlock),
+    summaryInsights: buildSummaryInsights(playerAProfile, playerBProfile, scores),
   };
 }
 
 function buildAnalysisDescription(
   playerAProfile: PlayerIntelligenceProfile,
   playerBProfile: PlayerIntelligenceProfile,
-  comparison: PlayerComparisonAnalysisResult["comparison"],
-) {
+  comparison: PlayerComparisonResult["comparison"],
+): string {
+  const resolve = (key: "A" | "B") =>
+    key === "A" ? playerAProfile.identity.name : playerBProfile.identity.name;
+
   return [
     `${playerAProfile.identity.name} vs ${playerBProfile.identity.name}.`,
-    `Better player: ${comparison.finalDecision.betterPlayer.playerName}.`,
-    `Safer player: ${comparison.finalDecision.saferPlayer.playerName}.`,
-    `Higher upside: ${comparison.finalDecision.higherUpside.playerName}.`,
-    `Best tactical fit: ${comparison.finalDecision.bestTacticalFit.playerName}.`,
+    `Better player: ${resolve(comparison.finalDecision.betterPlayer)}.`,
+    `Safer player: ${resolve(comparison.finalDecision.saferPlayer)}.`,
+    `Higher upside: ${resolve(comparison.finalDecision.higherUpside)}.`,
+    `Best tactical fit: ${resolve(comparison.finalDecision.bestTacticalFit)}.`,
   ].join(" ");
 }
 
-async function persistComparisonAnalysis(result: PlayerComparisonAnalysisResult) {
+async function persistComparisonAnalysis(result: PlayerComparisonResult): Promise<void> {
   await prisma.analysis.create({
     data: {
       type: "PLAYER_COMPARISON",
       title: normalizeText(`${result.playerAProfile.identity.name} vs ${result.playerBProfile.identity.name}`),
-      description: normalizeText(buildAnalysisDescription(result.playerAProfile, result.playerBProfile, result.comparison)),
+      description: normalizeText(
+        buildAnalysisDescription(result.playerAProfile, result.playerBProfile, result.comparison),
+      ),
       analyst: normalizeText("SoccerMind Comparison Engine"),
       status: "COMPLETED",
       payload: {
@@ -319,36 +321,21 @@ async function persistComparisonAnalysis(result: PlayerComparisonAnalysisResult)
       } as Prisma.InputJsonValue,
       comparisons: {
         create: [
-          {
-            playerId: result.playerAProfile.identity.id,
-            order: 0,
-          },
-          {
-            playerId: result.playerBProfile.identity.id,
-            order: 1,
-          },
+          { playerId: result.playerAProfile.identity.id, order: 0 },
+          { playerId: result.playerBProfile.identity.id, order: 1 },
         ],
       },
     },
   });
 }
 
-async function findPlayerByNameOrThrow(name: string) {
+async function findPlayerByNameOrThrow(name: string): Promise<{ id: string }> {
   const exactMatch = await prisma.player.findFirst({
-    where: {
-      name: {
-        equals: name,
-        mode: "insensitive",
-      },
-    },
-    select: {
-      id: true,
-    },
+    where: { name: { equals: name, mode: "insensitive" } },
+    select: { id: true },
   });
 
-  if (exactMatch) {
-    return exactMatch;
-  }
+  if (exactMatch) return exactMatch;
 
   const normalizedQuery = name
     .toLowerCase()
@@ -357,32 +344,20 @@ async function findPlayerByNameOrThrow(name: string) {
     .trim();
 
   const players = await prisma.player.findMany({
-    where: {
-      name: {
-        contains: name.trim(),
-        mode: "insensitive",
-      },
-    },
-    select: {
-      id: true,
-      name: true,
-    },
+    where: { name: { contains: name.trim(), mode: "insensitive" } },
+    select: { id: true, name: true },
   });
 
-  const fallback = players.find((player) => {
-    const normalizedName = player.name
+  const fallback = players.find((p) => {
+    const norm = p.name
       .toLowerCase()
       .normalize("NFD")
       .replace(/\p{Diacritic}/gu, "")
       .trim();
-
-    return normalizedName === normalizedQuery;
+    return norm === normalizedQuery;
   });
 
-  if (!fallback) {
-    throw new Error(`Player not found by name: ${name}`);
-  }
-
+  if (!fallback) throw new Error(`Player not found by name: ${name}`);
   return fallback;
 }
 
@@ -403,7 +378,7 @@ export async function comparePlayers(playerAId: string, playerBId: string): Prom
   return result;
 }
 
-export async function comparePlayersByName(playerAName: string, playerBName: string) {
+export async function comparePlayersByName(playerAName: string, playerBName: string): Promise<PlayerComparisonResult> {
   const [playerA, playerB] = await Promise.all([
     findPlayerByNameOrThrow(playerAName),
     findPlayerByNameOrThrow(playerBName),
