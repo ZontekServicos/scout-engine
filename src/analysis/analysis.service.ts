@@ -232,6 +232,12 @@ export async function normalizeLegacyAnalysisTypes() {
     END $$;
   `);
 
+  await prisma.$executeRawUnsafe(`
+    UPDATE "Analysis"
+    SET "payload" = '{}'::jsonb
+    WHERE "payload" IS NULL;
+  `);
+
   legacyAnalysisTypesNormalized = true;
 }
 
