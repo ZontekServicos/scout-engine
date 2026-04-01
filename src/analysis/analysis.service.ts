@@ -309,11 +309,11 @@ async function buildReportAnalysisDescription(players: Array<{ id: string; name:
   const [playerA, playerB] = players;
   const comparison = (await compareByIds(playerA.id, playerB.id)) as PlayerComparisonResult;
 
-  const winner = normalizeWinnerLabel(comparison.comparison.finalDecision.betterPlayer.playerId === playerA.id
-    ? "PLAYERA"
-    : comparison.comparison.finalDecision.betterPlayer.playerId === playerB.id
-      ? "PLAYERB"
-      : "DRAW");
+  const winner = normalizeWinnerLabel(
+    comparison.comparison.finalDecision.betterPlayer === "A" ? "PLAYERA"
+    : comparison.comparison.finalDecision.betterPlayer === "B" ? "PLAYERB"
+    : "DRAW",
+  );
   const preferredName =
     winner === "playerA"
       ? comparison.playerAProfile.identity.name
