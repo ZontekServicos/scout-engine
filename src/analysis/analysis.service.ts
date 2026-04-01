@@ -11,6 +11,7 @@ export type AnalysisType = "PLAYER_REPORT" | "PLAYER_COMPARISON";
 const PLAYER_REPORT_TYPE: AnalysisType = "PLAYER_REPORT";
 const PLAYER_COMPARISON_TYPE: AnalysisType = "PLAYER_COMPARISON";
 let legacyAnalysisTypesNormalized = false;
+let nullPayloadsPatched = false;
 
 export type ListAnalysesFilters = {
   type?: AnalysisType;
@@ -159,6 +160,8 @@ export function validateAnalysisType(type: string): AnalysisType {
 }
 
 export async function normalizeLegacyAnalysisTypes() {
+  await patchNullPayloads();
+
   if (legacyAnalysisTypesNormalized) {
     return;
   }
@@ -232,13 +235,19 @@ export async function normalizeLegacyAnalysisTypes() {
     END $$;
   `);
 
+  legacyAnalysisTypesNormalized = true;
+}
+
+async function patchNullPayloads() {
+  if (nullPayloadsPatched) {
+    return;
+  }
   await prisma.$executeRawUnsafe(`
     UPDATE "Analysis"
     SET "payload" = '{}'::jsonb
     WHERE "payload" IS NULL;
   `);
-
-  legacyAnalysisTypesNormalized = true;
+  nullPayloadsPatched = true;
 }
 
 function getAnalysisTypeLabel(type: AnalysisType) {
@@ -552,6 +561,7 @@ function buildAnalysisRuntimeErrorMessage(runtime: AnalysisRuntimeStatus) {
 
 async function assertAnalysisRuntimeReady() {
   await normalizeLegacyAnalysisTypes();
+  await patchNullPayloads();
   const runtime = await getAnalysisRuntimeStatus();
 
   if (!runtime.ready) {
