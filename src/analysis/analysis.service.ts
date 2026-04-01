@@ -326,11 +326,15 @@ async function buildReportAnalysisDescription(players: Array<{ id: string; name:
 }
 
 function buildAnalysisPayload(type: AnalysisType, playerIds: string[], extras: Record<string, unknown> = {}) {
-  return {
+  const payload = {
     type,
     playerIds,
     ...extras,
-  } as Prisma.InputJsonValue;
+  };
+  if (!payload) {
+    throw new Error("Invalid payload: cannot be null");
+  }
+  return payload as Prisma.InputJsonValue;
 }
 
 function mapAnalysisToViewModel(analysis: {

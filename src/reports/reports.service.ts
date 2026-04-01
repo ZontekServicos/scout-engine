@@ -19,7 +19,7 @@ function asStringArray(value: unknown) {
 }
 
 function toDecisionPayload(
-  existingPayload: Prisma.JsonValue | null,
+  existingPayload: Prisma.JsonValue,
   input: {
     decisionStatus: "APPROVED" | "REJECTED";
     requestedBy: string;
@@ -217,6 +217,10 @@ export async function applyReportDecision(
 
   if (!report) {
     throw createHttpError("Report not found", 404);
+  }
+
+  if (report.payload === null || report.payload === undefined) {
+    throw new Error("Invalid payload: cannot be null");
   }
 
   const updated = await prisma.analysis.update({

@@ -306,6 +306,15 @@ function buildAnalysisDescription(
 }
 
 async function persistComparisonAnalysis(result: PlayerComparisonResult): Promise<void> {
+  const serialized = JSON.parse(JSON.stringify(result));
+  if (!serialized) {
+    throw new Error("Invalid payload: cannot be null");
+  }
+  const payload: Prisma.InputJsonValue = {
+    type: "PLAYER_COMPARISON",
+    ...serialized,
+  };
+
   await prisma.analysis.create({
     data: {
       type: "PLAYER_COMPARISON",
@@ -315,10 +324,7 @@ async function persistComparisonAnalysis(result: PlayerComparisonResult): Promis
       ),
       analyst: normalizeText("SoccerMind Comparison Engine"),
       status: "COMPLETED",
-      payload: {
-        type: "PLAYER_COMPARISON",
-        ...JSON.parse(JSON.stringify(result)),
-      } as Prisma.InputJsonValue,
+      payload,
       comparisons: {
         create: [
           { playerId: result.playerAProfile.identity.id, order: 0 },
