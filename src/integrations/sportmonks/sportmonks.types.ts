@@ -23,7 +23,7 @@ export interface SportmonksPlayerDetails {
   weight?: number | null;
   foot?: "left" | "right" | "both" | null;
   image_path?: string | null;
-  team?: { name: string } | null;
+  team?: { id?: number; name: string } | null;
   league?: { name: string } | null;
   contract_until?: string | null;
   market_value?: number | null;
