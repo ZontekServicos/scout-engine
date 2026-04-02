@@ -39,6 +39,11 @@ model Player {
   metricsSnapshots   PlayerMetrics[]
   financialSnapshots PlayerFinancials[]
   riskSnapshots      PlayerRiskSnapshot[]
+  statsSnapshots     PlayerStats[]
+
+  // Sportmonks team link (separate from denormalized `team` string above)
+  teamDbId           String?
+  dbTeam             Team?    @relation(fields: [teamDbId], references: [id])
 
   @@index([nameNormalized])
   @@index([league])
@@ -133,6 +138,52 @@ model AnalysisComparison {
   @@index([playerId])
   @@unique([analysisId, order])
   @@unique([analysisId, playerId])
+}
+
+// ---------------------------------------------------------------------------
+// Ingestion layer — Sportmonks raw data persistence
+// ---------------------------------------------------------------------------
+
+model Team {
+  id         String   @id @default(uuid())
+  externalId Int      @unique // Sportmonks team ID
+  name       String
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  players    Player[]
+
+  @@index([name])
+}
+
+model PlayerStats {
+  id          String   @id @default(uuid())
+  playerId    String
+  player      Player   @relation(fields: [playerId], references: [id], onDelete: Cascade)
+
+  season      String?   // e.g. "2024/2025"
+  source      String    @default("sportmonks") // sportmonks | manual
+
+  goals         Int?
+  assists       Int?
+  shots         Int?
+  shotsOnTarget Int?
+  keyPasses     Int?
+  passes        Int?
+  passAccuracy  Float?
+  xG            Float?
+  xA            Float?
+  tackles       Int?
+  interceptions Int?
+  pressures     Int?
+  rating        Float?
+  minutes       Int?
+  appearances   Int?
+
+  createdAt DateTime @default(now())
+
+  @@index([playerId])
+  @@index([season])
 }
 
 enum RiskLevel {
