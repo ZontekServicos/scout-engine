@@ -20,6 +20,7 @@ import teamRoutes from "./routes/team.routes";
 import validationRoutes from "./routes/validation.routes";
 import watchlistRoutes from "./routes/watchlist.routes";
 import ingestRoutes from "./routes/ingest.routes";
+import filterRoutes from "./routes/filter.routes";
 import { logger } from "./lib/logger";
 import { errorMiddleware } from "./middleware/error.middleware";
 import { requestLogger } from "./middleware/request-logger.middleware";
@@ -62,6 +63,7 @@ app.use("/api/validation", validationRoutes);
 app.use("/api", playerRoutes);
 app.use("/api/watchlist", watchlistRoutes);
 app.use("/api/ingest", ingestRoutes);
+app.use("/api/filter", filterRoutes);
 app.use("/api/health", healthRoutes);
 app.use("/api/docs", docsRoutes);
 

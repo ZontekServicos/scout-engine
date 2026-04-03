@@ -7,6 +7,10 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+// ---------------------------------------------------------------------------
+// Core player/analysis models (existing — untouched)
+// ---------------------------------------------------------------------------
+
 model Player {
   id              String   @id @default(uuid())
   slug            String   @unique
@@ -40,6 +44,7 @@ model Player {
   financialSnapshots PlayerFinancials[]
   riskSnapshots      PlayerRiskSnapshot[]
   statsSnapshots     PlayerStats[]
+  matchEvents        MatchEvent[]
 
   // Sportmonks team link (separate from denormalized `team` string above)
   teamDbId           String?
@@ -141,8 +146,59 @@ model AnalysisComparison {
 }
 
 // ---------------------------------------------------------------------------
-// Ingestion layer — Sportmonks raw data persistence
+// Ingestion hierarchy — Country → League → Season → Team → Player
 // ---------------------------------------------------------------------------
+
+model Country {
+  id         String   @id @default(uuid())
+  externalId Int      @unique // Sportmonks country ID
+  name       String
+  iso2       String?
+  flagPath   String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  leagues    League[]
+
+  @@index([name])
+}
+
+model League {
+  id         String   @id @default(uuid())
+  externalId Int      @unique // Sportmonks league ID
+  name       String
+  countryId  String?
+  country    Country? @relation(fields: [countryId], references: [id])
+  type       String?  // e.g. "domestic", "cup", "continental"
+  logoPath   String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  seasons    Season[]
+
+  @@index([name])
+  @@index([countryId])
+}
+
+model Season {
+  id         String   @id @default(uuid())
+  externalId Int      @unique // Sportmonks season ID
+  name       String
+  leagueId   String?
+  league     League?  @relation(fields: [leagueId], references: [id])
+  year       Int?
+  isCurrent  Boolean  @default(false)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  teams        Team[]        @relation("SeasonTeams")
+  matches      Match[]
+  playerStats  PlayerStats[]
+
+  @@index([leagueId])
+  @@index([isCurrent])
+  @@index([year])
+}
 
 model Team {
   id         String   @id @default(uuid())
@@ -151,7 +207,11 @@ model Team {
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 
-  players    Player[]
+  players     Player[]
+  seasons     Season[]    @relation("SeasonTeams")
+  homeMatches Match[]     @relation("HomeMatches")
+  awayMatches Match[]     @relation("AwayMatches")
+  matchEvents MatchEvent[] @relation("TeamMatchEvents")
 
   @@index([name])
 }
@@ -161,8 +221,12 @@ model PlayerStats {
   playerId    String
   player      Player   @relation(fields: [playerId], references: [id], onDelete: Cascade)
 
-  season      String?   // e.g. "2024/2025"
-  source      String    @default("sportmonks") // sportmonks | manual
+  // Link to structured Season (optional — backward compatible with old string `season`)
+  seasonId    String?
+  dbSeason    Season?  @relation(fields: [seasonId], references: [id])
+  season      String?  // denormalized label e.g. "2024/2025" — kept for compatibility
+
+  source      String   @default("sportmonks") // sportmonks | manual
 
   goals         Int?
   assists       Int?
@@ -183,8 +247,91 @@ model PlayerStats {
   createdAt DateTime @default(now())
 
   @@index([playerId])
+  @@index([seasonId])
   @@index([season])
 }
+
+// ---------------------------------------------------------------------------
+// Match layer — Season → Match → MatchEvent
+// ---------------------------------------------------------------------------
+
+model Match {
+  id         String   @id @default(uuid())
+  externalId Int      @unique // Sportmonks fixture ID
+  seasonId   String?
+  season     Season?  @relation(fields: [seasonId], references: [id])
+
+  homeTeamId String?
+  homeTeam   Team?    @relation("HomeMatches", fields: [homeTeamId], references: [id])
+  awayTeamId String?
+  awayTeam   Team?    @relation("AwayMatches", fields: [awayTeamId], references: [id])
+
+  homeScore  Int?
+  awayScore  Int?
+  startingAt DateTime?
+  status     String?  // e.g. "FT", "NS", "LIVE", "HT"
+
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  events     MatchEvent[]
+
+  @@index([seasonId])
+  @@index([homeTeamId])
+  @@index([awayTeamId])
+  @@index([startingAt])
+  @@index([status])
+}
+
+model MatchEvent {
+  id         String  @id @default(uuid())
+  externalId Int?    @unique // Sportmonks event ID (nullable — some events are synthetic)
+
+  matchId    String
+  match      Match   @relation(fields: [matchId], references: [id], onDelete: Cascade)
+
+  playerId   String?
+  player     Player? @relation(fields: [playerId], references: [id])
+
+  teamId     String?
+  team       Team?   @relation("TeamMatchEvents", fields: [teamId], references: [id])
+
+  // Event classification
+  type       String  // GOAL | SHOT | PASS | TACKLE | INTERCEPTION | DRIBBLE |
+                     // YELLOW_CARD | RED_CARD | SUBSTITUTION | FOUL | SAVE | CLEARANCE
+
+  // Timing
+  minute      Int?
+  extraMinute Int?
+
+  // Spatial data — pitch coordinates normalised to 0–100
+  // Used for: heatmap, shot map, pass map, defensive event map
+  x    Float?  // start x (0=left, 100=right)
+  y    Float?  // start y (0=bottom, 100=top)
+  endX Float?  // end x (for passes, shots, dribbles)
+  endY Float?  // end y
+
+  // Outcome
+  outcome String? // SUCCESS | FAIL | BLOCKED | SAVED | OFF_TARGET | ON_TARGET
+
+  // Extra unstructured data (body part, assist type, VAR, etc.)
+  meta Json?
+
+  createdAt DateTime @default(now())
+
+  @@index([matchId])
+  @@index([playerId])
+  @@index([teamId])
+  @@index([type])
+  @@index([minute])
+  // Composite index for spatial queries (heatmap per player/type)
+  @@index([playerId, type])
+  @@index([matchId, type])
+}
+
+// ---------------------------------------------------------------------------
+// Enums
+// ---------------------------------------------------------------------------
 
 enum RiskLevel {
   LOW

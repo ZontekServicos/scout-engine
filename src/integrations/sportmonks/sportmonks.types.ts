@@ -1,3 +1,7 @@
+// ---------------------------------------------------------------------------
+// Sportmonks v3 API types
+// ---------------------------------------------------------------------------
+
 export interface SportmonksStat {
   type_id: number;
   value: {
@@ -88,4 +92,124 @@ export interface NormalizedStats {
   xA: number;
   yellowCards: number;
   redCards: number;
+}
+
+// ---------------------------------------------------------------------------
+// Hierarchy types
+// ---------------------------------------------------------------------------
+
+export interface SportmonksCountry {
+  id: number;
+  name: string;
+  official_name?: string | null;
+  iso2?: string | null;
+  iso3?: string | null;
+  image_path?: string | null;
+}
+
+export interface SportmonksLeague {
+  id: number;
+  name: string;
+  country_id?: number | null;
+  country?: SportmonksCountry | null;
+  type?: string | null;
+  sub_type?: string | null;
+  logo_path?: string | null;
+  image_path?: string | null;
+}
+
+export interface SportmonksSeason {
+  id: number;
+  name: string;
+  league_id?: number | null;
+  year?: number | null;
+  is_current_season?: boolean | null;
+  starting_at?: string | null;
+  ending_at?: string | null;
+}
+
+export interface SportmonksTeam {
+  id: number;
+  name: string;
+  short_code?: string | null;
+  country_id?: number | null;
+  country?: SportmonksCountry | null;
+  image_path?: string | null;
+}
+
+// ---------------------------------------------------------------------------
+// Match (fixture) types
+// ---------------------------------------------------------------------------
+
+export interface SportmonksScore {
+  type_id: number;
+  participant: "home" | "away";
+  score: { goals: number; participant: string };
+}
+
+export interface SportmonksParticipant {
+  id: number;
+  name: string;
+  meta?: { location?: "home" | "away" };
+}
+
+export interface SportmonksFixture {
+  id: number;
+  season_id?: number | null;
+  league_id?: number | null;
+  starting_at?: string | null;
+  result_info?: string | null;
+  state?: { short_name?: string | null } | null;
+  scores?: SportmonksScore[] | null;
+  participants?: SportmonksParticipant[] | null;
+  events?: SportmonksEvent[] | null;
+}
+
+// ---------------------------------------------------------------------------
+// Event types (for heatmap / shot map / pass map / defensive map)
+// ---------------------------------------------------------------------------
+
+export type SportmonksEventType =
+  | "goal"
+  | "goal-allowed"
+  | "yellowcard"
+  | "redcard"
+  | "yellowredcard"
+  | "substitution"
+  | "penalty"
+  | "penalty-missed"
+  | "shot-offgoal"
+  | "shot-ongoal"
+  | "shot-blocked"
+  | "pass"
+  | "cross"
+  | "tackle"
+  | "interception"
+  | "clearance"
+  | "save"
+  | "foul"
+  | "dribble"
+  | string;
+
+export interface SportmonksEvent {
+  id: number;
+  fixture_id?: number | null;
+  period_id?: number | null;
+  participant_id?: number | null; // team id
+  player_id?: number | null;
+  type?: { developer_name?: SportmonksEventType | null } | null;
+  minute?: number | null;
+  extra_minute?: number | null;
+  // Spatial — not always provided; present in advanced plans
+  coordinates?: {
+    x?: number | null;
+    y?: number | null;
+    end_x?: number | null;
+    end_y?: number | null;
+  } | null;
+  result?: string | null; // outcome
+  info?: string | null;
+  addition?: string | null;
+  // Raw remaining fields for `meta` Json
+  [key: string]: unknown;
 }
