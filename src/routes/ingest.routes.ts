@@ -26,8 +26,9 @@ const router = Router();
 // Helper
 // ---------------------------------------------------------------------------
 
-function parseId(raw: string | undefined): number {
-  return parseInt(raw as string, 10);
+function parseId(raw: string | string[] | undefined): number {
+  const val = Array.isArray(raw) ? (raw[0] ?? "") : (raw ?? "");
+  return parseInt(val, 10);
 }
 
 // ---------------------------------------------------------------------------

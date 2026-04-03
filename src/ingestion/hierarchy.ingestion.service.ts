@@ -270,9 +270,7 @@ export async function ingestPlayersByTeam(
         age,
         nationality: player.nationality?.name ?? "Unknown",
         team: team.name,
-        league: season?.league
-          ? undefined // resolved later if needed
-          : null,
+        league: null,
         attributes: {},
         archetype: {},
         teamDbId: team.id,

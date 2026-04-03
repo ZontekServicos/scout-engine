@@ -229,7 +229,8 @@ async function upsertMatchEvent(event: SportmonksEvent, matchDbId: string) {
     endX: event.coordinates?.end_x ?? null,
     endY: event.coordinates?.end_y ?? null,
     outcome,
-    meta: Object.keys(meta).length > 0 ? meta : null,
+    // Prisma nullable Json fields require undefined (not null) to leave unset
+    ...(Object.keys(meta).length > 0 ? { meta } : {}),
   };
 
   // If event has a Sportmonks ID, upsert; otherwise just create
