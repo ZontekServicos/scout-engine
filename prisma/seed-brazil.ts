@@ -122,23 +122,41 @@ async function seedBrazilData() {
   const allLeagues = await fetchLeagues();
   log(`  Total leagues in response: ${allLeagues.length}`);
 
-  // Log first item raw to detect country field shape
-  if (allLeagues.length > 0) {
-    const sample = allLeagues[0];
-    log(`  Sample league: id=${sample.id} name="${sample.name}" country_id=${sample.country_id} country?.id=${sample.country?.id}`);
-  }
+  // Log ALL leagues so we can see exactly what the API returns
+  log("  Full league list:");
+  allLeagues.forEach((l) =>
+    log(`    id=${l.id}  country_id=${l.country_id}  country="${l.country?.name ?? "?"}"  name="${l.name}"`),
+  );
 
-  // Filter to Brazil (handles both flat country_id and nested country.id)
-  const brazilLeagues = allLeagues.filter(
+  // Strategy 1: filter by country_id
+  const byCountryId = allLeagues.filter(
     (l) => l.country_id === BRAZIL.externalId || l.country?.id === BRAZIL.externalId,
   );
 
-  log(`  Brazilian leagues found: ${brazilLeagues.length}`);
+  // Strategy 2: filter by name (fallback when country_id is missing/wrong)
+  const byName = allLeagues.filter((l) => {
+    const n = l.name.toLowerCase();
+    const c = (l.country?.name ?? "").toLowerCase();
+    return n.includes("brazil") || n.includes("brasil") ||
+           c.includes("brazil") || c.includes("brasil");
+  });
+
+  // Merge both strategies (deduplicated)
+  const brazilLeagues = [
+    ...byCountryId,
+    ...byName.filter((l) => !byCountryId.find((x) => x.id === l.id)),
+  ];
+
+  log(`  By country_id: ${byCountryId.length}  By name: ${byName.length}  Total unique: ${brazilLeagues.length}`);
   brazilLeagues.forEach((l) => log(`    id=${l.id}  "${l.name}"`));
 
   if (brazilLeagues.length === 0) {
-    log("⚠  No Brazilian leagues found after filtering.");
-    log("   Check BRAZIL.externalId (currently 32) against the sample log above.");
+    log("⚠  No Brazilian leagues found by country_id OR name.");
+    log("   The 25 leagues above are all your plan returns from /leagues.");
+    log("   OPTIONS:");
+    log("   1. Hardcode league IDs: add them to HARDCODED_LEAGUE_IDS below and re-run.");
+    log("   2. Check if your Sportmonks plan includes South American leagues.");
+    log(`   3. Try fetching a known league ID directly: POST /api/ingest/league/<id>`);
     return;
   }
 
