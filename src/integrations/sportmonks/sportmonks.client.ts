@@ -109,6 +109,12 @@ export async function fetchCountryById(countryId: number): Promise<SportmonksCou
   return raw.data;
 }
 
+export async function fetchCountryByName(name: string): Promise<SportmonksCountry | null> {
+  const all = await fetchCountries();
+  const lower = name.toLowerCase();
+  return all.find((c) => c.name.toLowerCase().includes(lower)) ?? null;
+}
+
 // ---------------------------------------------------------------------------
 // League endpoints
 // ---------------------------------------------------------------------------

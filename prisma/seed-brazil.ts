@@ -38,6 +38,7 @@ import { PrismaClient } from "@prisma/client";
 import {
   ingestCountry,
   ingestLeague,
+  ingestLeaguesByCountry,
   ingestSeasonsByLeague,
   ingestTeamsBySeason,
   ingestPlayersByTeam,
@@ -46,6 +47,10 @@ import {
   ingestMatchesBySeason,
   ingestMatchFull,
 } from "../src/ingestion/match.ingestion.service";
+import {
+  fetchCountryByName,
+  fetchLeagues,
+} from "../src/integrations/sportmonks/sportmonks.client";
 
 const prisma = new PrismaClient();
 
@@ -53,16 +58,20 @@ const prisma = new PrismaClient();
 // Config
 // ---------------------------------------------------------------------------
 
-const BRAZIL_COUNTRY_ID = 32;
-
 /**
- * Target leagues — add or remove as needed.
- * Set `enabled: false` to skip a league without deleting the entry.
+ * Keywords to match against Sportmonks league names (case-insensitive).
+ * The seed discovers IDs dynamically — no hardcoded values.
  */
-const TARGET_LEAGUES: { id: number; name: string; enabled: boolean }[] = [
-  { id: 325, name: "Brasileirão Série A", enabled: true },
-  { id: 375, name: "Brasileirão Série B", enabled: true },
-  { id: 326, name: "Copa do Brasil",      enabled: false }, // optional
+const TARGET_LEAGUE_KEYWORDS = [
+  "Série A",
+  "Serie A",
+  "Brasileirao Serie A",
+  "Brasileirão Série A",
+];
+
+const OPTIONAL_LEAGUE_KEYWORDS = [
+  "Série B",
+  "Serie B",
 ];
 
 /**
@@ -110,27 +119,54 @@ async function clearDatabase() {
 // Step 2 — Ingest Brazil
 // ---------------------------------------------------------------------------
 
+function matchesKeywords(name: string, keywords: string[]): boolean {
+  const lower = name.toLowerCase();
+  return keywords.some((k) => lower.includes(k.toLowerCase()));
+}
+
 async function seedBrazilData() {
-  // ---- Country ----
-  log(`Ingesting country: Brazil (id=${BRAZIL_COUNTRY_ID})`);
-  const country = await ingestCountry(BRAZIL_COUNTRY_ID);
-  log(`  ✓ Country: ${country.name}`);
+  // ---- Discover Brazil country ID ----
+  log("Discovering Brazil country ID from Sportmonks…");
+  const brazilRaw = await fetchCountryByName("Brazil");
+  if (!brazilRaw) {
+    throw new Error("Could not find Brazil in Sportmonks /countries — check your API subscription.");
+  }
+  log(`  ✓ Found: "${brazilRaw.name}" (id=${brazilRaw.id})`);
+  const country = await ingestCountry(brazilRaw.id);
+  log(`  ✓ Country persisted: ${country.name}`);
 
-  for (const leagueCfg of TARGET_LEAGUES) {
-    if (!leagueCfg.enabled) {
-      log(`Skipping league "${leagueCfg.name}" (disabled)`);
-      continue;
-    }
+  // ---- Discover Brazilian leagues ----
+  log("Discovering Brazilian leagues…");
+  const allLeagues = await fetchLeagues({ countryId: brazilRaw.id });
+  log(`  Found ${allLeagues.length} league(s) for Brazil in Sportmonks`);
+  allLeagues.forEach((l) => log(`    id=${l.id}  name="${l.name}"`));
 
-    log(`\n── League: ${leagueCfg.name} (id=${leagueCfg.id}) ──`);
+  const targetLeagues = allLeagues.filter((l) =>
+    matchesKeywords(l.name, TARGET_LEAGUE_KEYWORDS),
+  );
+  const optionalLeagues = allLeagues.filter((l) =>
+    matchesKeywords(l.name, OPTIONAL_LEAGUE_KEYWORDS),
+  );
+
+  const leaguesToIngest = [...targetLeagues, ...optionalLeagues];
+
+  if (leaguesToIngest.length === 0) {
+    log("⚠  No target leagues found. Printing all available league names above — update TARGET_LEAGUE_KEYWORDS to match.");
+    return;
+  }
+
+  log(`  Will ingest: ${leaguesToIngest.map((l) => l.name).join(", ")}`);
+
+  for (const leagueRaw of leaguesToIngest) {
+    log(`\n── League: ${leagueRaw.name} (id=${leagueRaw.id}) ──`);
 
     // ---- League ----
-    const league = await ingestLeague(leagueCfg.id);
+    const league = await ingestLeague(leagueRaw.id);
     log(`  ✓ League persisted: ${league.name}`);
 
     // ---- Seasons ----
     log(`  Fetching seasons…`);
-    const seasons = await ingestSeasonsByLeague(leagueCfg.id);
+    const seasons = await ingestSeasonsByLeague(leagueRaw.id);
     log(`  ✓ ${seasons.length} season(s) persisted`);
 
     // Pick current season; fall back to most recent
@@ -139,7 +175,7 @@ async function seedBrazilData() {
       seasons.sort((a, b) => (b.year ?? 0) - (a.year ?? 0))[0];
 
     if (!currentSeason) {
-      log(`  ⚠ No season found for ${leagueCfg.name} — skipping`);
+      log(`  ⚠ No season found for ${leagueRaw.name} — skipping`);
       continue;
     }
 
@@ -190,7 +226,7 @@ async function seedBrazilData() {
         log(`    ⚠ Failed events for match ${match.externalId}: ${(err as Error).message}`);
       }
     }
-    log(`  ✓ ${totalEvents} total event(s) ingested for "${leagueCfg.name}"`);
+    log(`  ✓ ${totalEvents} total event(s) ingested for "${leagueRaw.name}"`);
   }
 }
 
