@@ -15,7 +15,7 @@
     "import:players": "ts-node scripts/importPlayers.ts",
     "import:fc26": "ts-node scripts/import_fc26_players.ts",
     "update:positions": "ts-node scripts/updatePlayerPositions.ts",
-    "seed:brazil": "NODE_ENV=development ts-node prisma/seed-brazil.ts"
+    "seed:brazil": "cross-env NODE_ENV=development ts-node prisma/seed-brazil.ts"
   },
   "dependencies": {
     "@prisma/client": "^6.19.2",
@@ -35,6 +35,7 @@
   "devDependencies": {
     "@types/express": "^5.0.6",
     "@types/node": "^25.2.1",
+    "cross-env": "^10.1.0",
     "nodemon": "^3.1.11",
     "ts-node": "^10.9.2",
     "typescript": "^5.9.3"
