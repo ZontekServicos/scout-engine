@@ -14,7 +14,8 @@
     "db:backfill": "ts-node scripts/backfillAnalyticalSnapshots.ts",
     "import:players": "ts-node scripts/importPlayers.ts",
     "import:fc26": "ts-node scripts/import_fc26_players.ts",
-    "update:positions": "ts-node scripts/updatePlayerPositions.ts"
+    "update:positions": "ts-node scripts/updatePlayerPositions.ts",
+    "seed:brazil": "NODE_ENV=development ts-node prisma/seed-brazil.ts"
   },
   "dependencies": {
     "@prisma/client": "^6.19.2",
