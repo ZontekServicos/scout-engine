@@ -121,10 +121,12 @@ async function smGetAll<T>(
  * Fetch leagues, optionally filtered by country.
  * filters=country_id:{id}
  */
-export async function fetchLeagues(params: { countryId?: number } = {}): Promise<SportmonksLeague[]> {
-  const options: SmGetOptions = { include: "country" };
-  if (params.countryId) options.filters = `country_id:${params.countryId}`;
-  return smGetAll<SportmonksLeague>("/leagues", options);
+/**
+ * Fetch all leagues. /leagues does not support country_id filter —
+ * filtering by country must be done client-side after fetching.
+ */
+export async function fetchLeagues(): Promise<SportmonksLeague[]> {
+  return smGetAll<SportmonksLeague>("/leagues", { include: "country" });
 }
 
 export async function fetchLeagueById(leagueId: number): Promise<SportmonksLeague> {

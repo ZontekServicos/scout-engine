@@ -36,6 +36,7 @@ import {
   ingestMatchFull,
 } from "../src/ingestion/match.ingestion.service";
 import { fetchLeagues } from "../src/integrations/sportmonks/sportmonks.client";
+import type { SportmonksLeague } from "../src/integrations/sportmonks/sportmonks.types";
 
 const prisma = new PrismaClient();
 
@@ -115,21 +116,35 @@ async function seedBrazilData() {
   const country = await ingestCountryDirect(BRAZIL);
   log(`Country: "${country.name}" (id=${country.id})`);
 
-  // ---- Discover leagues via /football/leagues?filters=countryId:32 ----
-  log(`Fetching leagues for countryId=${BRAZIL.externalId}…`);
-  const allLeagues = await fetchLeagues({ countryId: BRAZIL.externalId });
+  // ---- Fetch ALL leagues then filter by country client-side ----
+  // /leagues does not support country_id filter — must filter locally.
+  log("Fetching all leagues from Sportmonks (will filter by country locally)…");
+  const allLeagues = await fetchLeagues();
+  log(`  Total leagues in response: ${allLeagues.length}`);
 
-  if (allLeagues.length === 0) {
-    log("⚠  No leagues returned. Check your Sportmonks API token and plan.");
+  // Log first item raw to detect country field shape
+  if (allLeagues.length > 0) {
+    const sample = allLeagues[0];
+    log(`  Sample league: id=${sample.id} name="${sample.name}" country_id=${sample.country_id} country?.id=${sample.country?.id}`);
+  }
+
+  // Filter to Brazil (handles both flat country_id and nested country.id)
+  const brazilLeagues = allLeagues.filter(
+    (l) => l.country_id === BRAZIL.externalId || l.country?.id === BRAZIL.externalId,
+  );
+
+  log(`  Brazilian leagues found: ${brazilLeagues.length}`);
+  brazilLeagues.forEach((l) => log(`    id=${l.id}  "${l.name}"`));
+
+  if (brazilLeagues.length === 0) {
+    log("⚠  No Brazilian leagues found after filtering.");
+    log("   Check BRAZIL.externalId (currently 32) against the sample log above.");
     return;
   }
 
-  log(`Found ${allLeagues.length} league(s):`);
-  allLeagues.forEach((l) => log(`  id=${l.id}  "${l.name}"`));
-
   // ---- Filter target leagues ----
-  const primary = allLeagues.filter((l) => matchesAny(l.name, TARGET_LEAGUE_KEYWORDS));
-  const secondary = allLeagues.filter((l) => matchesAny(l.name, OPTIONAL_LEAGUE_KEYWORDS));
+  const primary = brazilLeagues.filter((l) => matchesAny(l.name, TARGET_LEAGUE_KEYWORDS));
+  const secondary = brazilLeagues.filter((l) => matchesAny(l.name, OPTIONAL_LEAGUE_KEYWORDS));
   const toIngest = [...primary, ...secondary];
 
   if (toIngest.length === 0) {

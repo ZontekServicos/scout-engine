@@ -100,7 +100,7 @@ export async function ingestLeaguesByCountry(sportmonksCountryId: number) {
   // Ensure country
   const country = await ingestCountry(sportmonksCountryId);
 
-  const rawLeagues = await fetchLeagues({ countryId: sportmonksCountryId });
+  const rawLeagues = (await fetchLeagues()).filter((l) => l.country_id === sportmonksCountryId || l.country?.id === sportmonksCountryId);
   const results = [];
 
   for (const raw of rawLeagues) {
