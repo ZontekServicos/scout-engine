@@ -11,6 +11,7 @@
  */
 
 import { prisma } from "../lib/prisma";
+import { Prisma } from "@prisma/client";
 import {
   fetchMatchesBySeason,
   fetchMatchById,
@@ -229,8 +230,8 @@ async function upsertMatchEvent(event: SportmonksEvent, matchDbId: string) {
     endX: event.coordinates?.end_x ?? null,
     endY: event.coordinates?.end_y ?? null,
     outcome,
-    // Prisma nullable Json fields require undefined (not null) to leave unset
-    ...(Object.keys(meta).length > 0 ? { meta } : {}),
+    // Prisma InputJsonValue requires explicit cast from Record<string, unknown>
+    ...(Object.keys(meta).length > 0 ? { meta: meta as Prisma.InputJsonValue } : {}),
   };
 
   // If event has a Sportmonks ID, upsert; otherwise just create
