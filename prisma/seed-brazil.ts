@@ -1,44 +1,32 @@
 /**
  * seed-brazil.ts
  *
- * Populates the database with real Brazilian football data from Sportmonks.
+ * Populates the database with real Brazilian football data from Sportmonks v3.
  *
  * Flow:
- *   clearDatabase()         — truncates all ingestion tables in FK-safe order
- *   ingestCountry(Brazil)   — persists country
- *   per target league:
+ *   clearDatabase()           — deletes ingestion data in FK-safe order
+ *   ingestCountryDirect()     — upserts Brazil without calling /countries (unavailable on some plans)
+ *   fetchLeagues(countryId)   — discovers Brazilian leagues directly from /leagues
+ *   per league:
  *     ingestLeague()
- *     ingestSeasonsByLeague() → pick current season
+ *     ingestSeasonsByLeague() → picks current season
  *     ingestTeamsBySeason()
  *     per team: ingestPlayersByTeam()
- *     ingestMatchesBySeason() → pick N most recent finished matches
+ *     ingestMatchesBySeason() → picks N most recent FT matches
  *     per match: ingestMatchFull() (match + events with coordinates)
  *
  * Run:
- *   npx ts-node prisma/seed-brazil.ts
- *   or: npm run seed:brazil
+ *   npm run seed:brazil
+ *   npx cross-env NODE_ENV=development ts-node prisma/seed-brazil.ts
  *
- * ⚠️  Only runs in NODE_ENV=development (guard at the bottom).
- *
- * ---------------------------------------------------------------------------
- * Sportmonks v3 IDs — verify at https://docs.sportmonks.com/football/
- * ---------------------------------------------------------------------------
- * Brazil country_id : 32
- * Brasileirão Série A (league) : 325
- * Brasileirão Série B (league) : 375
- * Copa do Brasil (league)      : 326
- *
- * If any ID returns 404, use GET /api/ingest/country/32/leagues to discover
- * the correct IDs for your API subscription tier.
- * ---------------------------------------------------------------------------
+ * ⚠️  Only runs when NODE_ENV=development.
  */
 
 import "dotenv/config";
 import { PrismaClient } from "@prisma/client";
 import {
-  ingestCountry,
+  ingestCountryDirect,
   ingestLeague,
-  ingestLeaguesByCountry,
   ingestSeasonsByLeague,
   ingestTeamsBySeason,
   ingestPlayersByTeam,
@@ -47,10 +35,7 @@ import {
   ingestMatchesBySeason,
   ingestMatchFull,
 } from "../src/ingestion/match.ingestion.service";
-import {
-  fetchCountryByName,
-  fetchLeagues,
-} from "../src/integrations/sportmonks/sportmonks.client";
+import { fetchLeagues } from "../src/integrations/sportmonks/sportmonks.client";
 
 const prisma = new PrismaClient();
 
@@ -59,26 +44,29 @@ const prisma = new PrismaClient();
 // ---------------------------------------------------------------------------
 
 /**
- * Keywords to match against Sportmonks league names (case-insensitive).
- * The seed discovers IDs dynamically — no hardcoded values.
+ * Brazil — hardcoded to avoid dependency on /countries endpoint.
+ * Sportmonks v3 country_id for Brazil = 32.
+ */
+const BRAZIL = { externalId: 32, name: "Brazil", iso2: "BR" };
+
+/**
+ * Keywords matched against Sportmonks league names (case-insensitive, partial).
+ * Run once to print all available leagues, then tune these if needed.
  */
 const TARGET_LEAGUE_KEYWORDS = [
-  "Série A",
-  "Serie A",
-  "Brasileirao Serie A",
-  "Brasileirão Série A",
+  "serie a",
+  "série a",
+  "brasileirao",
+  "brasileirão",
 ];
 
 const OPTIONAL_LEAGUE_KEYWORDS = [
-  "Série B",
-  "Serie B",
+  "serie b",
+  "série b",
 ];
 
-/**
- * Max number of FINISHED matches to ingest per league season.
- * Each match triggers one extra API call for events — keep this conservative.
- */
-const MAX_MATCHES_PER_LEAGUE = 8;
+/** Max finished matches to ingest per league — controls volume and API calls. */
+const MAX_MATCHES_PER_LEAGUE = 5;
 
 // ---------------------------------------------------------------------------
 // Logger
@@ -89,13 +77,12 @@ function log(msg: string) {
 }
 
 // ---------------------------------------------------------------------------
-// Step 1 — Clear database (dev only, FK-safe order)
+// Step 1 — Clear database (ingestion tables only, FK-safe order)
 // ---------------------------------------------------------------------------
 
 async function clearDatabase() {
-  log("Clearing database (ingestion tables only)…");
+  log("Clearing ingestion tables…");
 
-  // Order matters — children before parents
   await prisma.$transaction([
     prisma.matchEvent.deleteMany(),
     prisma.match.deleteMany(),
@@ -104,7 +91,6 @@ async function clearDatabase() {
     prisma.playerFinancials.deleteMany(),
     prisma.playerRiskSnapshot.deleteMany(),
     prisma.analysisComparison.deleteMany(),
-    // Players reference Teams (teamDbId) — delete players first
     prisma.player.deleteMany({ where: { source: "sportmonks" } }),
     prisma.team.deleteMany(),
     prisma.season.deleteMany(),
@@ -112,122 +98,136 @@ async function clearDatabase() {
     prisma.country.deleteMany(),
   ]);
 
-  log("Database cleared (manual/seed players kept).");
+  log("Done. Manual/seed players kept.");
 }
 
 // ---------------------------------------------------------------------------
-// Step 2 — Ingest Brazil
+// Step 2 — Seed Brazil
 // ---------------------------------------------------------------------------
 
-function matchesKeywords(name: string, keywords: string[]): boolean {
+function matchesAny(name: string, keywords: string[]): boolean {
   const lower = name.toLowerCase();
   return keywords.some((k) => lower.includes(k.toLowerCase()));
 }
 
 async function seedBrazilData() {
-  // ---- Discover Brazil country ID ----
-  log("Discovering Brazil country ID from Sportmonks…");
-  const brazilRaw = await fetchCountryByName("Brazil");
-  if (!brazilRaw) {
-    throw new Error("Could not find Brazil in Sportmonks /countries — check your API subscription.");
-  }
-  log(`  ✓ Found: "${brazilRaw.name}" (id=${brazilRaw.id})`);
-  const country = await ingestCountry(brazilRaw.id);
-  log(`  ✓ Country persisted: ${country.name}`);
+  // ---- Country (no API call — hardcoded) ----
+  const country = await ingestCountryDirect(BRAZIL);
+  log(`Country: "${country.name}" (id=${country.id})`);
 
-  // ---- Discover Brazilian leagues ----
-  log("Discovering Brazilian leagues…");
-  const allLeagues = await fetchLeagues({ countryId: brazilRaw.id });
-  log(`  Found ${allLeagues.length} league(s) for Brazil in Sportmonks`);
-  allLeagues.forEach((l) => log(`    id=${l.id}  name="${l.name}"`));
+  // ---- Discover leagues via /football/leagues?filters=countryId:32 ----
+  log(`Fetching leagues for countryId=${BRAZIL.externalId}…`);
+  const allLeagues = await fetchLeagues({ countryId: BRAZIL.externalId });
 
-  const targetLeagues = allLeagues.filter((l) =>
-    matchesKeywords(l.name, TARGET_LEAGUE_KEYWORDS),
-  );
-  const optionalLeagues = allLeagues.filter((l) =>
-    matchesKeywords(l.name, OPTIONAL_LEAGUE_KEYWORDS),
-  );
-
-  const leaguesToIngest = [...targetLeagues, ...optionalLeagues];
-
-  if (leaguesToIngest.length === 0) {
-    log("⚠  No target leagues found. Printing all available league names above — update TARGET_LEAGUE_KEYWORDS to match.");
+  if (allLeagues.length === 0) {
+    log("⚠  No leagues returned. Check your Sportmonks API token and plan.");
     return;
   }
 
-  log(`  Will ingest: ${leaguesToIngest.map((l) => l.name).join(", ")}`);
+  log(`Found ${allLeagues.length} league(s):`);
+  allLeagues.forEach((l) => log(`  id=${l.id}  "${l.name}"`));
 
-  for (const leagueRaw of leaguesToIngest) {
-    log(`\n── League: ${leagueRaw.name} (id=${leagueRaw.id}) ──`);
+  // ---- Filter target leagues ----
+  const primary = allLeagues.filter((l) => matchesAny(l.name, TARGET_LEAGUE_KEYWORDS));
+  const secondary = allLeagues.filter((l) => matchesAny(l.name, OPTIONAL_LEAGUE_KEYWORDS));
+  const toIngest = [...primary, ...secondary];
 
-    // ---- League ----
-    const league = await ingestLeague(leagueRaw.id);
-    log(`  ✓ League persisted: ${league.name}`);
-
-    // ---- Seasons ----
-    log(`  Fetching seasons…`);
-    const seasons = await ingestSeasonsByLeague(leagueRaw.id);
-    log(`  ✓ ${seasons.length} season(s) persisted`);
-
-    // Pick current season; fall back to most recent
-    const currentSeason =
-      seasons.find((s) => s.isCurrent) ??
-      seasons.sort((a, b) => (b.year ?? 0) - (a.year ?? 0))[0];
-
-    if (!currentSeason) {
-      log(`  ⚠ No season found for ${leagueRaw.name} — skipping`);
-      continue;
-    }
-
-    log(`  Target season: "${currentSeason.name}" (externalId=${currentSeason.externalId})`);
-
-    // ---- Teams ----
-    log(`  Fetching teams…`);
-    const teams = await ingestTeamsBySeason(currentSeason.externalId);
-    log(`  ✓ ${teams.length} team(s) persisted`);
-
-    // ---- Players (per team) ----
-    let totalPlayers = 0;
-    for (const team of teams) {
-      try {
-        const players = await ingestPlayersByTeam(team.externalId, currentSeason.externalId);
-        totalPlayers += players.length;
-        log(`    Team "${team.name}": ${players.length} player(s)`);
-      } catch (err) {
-        log(`    ⚠ Skipping players for "${team.name}": ${(err as Error).message}`);
-      }
-    }
-    log(`  ✓ ${totalPlayers} total player(s) for season "${currentSeason.name}"`);
-
-    // ---- Matches ----
-    log(`  Fetching matches for season ${currentSeason.externalId}…`);
-    const allMatches = await ingestMatchesBySeason(currentSeason.externalId);
-    log(`  ✓ ${allMatches.length} match(es) persisted`);
-
-    // Select only finished matches, most recent first, capped at MAX_MATCHES_PER_LEAGUE
-    const finishedMatches = allMatches
-      .filter((m) => m.status === "FT" || m.status === "AET" || m.status === "PEN")
-      .sort((a, b) => {
-        const aTime = a.startingAt?.getTime() ?? 0;
-        const bTime = b.startingAt?.getTime() ?? 0;
-        return bTime - aTime; // most recent first
-      })
-      .slice(0, MAX_MATCHES_PER_LEAGUE);
-
-    log(`  Ingesting events for ${finishedMatches.length} finished match(es)…`);
-
-    let totalEvents = 0;
-    for (const match of finishedMatches) {
-      try {
-        const result = await ingestMatchFull(match.externalId);
-        totalEvents += result.eventsIngested;
-        log(`    Match ${match.externalId}: ${result.eventsIngested} event(s)`);
-      } catch (err) {
-        log(`    ⚠ Failed events for match ${match.externalId}: ${(err as Error).message}`);
-      }
-    }
-    log(`  ✓ ${totalEvents} total event(s) ingested for "${leagueRaw.name}"`);
+  if (toIngest.length === 0) {
+    log("⚠  No leagues matched TARGET_LEAGUE_KEYWORDS.");
+    log("   Update the keywords above to match the league names printed.");
+    return;
   }
+
+  log(`Will ingest: ${toIngest.map((l) => l.name).join(" | ")}`);
+
+  // ---- Per-league ingestion ----
+  for (const leagueRaw of toIngest) {
+    log(`\n${"─".repeat(60)}`);
+    log(`League: "${leagueRaw.name}" (sportmonks id=${leagueRaw.id})`);
+
+    try {
+      await ingestLeagueData(leagueRaw.id, leagueRaw.name);
+    } catch (err) {
+      log(`⚠  League "${leagueRaw.name}" failed: ${(err as Error).message}`);
+      log("   Continuing with next league…");
+    }
+  }
+}
+
+async function ingestLeagueData(leagueExternalId: number, leagueName: string) {
+  // League
+  const league = await ingestLeague(leagueExternalId);
+  log(`  League persisted: "${league.name}" (db id=${league.id})`);
+
+  // Seasons
+  const seasons = await ingestSeasonsByLeague(leagueExternalId);
+  log(`  ${seasons.length} season(s) persisted`);
+
+  // Pick current season; fall back to most recent by year
+  const currentSeason =
+    seasons.find((s) => s.isCurrent) ??
+    [...seasons].sort((a, b) => (b.year ?? 0) - (a.year ?? 0))[0];
+
+  if (!currentSeason) {
+    log(`  ⚠  No season found — skipping`);
+    return;
+  }
+
+  log(`  Season: "${currentSeason.name}" (externalId=${currentSeason.externalId}, isCurrent=${currentSeason.isCurrent})`);
+
+  // Teams
+  let teams;
+  try {
+    teams = await ingestTeamsBySeason(currentSeason.externalId);
+    log(`  ${teams.length} team(s) persisted`);
+  } catch (err) {
+    log(`  ⚠  Teams failed: ${(err as Error).message}`);
+    return;
+  }
+
+  // Players (per team — each failure is isolated)
+  let totalPlayers = 0;
+  for (const team of teams) {
+    try {
+      const players = await ingestPlayersByTeam(team.externalId, currentSeason.externalId);
+      totalPlayers += players.length;
+      log(`    ${team.name}: ${players.length} player(s)`);
+    } catch (err) {
+      log(`    ⚠  Players for "${team.name}": ${(err as Error).message}`);
+    }
+  }
+  log(`  ${totalPlayers} total player(s)`);
+
+  // Matches
+  let allMatches;
+  try {
+    allMatches = await ingestMatchesBySeason(currentSeason.externalId);
+    log(`  ${allMatches.length} match(es) persisted`);
+  } catch (err) {
+    log(`  ⚠  Matches failed: ${(err as Error).message}`);
+    return;
+  }
+
+  // Pick finished matches — most recent first — capped
+  const finished = allMatches
+    .filter((m) => ["FT", "AET", "PEN", "FT_PEN"].includes(m.status ?? ""))
+    .sort((a, b) => (b.startingAt?.getTime() ?? 0) - (a.startingAt?.getTime() ?? 0))
+    .slice(0, MAX_MATCHES_PER_LEAGUE);
+
+  log(`  Ingesting events for ${finished.length} finished match(es) (cap=${MAX_MATCHES_PER_LEAGUE})…`);
+
+  let totalEvents = 0;
+  for (const match of finished) {
+    try {
+      const result = await ingestMatchFull(match.externalId);
+      totalEvents += result.eventsIngested;
+      log(`    Match ${match.externalId}: ${result.eventsIngested} event(s)`);
+    } catch (err) {
+      log(`    ⚠  Match ${match.externalId}: ${(err as Error).message}`);
+    }
+  }
+
+  log(`  Total events for "${leagueName}": ${totalEvents}`);
 }
 
 // ---------------------------------------------------------------------------
@@ -246,20 +246,25 @@ async function printSummary() {
       prisma.matchEvent.count(),
     ]);
 
-  log("\n── Summary ──────────────────────────────");
-  log(`  Countries : ${countries}`);
-  log(`  Leagues   : ${leagues}`);
-  log(`  Seasons   : ${seasons}`);
-  log(`  Teams     : ${teams}`);
-  log(`  Players   : ${players}`);
-  log(`  Matches   : ${matches}`);
-  log(`  Events    : ${events}`);
-
   const withCoords = await prisma.matchEvent.count({
     where: { x: { not: null }, y: { not: null } },
   });
-  log(`  Events w/ coordinates: ${withCoords} (${events > 0 ? Math.round((withCoords / events) * 100) : 0}%)`);
-  log("─────────────────────────────────────────\n");
+
+  log("");
+  log("── Summary ──────────────────────────────────────────────");
+  log(`  Countries  : ${countries}`);
+  log(`  Leagues    : ${leagues}`);
+  log(`  Seasons    : ${seasons}`);
+  log(`  Teams      : ${teams}`);
+  log(`  Players    : ${players}`);
+  log(`  Matches    : ${matches}`);
+  log(`  Events     : ${events}`);
+  log(`  w/ coords  : ${withCoords} (${events > 0 ? Math.round((withCoords / events) * 100) : 0}%)`);
+  log("─────────────────────────────────────────────────────────");
+
+  if (withCoords === 0 && events > 0) {
+    log("⚠  No events have coordinates. Verify your Sportmonks plan includes spatial data.");
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -270,13 +275,12 @@ async function main() {
   if (process.env.NODE_ENV !== "development") {
     console.error(
       "[seed-brazil] ❌  Aborted: NODE_ENV is not 'development'.\n" +
-      "                  Set NODE_ENV=development to run this script.",
+      "               Set NODE_ENV=development to run this script.",
     );
     process.exit(1);
   }
 
-  log("Starting Brazil seed…");
-  log(`MAX_MATCHES_PER_LEAGUE = ${MAX_MATCHES_PER_LEAGUE}`);
+  log(`Starting Brazil seed  (MAX_MATCHES_PER_LEAGUE=${MAX_MATCHES_PER_LEAGUE})`);
 
   await clearDatabase();
   await seedBrazilData();

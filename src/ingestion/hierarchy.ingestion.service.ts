@@ -22,6 +22,11 @@ import { normalizeStats } from "../integrations/sportmonks/pipeline/normalize-st
 // Country
 // ---------------------------------------------------------------------------
 
+/**
+ * Ingest country from Sportmonks API by ID.
+ * NOTE: /countries endpoint may not be available on all plans.
+ * Use ingestCountryDirect() to bypass the API call entirely.
+ */
 export async function ingestCountry(sportmonksId: number) {
   const raw = await fetchCountryById(sportmonksId);
 
@@ -38,6 +43,22 @@ export async function ingestCountry(sportmonksId: number) {
       iso2: raw.iso2 ?? null,
       flagPath: raw.image_path ?? null,
     },
+  });
+}
+
+/**
+ * Upsert country directly from hardcoded data — no API call.
+ * Use when /countries endpoint is unavailable (e.g. plan restrictions).
+ */
+export async function ingestCountryDirect(data: {
+  externalId: number;
+  name: string;
+  iso2?: string;
+}) {
+  return prisma.country.upsert({
+    where: { externalId: data.externalId },
+    update: { name: data.name, iso2: data.iso2 ?? null },
+    create: { externalId: data.externalId, name: data.name, iso2: data.iso2 ?? null },
   });
 }
 
