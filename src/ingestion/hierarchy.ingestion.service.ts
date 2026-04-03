@@ -9,10 +9,10 @@
 
 import { prisma } from "../lib/prisma";
 import {
-  fetchCountryById,
   fetchLeagueById,
   fetchLeagues,
   fetchSeasonsByLeague,
+  fetchSeasonById,
   fetchTeamsBySeason,
   fetchPlayersByTeam,
 } from "../integrations/sportmonks/sportmonks.client";
@@ -23,26 +23,16 @@ import { normalizeStats } from "../integrations/sportmonks/pipeline/normalize-st
 // ---------------------------------------------------------------------------
 
 /**
- * Ingest country from Sportmonks API by ID.
- * NOTE: /countries endpoint may not be available on all plans.
- * Use ingestCountryDirect() to bypass the API call entirely.
+ * Ingest country from hardcoded data — no API call needed.
+ * /countries is not available on all Sportmonks plans.
+ * @deprecated Use ingestCountryDirect() instead.
  */
 export async function ingestCountry(sportmonksId: number) {
-  const raw = await fetchCountryById(sportmonksId);
-
+  // Fallback: persist with minimal data (name will be updated when a league includes country info)
   return prisma.country.upsert({
-    where: { externalId: raw.id },
-    update: {
-      name: raw.name,
-      iso2: raw.iso2 ?? null,
-      flagPath: raw.image_path ?? null,
-    },
-    create: {
-      externalId: raw.id,
-      name: raw.name,
-      iso2: raw.iso2 ?? null,
-      flagPath: raw.image_path ?? null,
-    },
+    where: { externalId: sportmonksId },
+    update: {},
+    create: { externalId: sportmonksId, name: `Country #${sportmonksId}` },
   });
 }
 
@@ -141,10 +131,6 @@ export async function ingestLeaguesByCountry(sportmonksCountryId: number) {
 // ---------------------------------------------------------------------------
 
 export async function ingestSeason(sportmonksSeasonId: number) {
-  // fetchSeasonById returns a single season — we need the league context
-  // Use fetchSeasonsByLeague upstream or pass leagueDbId explicitly.
-  // Here we store without league if called directly.
-  const { fetchSeasonById } = await import("../integrations/sportmonks/sportmonks.client");
   const raw = await fetchSeasonById(sportmonksSeasonId);
 
   return prisma.season.upsert({

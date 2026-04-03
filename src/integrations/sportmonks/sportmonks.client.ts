@@ -1,6 +1,20 @@
-import type { SportmonksPlayer } from "./sportmonks.types";
+/**
+ * sportmonks.client.ts
+ *
+ * Sportmonks Football API v3 client.
+ * Base URL : https://api.sportmonks.com/v3/football
+ * Docs     : https://docs.sportmonks.com/football
+ *
+ * Rules enforced here:
+ *  - api_token sent as query param on every request
+ *  - filters use snake_case  (e.g. filters=country_id:32)
+ *  - includes use comma separator  (e.g. include=participants,scores)
+ *  - pagination handled automatically (fetches all pages)
+ *  - error messages include HTTP status + response body for debugging
+ */
+
 import type {
-  SportmonksCountry,
+  SportmonksPlayer,
   SportmonksLeague,
   SportmonksSeason,
   SportmonksTeam,
@@ -10,20 +24,39 @@ import type {
 
 const BASE_URL = "https://api.sportmonks.com/v3/football";
 
+// ---------------------------------------------------------------------------
+// Internal: token
+// ---------------------------------------------------------------------------
+
 function getApiToken(): string {
   const token = process.env.SPORTMONKS_API_TOKEN;
-  if (!token) {
-    throw new Error("SPORTMONKS_API_TOKEN is not configured");
-  }
+  if (!token) throw new Error("SPORTMONKS_API_TOKEN is not configured");
   return token;
 }
 
-async function get<T>(path: string, params: Record<string, string> = {}): Promise<T> {
-  const token = getApiToken();
+// ---------------------------------------------------------------------------
+// Internal: raw GET — single page
+// ---------------------------------------------------------------------------
+
+interface SmGetOptions {
+  filters?: string;   // e.g. "country_id:32"
+  include?: string;   // comma-separated, e.g. "participants,scores"
+  page?: number;
+  perPage?: number;
+  [key: string]: string | number | undefined;
+}
+
+async function smGet<T>(
+  path: string,
+  options: SmGetOptions = {},
+): Promise<T> {
   const url = new URL(`${BASE_URL}${path}`);
-  url.searchParams.set("api_token", token);
-  for (const [key, value] of Object.entries(params)) {
-    url.searchParams.set(key, value);
+  url.searchParams.set("api_token", getApiToken());
+
+  for (const [key, value] of Object.entries(options)) {
+    if (value !== undefined) {
+      url.searchParams.set(key === "perPage" ? "per_page" : key, String(value));
+    }
   }
 
   const response = await fetch(url.toString(), {
@@ -31,33 +64,49 @@ async function get<T>(path: string, params: Record<string, string> = {}): Promis
   });
 
   if (!response.ok) {
-    throw new Error(`Sportmonks API error: ${response.status} ${response.statusText} — ${path}`);
+    // Include response body in error for easier debugging
+    let body = "";
+    try { body = await response.text(); } catch { /* ignore */ }
+    throw new Error(
+      `Sportmonks ${response.status} ${response.statusText} — ${path}\n` +
+      (body ? `  Body: ${body.slice(0, 300)}` : ""),
+    );
   }
 
   return response.json() as Promise<T>;
 }
 
 // ---------------------------------------------------------------------------
-// Pagination helper — Sportmonks paginates with meta.pagination
+// Internal: paginated GET — auto-fetches all pages
 // ---------------------------------------------------------------------------
 
-async function getPaginated<T>(
+interface PaginatedResponse<T> {
+  data: T[];
+  meta?: {
+    pagination?: {
+      total?: number;
+      count?: number;
+      per_page?: number;
+      current_page?: number;
+      total_pages?: number;
+    };
+  };
+}
+
+async function smGetAll<T>(
   path: string,
-  params: Record<string, string> = {},
+  options: Omit<SmGetOptions, "page"> = {},
+  maxPages = 50, // safety cap — prevents infinite loops on misconfigured APIs
 ): Promise<T[]> {
   const results: T[] = [];
   let page = 1;
 
   while (true) {
-    const raw = await get<{ data: T[]; meta?: { pagination?: { total_pages?: number } } }>(
-      path,
-      { ...params, page: String(page) },
-    );
-
+    const raw = await smGet<PaginatedResponse<T>>(path, { ...options, page });
     results.push(...(raw.data ?? []));
 
     const totalPages = raw.meta?.pagination?.total_pages ?? 1;
-    if (page >= totalPages) break;
+    if (page >= totalPages || page >= maxPages) break;
     page++;
   }
 
@@ -65,130 +114,133 @@ async function getPaginated<T>(
 }
 
 // ---------------------------------------------------------------------------
-// Player endpoints (existing)
+// Leagues
 // ---------------------------------------------------------------------------
 
-export async function fetchPlayerWithStats(playerId: number): Promise<SportmonksPlayer> {
-  const includes = [
-    "nationality",
-    "position",
-    "detailedPosition",
-    "team",
-    "stats",
-    "stats.type",
-    "league",
-  ].join(";");
-
-  const raw = await get<{ data: SportmonksPlayer }>(`/players/${playerId}`, {
-    include: includes,
-  });
-
-  return raw.data;
-}
-
-export async function searchPlayerByName(name: string): Promise<SportmonksPlayer[]> {
-  const includes = ["nationality", "position", "team"].join(";");
-
-  const raw = await get<{ data: SportmonksPlayer[] }>(`/players/search/${encodeURIComponent(name)}`, {
-    include: includes,
-  });
-
-  return raw.data ?? [];
-}
-
-// ---------------------------------------------------------------------------
-// Country endpoints
-// ---------------------------------------------------------------------------
-
-export async function fetchCountries(): Promise<SportmonksCountry[]> {
-  return getPaginated<SportmonksCountry>("/countries");
-}
-
-export async function fetchCountryById(countryId: number): Promise<SportmonksCountry> {
-  const raw = await get<{ data: SportmonksCountry }>(`/countries/${countryId}`);
-  return raw.data;
-}
-
-export async function fetchCountryByName(name: string): Promise<SportmonksCountry | null> {
-  const all = await fetchCountries();
-  const lower = name.toLowerCase();
-  return all.find((c) => c.name.toLowerCase().includes(lower)) ?? null;
-}
-
-// ---------------------------------------------------------------------------
-// League endpoints
-// ---------------------------------------------------------------------------
-
+/**
+ * Fetch leagues, optionally filtered by country.
+ * filters=country_id:{id}
+ */
 export async function fetchLeagues(params: { countryId?: number } = {}): Promise<SportmonksLeague[]> {
-  const queryParams: Record<string, string> = { include: "country" };
-  if (params.countryId) queryParams["filters"] = `countryId:${params.countryId}`;
-  return getPaginated<SportmonksLeague>("/leagues", queryParams);
+  const options: SmGetOptions = { include: "country" };
+  if (params.countryId) options.filters = `country_id:${params.countryId}`;
+  return smGetAll<SportmonksLeague>("/leagues", options);
 }
 
 export async function fetchLeagueById(leagueId: number): Promise<SportmonksLeague> {
-  const raw = await get<{ data: SportmonksLeague }>(`/leagues/${leagueId}`, {
+  const raw = await smGet<{ data: SportmonksLeague }>(`/leagues/${leagueId}`, {
     include: "country",
   });
   return raw.data;
 }
 
 // ---------------------------------------------------------------------------
-// Season endpoints
+// Seasons
 // ---------------------------------------------------------------------------
 
+/**
+ * Fetch all seasons for a league.
+ * filters=league_id:{id}
+ */
 export async function fetchSeasonsByLeague(leagueId: number): Promise<SportmonksSeason[]> {
-  return getPaginated<SportmonksSeason>(`/seasons/leagues/${leagueId}`);
+  return smGetAll<SportmonksSeason>("/seasons", {
+    filters: `league_id:${leagueId}`,
+  });
 }
 
 export async function fetchSeasonById(seasonId: number): Promise<SportmonksSeason> {
-  const raw = await get<{ data: SportmonksSeason }>(`/seasons/${seasonId}`);
+  const raw = await smGet<{ data: SportmonksSeason }>(`/seasons/${seasonId}`);
   return raw.data;
 }
 
 // ---------------------------------------------------------------------------
-// Team endpoints
+// Teams
 // ---------------------------------------------------------------------------
 
+/**
+ * Fetch teams participating in a season.
+ * filters=season_id:{id}
+ */
 export async function fetchTeamsBySeason(seasonId: number): Promise<SportmonksTeam[]> {
-  return getPaginated<SportmonksTeam>(`/teams/seasons/${seasonId}`, {
-    include: "country",
+  return smGetAll<SportmonksTeam>("/teams", {
+    filters: `season_id:${seasonId}`,
   });
 }
 
+// ---------------------------------------------------------------------------
+// Players
+// ---------------------------------------------------------------------------
+
+/**
+ * Fetch a single player with stats included.
+ */
+export async function fetchPlayerWithStats(playerId: number): Promise<SportmonksPlayer> {
+  const raw = await smGet<{ data: SportmonksPlayer }>(`/players/${playerId}`, {
+    include: "nationality,position,detailedPosition,team,statistics.details,league",
+  });
+  return raw.data;
+}
+
+/**
+ * Search players by name.
+ */
+export async function searchPlayerByName(name: string): Promise<SportmonksPlayer[]> {
+  const raw = await smGet<{ data: SportmonksPlayer[] }>(
+    `/players/search/${encodeURIComponent(name)}`,
+    { include: "nationality,position,team" },
+  );
+  return raw.data ?? [];
+}
+
+/**
+ * Fetch players belonging to a team in a specific season.
+ * filters=team_id:{id};season_id:{id}  — Sportmonks allows combining filters with semicolon
+ */
 export async function fetchPlayersByTeam(
   teamId: number,
   seasonId: number,
 ): Promise<SportmonksPlayer[]> {
-  return getPaginated<SportmonksPlayer>(
-    `/players/teams/${teamId}/seasons/${seasonId}`,
-    {
-      include: "nationality;position;detailedPosition;stats;stats.type",
-    },
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Match (fixture) endpoints
-// ---------------------------------------------------------------------------
-
-export async function fetchMatchesBySeason(seasonId: number): Promise<SportmonksFixture[]> {
-  return getPaginated<SportmonksFixture>(`/fixtures/seasons/${seasonId}`, {
-    include: "scores;participants",
+  return smGetAll<SportmonksPlayer>("/players", {
+    filters: `team_id:${teamId};season_id:${seasonId}`,
+    include: "nationality,position,detailedPosition,statistics.details",
   });
 }
 
+// ---------------------------------------------------------------------------
+// Fixtures (matches)
+// ---------------------------------------------------------------------------
+
+/**
+ * Fetch all fixtures for a season.
+ * filters=season_id:{id}
+ */
+export async function fetchMatchesBySeason(seasonId: number): Promise<SportmonksFixture[]> {
+  return smGetAll<SportmonksFixture>("/fixtures", {
+    filters: `season_id:${seasonId}`,
+    include: "scores,participants",
+  });
+}
+
+/**
+ * Fetch a single fixture with full detail (scores + participants + events).
+ */
 export async function fetchMatchById(fixtureId: number): Promise<SportmonksFixture> {
-  const raw = await get<{ data: SportmonksFixture }>(`/fixtures/${fixtureId}`, {
-    include: "scores;participants;events",
+  const raw = await smGet<{ data: SportmonksFixture }>(`/fixtures/${fixtureId}`, {
+    include: "scores,participants,events",
   });
   return raw.data;
 }
 
 // ---------------------------------------------------------------------------
-// Event endpoints
+// Events
 // ---------------------------------------------------------------------------
 
+/**
+ * Fetch all events for a fixture.
+ * filters=fixture_id:{id}
+ */
 export async function fetchMatchEvents(fixtureId: number): Promise<SportmonksEvent[]> {
-  const raw = await get<{ data: SportmonksEvent[] }>(`/events/fixtures/${fixtureId}`);
-  return raw.data ?? [];
+  return smGetAll<SportmonksEvent>("/events", {
+    filters: `fixture_id:${fixtureId}`,
+  });
 }
