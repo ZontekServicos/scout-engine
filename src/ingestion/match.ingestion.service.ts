@@ -13,7 +13,7 @@
 import { prisma } from "../lib/prisma";
 import { Prisma } from "@prisma/client";
 import {
-  fetchMatchesBySeason,
+  fetchFixturesBySeason,
   fetchMatchById,
   fetchMatchEvents,
 } from "../integrations/sportmonks/sportmonks.client";
@@ -153,7 +153,7 @@ async function upsertMatch(fixture: SportmonksFixture) {
 // ---------------------------------------------------------------------------
 
 export async function ingestMatchesBySeason(sportmonksSeasonId: number) {
-  const rawFixtures = await fetchMatchesBySeason(sportmonksSeasonId);
+  const rawFixtures = await fetchFixturesBySeason(sportmonksSeasonId);
   const results = [];
 
   for (const fixture of rawFixtures) {

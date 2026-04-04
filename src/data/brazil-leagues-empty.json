@@ -1,17 +1,5 @@
 [
   {
-    "id": 651,
-    "name": "Serie B",
-    "country": "Brazil",
-    "currentSeasonId": 27198,
-    "status": "EMPTY",
-    "fixtureId": null,
-    "eventCount": 0,
-    "coordCount": 0,
-    "validatedAt": "2026-04-04T01:49:43.702Z",
-    "error": "HTTP 400:     {\"message\":\"You requested filters do not exist. Visit the documentation to see all the available filters and how to apply them.\"}"
-  },
-  {
     "id": 648,
     "name": "Serie A",
     "country": "Brazil",
@@ -24,15 +12,15 @@
     "error": "HTTP 400:     {\"message\":\"You requested filters do not exist. Visit the documentation to see all the available filters and how to apply them.\"}"
   },
   {
-    "id": 657,
-    "name": "Serie C",
+    "id": 651,
+    "name": "Serie B",
     "country": "Brazil",
-    "currentSeasonId": 27199,
+    "currentSeasonId": 27198,
     "status": "EMPTY",
     "fixtureId": null,
     "eventCount": 0,
     "coordCount": 0,
-    "validatedAt": "2026-04-04T01:49:43.919Z",
+    "validatedAt": "2026-04-04T01:49:43.702Z",
     "error": "HTTP 400:     {\"message\":\"You requested filters do not exist. Visit the documentation to see all the available filters and how to apply them.\"}"
   },
   {
@@ -48,15 +36,15 @@
     "error": "HTTP 400:     {\"message\":\"You requested filters do not exist. Visit the documentation to see all the available filters and how to apply them.\"}"
   },
   {
-    "id": 1456,
-    "name": "Sao Paolo Youth Cup",
+    "id": 657,
+    "name": "Serie C",
     "country": "Brazil",
-    "currentSeasonId": 26767,
+    "currentSeasonId": 27199,
     "status": "EMPTY",
     "fixtureId": null,
     "eventCount": 0,
     "coordCount": 0,
-    "validatedAt": "2026-04-04T01:49:44.210Z",
+    "validatedAt": "2026-04-04T01:49:43.919Z",
     "error": "HTTP 400:     {\"message\":\"You requested filters do not exist. Visit the documentation to see all the available filters and how to apply them.\"}"
   },
   {
@@ -69,6 +57,18 @@
     "eventCount": 0,
     "coordCount": 0,
     "validatedAt": "2026-04-04T01:49:44.287Z",
+    "error": "HTTP 400:     {\"message\":\"You requested filters do not exist. Visit the documentation to see all the available filters and how to apply them.\"}"
+  },
+  {
+    "id": 1456,
+    "name": "Sao Paolo Youth Cup",
+    "country": "Brazil",
+    "currentSeasonId": 26767,
+    "status": "EMPTY",
+    "fixtureId": null,
+    "eventCount": 0,
+    "coordCount": 0,
+    "validatedAt": "2026-04-04T01:49:44.210Z",
     "error": "HTTP 400:     {\"message\":\"You requested filters do not exist. Visit the documentation to see all the available filters and how to apply them.\"}"
   },
   {
@@ -372,18 +372,6 @@
     "error": "HTTP 400:     {\"message\":\"You requested filters do not exist. Visit the documentation to see all the available filters and how to apply them.\"}"
   },
   {
-    "id": 2814,
-    "name": "Paraibano 2",
-    "country": "Brazil",
-    "currentSeasonId": 27176,
-    "status": "EMPTY",
-    "fixtureId": null,
-    "eventCount": 0,
-    "coordCount": 0,
-    "validatedAt": "2026-04-04T01:49:47.148Z",
-    "error": "HTTP 400:     {\"message\":\"You requested filters do not exist. Visit the documentation to see all the available filters and how to apply them.\"}"
-  },
-  {
     "id": 2729,
     "name": "Catarinense U20",
     "country": "Brazil",
@@ -393,6 +381,18 @@
     "eventCount": 0,
     "coordCount": 0,
     "validatedAt": "2026-04-04T01:49:47.314Z",
+    "error": "HTTP 400:     {\"message\":\"You requested filters do not exist. Visit the documentation to see all the available filters and how to apply them.\"}"
+  },
+  {
+    "id": 2814,
+    "name": "Paraibano 2",
+    "country": "Brazil",
+    "currentSeasonId": 27176,
+    "status": "EMPTY",
+    "fixtureId": null,
+    "eventCount": 0,
+    "coordCount": 0,
+    "validatedAt": "2026-04-04T01:49:47.148Z",
     "error": "HTTP 400:     {\"message\":\"You requested filters do not exist. Visit the documentation to see all the available filters and how to apply them.\"}"
   },
   {
@@ -420,18 +420,6 @@
     "error": "HTTP 400:     {\"message\":\"You requested filters do not exist. Visit the documentation to see all the available filters and how to apply them.\"}"
   },
   {
-    "id": 2947,
-    "name": "Baiano Women",
-    "country": "Brazil",
-    "currentSeasonId": 27118,
-    "status": "EMPTY",
-    "fixtureId": null,
-    "eventCount": 0,
-    "coordCount": 0,
-    "validatedAt": "2026-04-04T01:49:48.043Z",
-    "error": "HTTP 400:     {\"message\":\"You requested filters do not exist. Visit the documentation to see all the available filters and how to apply them.\"}"
-  },
-  {
     "id": 2833,
     "name": "Pernambucano 2",
     "country": "Brazil",
@@ -441,6 +429,18 @@
     "eventCount": 0,
     "coordCount": 0,
     "validatedAt": "2026-04-04T01:49:48.064Z",
+    "error": "HTTP 400:     {\"message\":\"You requested filters do not exist. Visit the documentation to see all the available filters and how to apply them.\"}"
+  },
+  {
+    "id": 2947,
+    "name": "Baiano Women",
+    "country": "Brazil",
+    "currentSeasonId": 27118,
+    "status": "EMPTY",
+    "fixtureId": null,
+    "eventCount": 0,
+    "coordCount": 0,
+    "validatedAt": "2026-04-04T01:49:48.043Z",
     "error": "HTTP 400:     {\"message\":\"You requested filters do not exist. Visit the documentation to see all the available filters and how to apply them.\"}"
   },
   {
