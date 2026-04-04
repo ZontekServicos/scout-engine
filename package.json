@@ -36,7 +36,13 @@
     "enrich:images": "ts-node src/scripts/enrich-player-images.ts",
     "enrich:images:dry": "ts-node src/scripts/enrich-player-images.ts --dry-run",
     "enrich:images:phase1": "ts-node src/scripts/enrich-player-images.ts --phase1-only",
-    "enrich:images:phase2": "ts-node src/scripts/enrich-player-images.ts --phase2-only"
+    "enrich:images:phase2": "ts-node src/scripts/enrich-player-images.ts --phase2-only",
+    "overall:recalc": "ts-node src/scripts/recalculate-overall.ts",
+    "overall:recalc:dry": "ts-node src/scripts/recalculate-overall.ts --dry-run",
+    "overall:recalc:stale": "ts-node src/scripts/recalculate-overall.ts --stale",
+    "purge:manual": "ts-node src/scripts/purge-manual-players.ts",
+    "purge:manual:dry": "ts-node src/scripts/purge-manual-players.ts --dry-run",
+    "db:migrate:enrichment": "npx prisma db execute --file prisma/migrate-enrichment.sql --schema prisma/schema.prisma"
   },
   "dependencies": {
     "@prisma/client": "^6.19.2",

@@ -1,6 +1,7 @@
 import { prisma } from "../lib/prisma";
 import { fetchPlayerWithStats } from "../integrations/sportmonks/sportmonks.client";
 import { normalizeStats } from "../integrations/sportmonks/pipeline/normalize-stats";
+import { calculateOverall } from "../analytics/overall.engine";
 import type { Prisma } from "@prisma/client";
 
 // ---------------------------------------------------------------------------
@@ -45,11 +46,16 @@ export async function ingestPlayerFromSportmonks(sportmonksId: number): Promise<
     ) age--;
   }
 
-  // 3. Upsert player
+  // 3. Normalize stats + calculate overall
+  const normalized = normalizeStats(stats);
+  const position = player.position?.name ?? player.detailedPosition?.name ?? null;
+  const overallResult = calculateOverall(normalized, position);
+  const contractEnd = player.contract_until ? new Date(player.contract_until) : null;
+
+  // 4. Upsert player
   const slug = `sportmonks-${sportmonksId}`;
   const name = player.display_name;
   const nameNormalized = name.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-  const position = player.position?.name ?? player.detailedPosition?.name ?? null;
 
   const dbPlayer = await prisma.player.upsert({
     where: { slug },
@@ -59,9 +65,27 @@ export async function ingestPlayerFromSportmonks(sportmonksId: number): Promise<
       team: player.team?.name ?? null,
       league: player.league?.name ?? null,
       imagePath: player.image_path ?? null,
-      imageFetched: true,   // we just fetched from Sportmonks — mark as done
+      imageFetched: true,
       age,
       teamDbId,
+      height: player.height ?? null,
+      weight: player.weight ?? null,
+      foot: player.foot ?? null,
+      marketValue: player.market_value ?? null,
+      contractEnd,
+      overall: overallResult.overall,
+      overallPace:        overallResult.breakdown.pace,
+      overallShooting:    overallResult.breakdown.shooting,
+      overallPassing:     overallResult.breakdown.passing,
+      overallDribbling:   overallResult.breakdown.dribbling,
+      overallDefending:   overallResult.breakdown.defending,
+      overallPhysical:    overallResult.breakdown.physical,
+      overallGkDiving:    overallResult.breakdown.gkDiving    ?? null,
+      overallGkHandling:  overallResult.breakdown.gkHandling  ?? null,
+      overallGkKicking:   overallResult.breakdown.gkKicking   ?? null,
+      overallGkReflex:    overallResult.breakdown.gkReflex    ?? null,
+      overallGkPositioning: overallResult.breakdown.gkPositioning ?? null,
+      overallCalculatedAt: new Date(),
     },
     create: {
       slug,
@@ -75,36 +99,78 @@ export async function ingestPlayerFromSportmonks(sportmonksId: number): Promise<
       team: player.team?.name ?? null,
       league: player.league?.name ?? null,
       imagePath: player.image_path ?? null,
-      imageFetched: true,   // created directly from Sportmonks — mark as done
+      imageFetched: true,
+      height: player.height ?? null,
+      weight: player.weight ?? null,
+      foot: player.foot ?? null,
+      marketValue: player.market_value ?? null,
+      contractEnd,
       attributes: {},
       archetype: {},
       teamDbId,
+      overall: overallResult.overall,
+      overallPace:        overallResult.breakdown.pace,
+      overallShooting:    overallResult.breakdown.shooting,
+      overallPassing:     overallResult.breakdown.passing,
+      overallDribbling:   overallResult.breakdown.dribbling,
+      overallDefending:   overallResult.breakdown.defending,
+      overallPhysical:    overallResult.breakdown.physical,
+      overallGkDiving:    overallResult.breakdown.gkDiving    ?? null,
+      overallGkHandling:  overallResult.breakdown.gkHandling  ?? null,
+      overallGkKicking:   overallResult.breakdown.gkKicking   ?? null,
+      overallGkReflex:    overallResult.breakdown.gkReflex    ?? null,
+      overallGkPositioning: overallResult.breakdown.gkPositioning ?? null,
+      overallCalculatedAt: new Date(),
     },
   });
 
-  // 4. Normalize stats from Sportmonks
-  const normalized = normalizeStats(stats);
-
-  // 5. Persist stats snapshot
+  // 5. Persist full stats snapshot
   await prisma.playerStats.create({
     data: {
       playerId: dbPlayer.id,
       source: "sportmonks",
-      goals: normalized.goals ?? 0,
-      assists: normalized.assists ?? 0,
-      shots: normalized.shotsTotal ?? 0,
-      shotsOnTarget: normalized.shotsOnTarget ?? 0,
-      keyPasses: normalized.keyPasses ?? 0,
-      passes: normalized.passesTotal ?? 0,
-      passAccuracy: normalized.passAccuracyPct ?? null,
-      xG: normalized.xG ?? null,
-      xA: normalized.xA ?? null,
-      tackles: normalized.tackles ?? 0,
-      interceptions: normalized.interceptions ?? 0,
-      pressures: null, // not always available from Sportmonks
-      rating: normalized.rating > 0 ? normalized.rating : null,
-      minutes: normalized.minutesPlayed ?? 0,
-      appearances: normalized.appearances ?? 0,
+      goals:        normalized.goals        > 0 ? normalized.goals        : null,
+      assists:      normalized.assists      > 0 ? normalized.assists      : null,
+      shots:            normalized.shotsTotal   > 0 ? normalized.shotsTotal   : null,
+      shotsOnTarget:    normalized.shotsOnTarget > 0 ? normalized.shotsOnTarget : null,
+      xG:               normalized.xG           > 0 ? normalized.xG           : null,
+      xA:               normalized.xA           > 0 ? normalized.xA           : null,
+      xGChain:          normalized.xGChain      > 0 ? normalized.xGChain      : null,
+      xGBuildup:        normalized.xGBuildup    > 0 ? normalized.xGBuildup    : null,
+      passes:               normalized.passesTotal       > 0 ? normalized.passesTotal       : null,
+      passAccuracy:         normalized.passAccuracyPct   > 0 ? normalized.passAccuracyPct   : null,
+      keyPasses:            normalized.keyPasses         > 0 ? normalized.keyPasses         : null,
+      progressivePasses:    normalized.progressivePasses > 0 ? normalized.progressivePasses : null,
+      longPasses:           normalized.longPasses        > 0 ? normalized.longPasses        : null,
+      longPassAccuracy:     normalized.longPassAccuracy  > 0 ? normalized.longPassAccuracy  : null,
+      crosses:              normalized.crosses           > 0 ? normalized.crosses           : null,
+      crossAccuracy:        normalized.crossAccuracy     > 0 ? normalized.crossAccuracy     : null,
+      dribblesAttempted:    normalized.dribblesAttempted  > 0 ? normalized.dribblesAttempted  : null,
+      dribblesSuccess:      normalized.dribblesSuccess    > 0 ? normalized.dribblesSuccess    : null,
+      carries:              normalized.carries            > 0 ? normalized.carries            : null,
+      progressiveCarries:   normalized.progressiveCarries > 0 ? normalized.progressiveCarries : null,
+      tackles:          normalized.tackles          > 0 ? normalized.tackles          : null,
+      tacklesWon:       normalized.tacklesWon       > 0 ? normalized.tacklesWon       : null,
+      interceptions:    normalized.interceptions    > 0 ? normalized.interceptions    : null,
+      clearances:       normalized.clearances       > 0 ? normalized.clearances       : null,
+      blocks:           normalized.blocks           > 0 ? normalized.blocks           : null,
+      pressures:        normalized.pressures        > 0 ? normalized.pressures        : null,
+      pressuresSuccess: normalized.pressuresSuccess > 0 ? normalized.pressuresSuccess : null,
+      recoveries:       normalized.recoveries       > 0 ? normalized.recoveries       : null,
+      duelsTotal:       normalized.duelsTotal       > 0 ? normalized.duelsTotal       : null,
+      duelsWon:         normalized.duelsWon         > 0 ? normalized.duelsWon         : null,
+      aerialDuelsTotal: normalized.aerialDuelsTotal > 0 ? normalized.aerialDuelsTotal : null,
+      aerialDuelsWon:   normalized.aerialDuelsWon   > 0 ? normalized.aerialDuelsWon   : null,
+      groundDuelsWon:   normalized.groundDuelsWon   > 0 ? normalized.groundDuelsWon   : null,
+      yellowCards:    normalized.yellowCards    > 0 ? normalized.yellowCards    : null,
+      redCards:       normalized.redCards       > 0 ? normalized.redCards       : null,
+      foulsCommitted: normalized.foulsCommitted > 0 ? normalized.foulsCommitted : null,
+      foulsDrawn:     normalized.foulsDrawn     > 0 ? normalized.foulsDrawn     : null,
+      distanceCovered: normalized.distanceCovered > 0 ? normalized.distanceCovered : null,
+      sprints:         normalized.sprints         > 0 ? normalized.sprints         : null,
+      rating:          normalized.rating          > 0 ? normalized.rating          : null,
+      minutes:         normalized.minutesPlayed   > 0 ? normalized.minutesPlayed   : null,
+      appearances:     normalized.appearances     > 0 ? normalized.appearances     : null,
     },
   });
 

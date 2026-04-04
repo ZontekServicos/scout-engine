@@ -33,11 +33,30 @@ model Player {
    */
   imageFetched    Boolean  @default(false)
 
+  // Physical profile — sourced from Sportmonks player endpoint
+  height          Int?     // cm
+  weight          Int?     // kg
+  foot            String?  // "left" | "right" | "both"
+
   marketValue     Float?
   contractEnd     DateTime?
 
   overall         Int?
   potential       Int?
+  // Calculated overall breakdown by attribute group (0-100 each)
+  overallPace       Int?
+  overallShooting   Int?
+  overallPassing    Int?
+  overallDribbling  Int?
+  overallDefending  Int?
+  overallPhysical   Int?
+  overallGkDiving   Int?
+  overallGkHandling Int?
+  overallGkKicking  Int?
+  overallGkReflex   Int?
+  overallGkPositioning Int?
+  // When the overall was last recalculated from stats
+  overallCalculatedAt DateTime?
 
   attributes  Json
   archetype   Json
@@ -167,6 +186,7 @@ model Country {
   updatedAt  DateTime @updatedAt
 
   leagues    League[]
+  teams      Team[]
 
   @@index([name])
 }
@@ -212,6 +232,10 @@ model Team {
   id         String   @id @default(uuid())
   externalId Int      @unique // Sportmonks team ID
   name       String
+  shortCode  String?           // e.g. "MCI", "FCB"
+  logoPath   String?           // CDN URL from Sportmonks
+  countryId  String?
+  country    Country? @relation(fields: [countryId], references: [id])
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 
@@ -236,21 +260,69 @@ model PlayerStats {
 
   source      String   @default("sportmonks") // sportmonks | manual
 
+  // Scoring
   goals         Int?
   assists       Int?
+
+  // Shooting
   shots         Int?
   shotsOnTarget Int?
-  keyPasses     Int?
-  passes        Int?
-  passAccuracy  Float?
   xG            Float?
   xA            Float?
+  xGChain       Float?
+  xGBuildup     Float?
+
+  // Passing
+  passes              Int?
+  passAccuracy        Float?
+  keyPasses           Int?
+  progressivePasses   Int?
+  longPasses          Int?
+  longPassAccuracy    Float?
+  crosses             Int?
+  crossAccuracy       Float?
+
+  // Dribbling & Carrying
+  dribblesAttempted   Int?
+  dribblesSuccess     Int?
+  carries             Int?
+  progressiveCarries  Int?
+
+  // Defensive
   tackles       Int?
+  tacklesWon    Int?
   interceptions Int?
+  clearances    Int?
+  blocks        Int?
   pressures     Int?
-  rating        Float?
-  minutes       Int?
-  appearances   Int?
+  pressuresSuccess Int?
+  recoveries    Int?
+
+  // Duels
+  duelsTotal    Int?
+  duelsWon      Int?
+  aerialDuelsTotal Int?
+  aerialDuelsWon   Int?
+  groundDuelsWon   Int?
+
+  // Discipline
+  yellowCards   Int?
+  redCards      Int?
+  foulsCommitted Int?
+  foulsDrawn    Int?
+
+  // Goalkeeping
+  saves         Int?
+  savePct       Float?
+  cleanSheets   Int?
+  goalsConceded Int?
+
+  // Physical
+  distanceCovered Float?
+  sprints         Int?
+  rating          Float?
+  minutes         Int?
+  appearances     Int?
 
   createdAt DateTime @default(now())
 
