@@ -16,7 +16,11 @@
     "import:fc26": "ts-node scripts/import_fc26_players.ts",
     "update:positions": "ts-node scripts/updatePlayerPositions.ts",
     "seed:brazil": "cross-env NODE_ENV=development ts-node prisma/seed-brazil.ts",
-    "seed:global": "cross-env NODE_ENV=development ts-node prisma/seed-global.ts"
+    "seed:global": "cross-env NODE_ENV=development ts-node prisma/seed-global.ts",
+    "seed:leagues": "cross-env NODE_ENV=development ts-node prisma/seed-leagues.ts",
+    "seed:brazil:validated": "cross-env NODE_ENV=development ts-node prisma/seed-brazil-validated.ts",
+    "parse:leagues": "ts-node src/scripts/parse-leagues.ts",
+    "validate:brazil": "ts-node src/scripts/validate-brazil-leagues.ts"
   },
   "dependencies": {
     "@prisma/client": "^6.19.2",
@@ -30,6 +34,7 @@
     "express-rate-limit": "^8.3.1",
     "node-cache": "^5.1.2",
     "openai": "^6.22.0",
+    "p-limit": "^3.1.0",
     "prisma": "^6.19.2",
     "zod": "^4.3.6"
   },
@@ -39,7 +44,8 @@
     "cross-env": "^10.1.0",
     "nodemon": "^3.1.11",
     "ts-node": "^10.9.2",
-    "typescript": "^5.9.3"
+    "typescript": "^5.9.3",
+    "xlsx": "^0.18.5"
   },
   "prisma": {
     "seed": "ts-node prisma/seed.ts"

@@ -1,0 +1,3686 @@
+[
+  {
+    "id": 2,
+    "name": "Champions League",
+    "country": "Europe",
+    "currentSeasonId": 25580
+  },
+  {
+    "id": 5,
+    "name": "Europa League",
+    "country": "Europe",
+    "currentSeasonId": 25582
+  },
+  {
+    "id": 8,
+    "name": "Premier League",
+    "country": "England",
+    "currentSeasonId": 25583
+  },
+  {
+    "id": 9,
+    "name": "Championship",
+    "country": "England",
+    "currentSeasonId": 25648
+  },
+  {
+    "id": 12,
+    "name": "League One",
+    "country": "England",
+    "currentSeasonId": 25649
+  },
+  {
+    "id": 14,
+    "name": "League Two",
+    "country": "England",
+    "currentSeasonId": 25650
+  },
+  {
+    "id": 17,
+    "name": "Enterprise National League",
+    "country": "England",
+    "currentSeasonId": 25752
+  },
+  {
+    "id": 20,
+    "name": "Enterprise National League North",
+    "country": "England",
+    "currentSeasonId": 25789
+  },
+  {
+    "id": 23,
+    "name": "Community Shield",
+    "country": "England",
+    "currentSeasonId": 25863
+  },
+  {
+    "id": 24,
+    "name": "FA Cup",
+    "country": "England",
+    "currentSeasonId": 25919
+  },
+  {
+    "id": 27,
+    "name": "Carabao Cup",
+    "country": "England",
+    "currentSeasonId": 25654
+  },
+  {
+    "id": 30,
+    "name": "Fa Trophy",
+    "country": "England",
+    "currentSeasonId": 25753
+  },
+  {
+    "id": 32,
+    "name": "Premier League Cup",
+    "country": "England",
+    "currentSeasonId": 26378
+  },
+  {
+    "id": 38,
+    "name": "Premier League International Cup",
+    "country": "England",
+    "currentSeasonId": 26429
+  },
+  {
+    "id": 39,
+    "name": "EFL Trophy",
+    "country": "England",
+    "currentSeasonId": 26020
+  },
+  {
+    "id": 42,
+    "name": "Premier League U18",
+    "country": "England",
+    "currentSeasonId": 26129
+  },
+  {
+    "id": 44,
+    "name": "Wsl 2 Women",
+    "country": "England",
+    "currentSeasonId": 26169
+  },
+  {
+    "id": 45,
+    "name": "Women's Super League",
+    "country": "England",
+    "currentSeasonId": 26097
+  },
+  {
+    "id": 48,
+    "name": "Professional Development League",
+    "country": "England",
+    "currentSeasonId": 26146
+  },
+  {
+    "id": 51,
+    "name": "Non League Premier: Isthmian",
+    "country": "England",
+    "currentSeasonId": 26031
+  },
+  {
+    "id": 53,
+    "name": "Non League Div One: Isthmian North",
+    "country": "England",
+    "currentSeasonId": 26021
+  },
+  {
+    "id": 54,
+    "name": "Non League Div One: Southern Central",
+    "country": "England",
+    "currentSeasonId": 26034
+  },
+  {
+    "id": 68,
+    "name": "Non League Premier: Northern",
+    "country": "England",
+    "currentSeasonId": 26033
+  },
+  {
+    "id": 69,
+    "name": "Non League Premier: Southern Central",
+    "country": "England",
+    "currentSeasonId": 26035
+  },
+  {
+    "id": 72,
+    "name": "Eredivisie",
+    "country": "Netherlands",
+    "currentSeasonId": 25597
+  },
+  {
+    "id": 74,
+    "name": "Eerste Divisie",
+    "country": "Netherlands",
+    "currentSeasonId": 25637
+  },
+  {
+    "id": 77,
+    "name": "Tweede Divisie",
+    "country": "Netherlands",
+    "currentSeasonId": 25734
+  },
+  {
+    "id": 78,
+    "name": "KNVB Beker",
+    "country": "Netherlands",
+    "currentSeasonId": 26455
+  },
+  {
+    "id": 80,
+    "name": "Eredivisie Women",
+    "country": "Netherlands",
+    "currentSeasonId": 25755
+  },
+  {
+    "id": 81,
+    "name": "Super Cup",
+    "country": "Netherlands",
+    "currentSeasonId": 25887
+  },
+  {
+    "id": 82,
+    "name": "Bundesliga",
+    "country": "Germany",
+    "currentSeasonId": 25646
+  },
+  {
+    "id": 85,
+    "name": "2. Bundesliga",
+    "country": "Germany",
+    "currentSeasonId": 25652
+  },
+  {
+    "id": 88,
+    "name": "3. Liga",
+    "country": "Germany",
+    "currentSeasonId": 25684
+  },
+  {
+    "id": 91,
+    "name": "Regionalliga: Nord",
+    "country": "Germany",
+    "currentSeasonId": 25754
+  },
+  {
+    "id": 94,
+    "name": "Regionalliga: Bayern",
+    "country": "Germany",
+    "currentSeasonId": 25747
+  },
+  {
+    "id": 97,
+    "name": "Regionalliga: Nordost",
+    "country": "Germany",
+    "currentSeasonId": 25685
+  },
+  {
+    "id": 103,
+    "name": "Regionalliga: Südwest",
+    "country": "Germany",
+    "currentSeasonId": 25756
+  },
+  {
+    "id": 106,
+    "name": "Regionalliga: West",
+    "country": "Germany",
+    "currentSeasonId": 25758
+  },
+  {
+    "id": 109,
+    "name": "DFB Pokal",
+    "country": "Germany",
+    "currentSeasonId": 25548
+  },
+  {
+    "id": 112,
+    "name": "Oberliga: Baden-Wurttemberg",
+    "country": "Germany",
+    "currentSeasonId": 25853
+  },
+  {
+    "id": 115,
+    "name": "Oberliga: Bayern Nord",
+    "country": "Germany",
+    "currentSeasonId": 25664
+  },
+  {
+    "id": 118,
+    "name": "Oberliga: Bayern Süd",
+    "country": "Germany",
+    "currentSeasonId": 25921
+  },
+  {
+    "id": 124,
+    "name": "Oberliga: Bremen",
+    "country": "Germany",
+    "currentSeasonId": 26263
+  },
+  {
+    "id": 127,
+    "name": "Oberliga: Hamburg",
+    "country": "Germany",
+    "currentSeasonId": 25854
+  },
+  {
+    "id": 130,
+    "name": "Oberliga: Hessen",
+    "country": "Germany",
+    "currentSeasonId": 25666
+  },
+  {
+    "id": 133,
+    "name": "Oberliga: Mittelrhein",
+    "country": "Germany",
+    "currentSeasonId": 26425
+  },
+  {
+    "id": 136,
+    "name": "Oberliga: Niederrhein",
+    "country": "Germany",
+    "currentSeasonId": 26030
+  },
+  {
+    "id": 139,
+    "name": "Oberliga: Niedersachsen",
+    "country": "Germany",
+    "currentSeasonId": 26274
+  },
+  {
+    "id": 142,
+    "name": "Oberliga: Nordost-Nord",
+    "country": "Germany",
+    "currentSeasonId": 25667
+  },
+  {
+    "id": 145,
+    "name": "Oberliga: Nordost-Süd",
+    "country": "Germany",
+    "currentSeasonId": 25665
+  },
+  {
+    "id": 151,
+    "name": "Oberliga: Rheinland-Pfalz/Saar",
+    "country": "Germany",
+    "currentSeasonId": 25929
+  },
+  {
+    "id": 154,
+    "name": "Oberliga: Schleswig-Holstein",
+    "country": "Germany",
+    "currentSeasonId": 25928
+  },
+  {
+    "id": 160,
+    "name": "Oberliga: Westfalen",
+    "country": "Germany",
+    "currentSeasonId": 26029
+  },
+  {
+    "id": 163,
+    "name": "Bundesliga Play-offs",
+    "country": "Germany",
+    "currentSeasonId": 27350
+  },
+  {
+    "id": 166,
+    "name": "2. Bundesliga Play-offs",
+    "country": "Germany",
+    "currentSeasonId": 27351
+  },
+  {
+    "id": 169,
+    "name": "Super Cup",
+    "country": "Germany",
+    "currentSeasonId": 25529
+  },
+  {
+    "id": 172,
+    "name": "Superliga",
+    "country": "Albania",
+    "currentSeasonId": 25993
+  },
+  {
+    "id": 175,
+    "name": "Premier League",
+    "country": "Armenia",
+    "currentSeasonId": 25994
+  },
+  {
+    "id": 178,
+    "name": "First League",
+    "country": "Armenia",
+    "currentSeasonId": 26028
+  },
+  {
+    "id": 181,
+    "name": "Admiral Bundesliga",
+    "country": "Austria",
+    "currentSeasonId": 25653
+  },
+  {
+    "id": 184,
+    "name": "2. Liga",
+    "country": "Austria",
+    "currentSeasonId": 25668
+  },
+  {
+    "id": 187,
+    "name": "Austrian Cup",
+    "country": "Austria",
+    "currentSeasonId": 25602
+  },
+  {
+    "id": 190,
+    "name": "Premier League",
+    "country": "Azerbaijan",
+    "currentSeasonId": 25995
+  },
+  {
+    "id": 193,
+    "name": "Azerbaidjan Cup",
+    "country": "Azerbaijan",
+    "currentSeasonId": 26564
+  },
+  {
+    "id": 196,
+    "name": "Birinci Dasta",
+    "country": "Azerbaijan",
+    "currentSeasonId": 26395
+  },
+  {
+    "id": 199,
+    "name": "Vysshaya Liga",
+    "country": "Belarus",
+    "currentSeasonId": 27091
+  },
+  {
+    "id": 202,
+    "name": "Pershaya Liga",
+    "country": "Belarus",
+    "currentSeasonId": 27088
+  },
+  {
+    "id": 208,
+    "name": "Pro League",
+    "country": "Belgium",
+    "currentSeasonId": 25600
+  },
+  {
+    "id": 211,
+    "name": "Challenger Pro League",
+    "country": "Belgium",
+    "currentSeasonId": 25735
+  },
+  {
+    "id": 214,
+    "name": "Belgian Cup",
+    "country": "Belgium",
+    "currentSeasonId": 25969
+  },
+  {
+    "id": 217,
+    "name": "Belgium Playoffs",
+    "country": "Belgium",
+    "currentSeasonId": 27100
+  },
+  {
+    "id": 220,
+    "name": "Premier Liga",
+    "country": "Bosnia and Herzegovina",
+    "currentSeasonId": 25686
+  },
+  {
+    "id": 223,
+    "name": "Bosnia Cup",
+    "country": "Bosnia and Herzegovina",
+    "currentSeasonId": 26592
+  },
+  {
+    "id": 226,
+    "name": "First League: FBiH",
+    "country": "Bosnia and Herzegovina",
+    "currentSeasonId": 25855
+  },
+  {
+    "id": 229,
+    "name": "First League",
+    "country": "Bulgaria",
+    "currentSeasonId": 25565
+  },
+  {
+    "id": 232,
+    "name": "First League: RS",
+    "country": "Bosnia and Herzegovina",
+    "currentSeasonId": 25856
+  },
+  {
+    "id": 235,
+    "name": "Second League",
+    "country": "Bulgaria",
+    "currentSeasonId": 25546
+  },
+  {
+    "id": 241,
+    "name": "Bulgarian Cup",
+    "country": "Bulgaria",
+    "currentSeasonId": 26226
+  },
+  {
+    "id": 244,
+    "name": "1. HNL",
+    "country": "Croatia",
+    "currentSeasonId": 25584
+  },
+  {
+    "id": 247,
+    "name": "2. HNL",
+    "country": "Croatia",
+    "currentSeasonId": 25687
+  },
+  {
+    "id": 250,
+    "name": "Croatia Cup",
+    "country": "Croatia",
+    "currentSeasonId": 25671
+  },
+  {
+    "id": 253,
+    "name": "1. Division",
+    "country": "Cyprus",
+    "currentSeasonId": 25996
+  },
+  {
+    "id": 256,
+    "name": "2. Division",
+    "country": "Cyprus",
+    "currentSeasonId": 26210
+  },
+  {
+    "id": 259,
+    "name": "Cyprus Cup",
+    "country": "Cyprus",
+    "currentSeasonId": 26569
+  },
+  {
+    "id": 262,
+    "name": "Chance Liga",
+    "country": "Czech Republic",
+    "currentSeasonId": 25591
+  },
+  {
+    "id": 265,
+    "name": "Chance Národní Liga",
+    "country": "Czech Republic",
+    "currentSeasonId": 25590
+  },
+  {
+    "id": 268,
+    "name": "Czech Cup",
+    "country": "Czech Republic",
+    "currentSeasonId": 25738
+  },
+  {
+    "id": 271,
+    "name": "Superliga",
+    "country": "Denmark",
+    "currentSeasonId": 25536
+  },
+  {
+    "id": 274,
+    "name": "First Division",
+    "country": "Denmark",
+    "currentSeasonId": 25636
+  },
+  {
+    "id": 277,
+    "name": "Landspokal Cup",
+    "country": "Denmark",
+    "currentSeasonId": 26202
+  },
+  {
+    "id": 280,
+    "name": "1. Deild",
+    "country": "Faroe Islands",
+    "currentSeasonId": 26904
+  },
+  {
+    "id": 283,
+    "name": "Meistaradeildin",
+    "country": "Faroe Islands",
+    "currentSeasonId": 26905
+  },
+  {
+    "id": 286,
+    "name": "Meistriliiga",
+    "country": "Estonia",
+    "currentSeasonId": 27286
+  },
+  {
+    "id": 289,
+    "name": "Esiliiga A",
+    "country": "Estonia",
+    "currentSeasonId": 27276
+  },
+  {
+    "id": 292,
+    "name": "Veikkausliiga",
+    "country": "Finland",
+    "currentSeasonId": 26805
+  },
+  {
+    "id": 295,
+    "name": "Ykkösliiga",
+    "country": "Finland",
+    "currentSeasonId": 26870
+  },
+  {
+    "id": 298,
+    "name": "Finland Cup",
+    "country": "Finland",
+    "currentSeasonId": 27336
+  },
+  {
+    "id": 301,
+    "name": "Ligue 1",
+    "country": "France",
+    "currentSeasonId": 25651
+  },
+  {
+    "id": 304,
+    "name": "Ligue 2",
+    "country": "France",
+    "currentSeasonId": 25658
+  },
+  {
+    "id": 307,
+    "name": "Coupe de France",
+    "country": "France",
+    "currentSeasonId": 26654
+  },
+  {
+    "id": 313,
+    "name": "National",
+    "country": "France",
+    "currentSeasonId": 25997
+  },
+  {
+    "id": 316,
+    "name": "Erovnuli Liga 2",
+    "country": "Georgia",
+    "currentSeasonId": 26906
+  },
+  {
+    "id": 319,
+    "name": "Crystalbet Erovnuli Liga",
+    "country": "Georgia",
+    "currentSeasonId": 26907
+  },
+  {
+    "id": 325,
+    "name": "Super League",
+    "country": "Greece",
+    "currentSeasonId": 25759
+  },
+  {
+    "id": 331,
+    "name": "Greek Cup",
+    "country": "Greece",
+    "currentSeasonId": 26275
+  },
+  {
+    "id": 334,
+    "name": "NB I",
+    "country": "Hungary",
+    "currentSeasonId": 25566
+  },
+  {
+    "id": 337,
+    "name": "Hungarian Cup",
+    "country": "Hungary",
+    "currentSeasonId": 26147
+  },
+  {
+    "id": 343,
+    "name": "Merkantil Bank Liga",
+    "country": "Hungary",
+    "currentSeasonId": 25740
+  },
+  {
+    "id": 345,
+    "name": "Pepsideild",
+    "country": "Iceland",
+    "currentSeasonId": 27374
+  },
+  {
+    "id": 348,
+    "name": "Inkasso-Deildin",
+    "country": "Iceland",
+    "currentSeasonId": 27367
+  },
+  {
+    "id": 351,
+    "name": "2. Deild",
+    "country": "Iceland",
+    "currentSeasonId": 27371
+  },
+  {
+    "id": 354,
+    "name": "Iceland Cup",
+    "country": "Iceland",
+    "currentSeasonId": 27375
+  },
+  {
+    "id": 357,
+    "name": "League Cup",
+    "country": "Iceland",
+    "currentSeasonId": 26748
+  },
+  {
+    "id": 360,
+    "name": "Premier Division",
+    "country": "Republic of Ireland",
+    "currentSeasonId": 26762
+  },
+  {
+    "id": 363,
+    "name": "First Division",
+    "country": "Republic of Ireland",
+    "currentSeasonId": 26778
+  },
+  {
+    "id": 366,
+    "name": "FAI Cup",
+    "country": "Republic of Ireland",
+    "currentSeasonId": 27584
+  },
+  {
+    "id": 372,
+    "name": "Ligat ha'Al",
+    "country": "Israel",
+    "currentSeasonId": 25662
+  },
+  {
+    "id": 375,
+    "name": "Liga Leumit",
+    "country": "Israel",
+    "currentSeasonId": 25672
+  },
+  {
+    "id": 378,
+    "name": "State Cup",
+    "country": "Israel",
+    "currentSeasonId": 26379
+  },
+  {
+    "id": 381,
+    "name": "Toto Cup Ligat Al",
+    "country": "Israel",
+    "currentSeasonId": 27396
+  },
+  {
+    "id": 384,
+    "name": "Serie A",
+    "country": "Italy",
+    "currentSeasonId": 25533
+  },
+  {
+    "id": 387,
+    "name": "Serie B",
+    "country": "Italy",
+    "currentSeasonId": 26164
+  },
+  {
+    "id": 390,
+    "name": "Coppa Italia",
+    "country": "Italy",
+    "currentSeasonId": 25642
+  },
+  {
+    "id": 393,
+    "name": "Premier League",
+    "country": "Kazakhstan",
+    "currentSeasonId": 27438
+  },
+  {
+    "id": 396,
+    "name": "First Division",
+    "country": "Kazakhstan",
+    "currentSeasonId": 27436
+  },
+  {
+    "id": 399,
+    "name": "Virsliga",
+    "country": "Latvia",
+    "currentSeasonId": 27459
+  },
+  {
+    "id": 402,
+    "name": "First Liga",
+    "country": "Latvia",
+    "currentSeasonId": 27455
+  },
+  {
+    "id": 405,
+    "name": "A Lyga",
+    "country": "Lithuania",
+    "currentSeasonId": 27462
+  },
+  {
+    "id": 408,
+    "name": "1. Lyga",
+    "country": "Lithuania",
+    "currentSeasonId": 27463
+  },
+  {
+    "id": 414,
+    "name": "First League",
+    "country": "Macedonia",
+    "currentSeasonId": 26165
+  },
+  {
+    "id": 417,
+    "name": "Second League",
+    "country": "Macedonia",
+    "currentSeasonId": 26172
+  },
+  {
+    "id": 420,
+    "name": "Premier League",
+    "country": "Malta",
+    "currentSeasonId": 25743
+  },
+  {
+    "id": 423,
+    "name": "Challenge League",
+    "country": "Malta",
+    "currentSeasonId": 25744
+  },
+  {
+    "id": 426,
+    "name": "Super Liga",
+    "country": "Moldova",
+    "currentSeasonId": 25540
+  },
+  {
+    "id": 429,
+    "name": "Division A",
+    "country": "Moldova",
+    "currentSeasonId": 25592
+  },
+  {
+    "id": 432,
+    "name": "First League",
+    "country": "Montenegro",
+    "currentSeasonId": 25760
+  },
+  {
+    "id": 435,
+    "name": "Second League",
+    "country": "Montenegro",
+    "currentSeasonId": 25857
+  },
+  {
+    "id": 438,
+    "name": "Premiership",
+    "country": "Northern Ireland",
+    "currentSeasonId": 25638
+  },
+  {
+    "id": 441,
+    "name": "Championship",
+    "country": "Northern Ireland",
+    "currentSeasonId": 25643
+  },
+  {
+    "id": 444,
+    "name": "Eliteserien",
+    "country": "Norway",
+    "currentSeasonId": 26781
+  },
+  {
+    "id": 447,
+    "name": "Obos-Ligaen",
+    "country": "Norway",
+    "currentSeasonId": 26799
+  },
+  {
+    "id": 450,
+    "name": "NM Cup",
+    "country": "Norway",
+    "currentSeasonId": 26428
+  },
+  {
+    "id": 453,
+    "name": "Ekstraklasa",
+    "country": "Poland",
+    "currentSeasonId": 25535
+  },
+  {
+    "id": 456,
+    "name": "1. Liga",
+    "country": "Poland",
+    "currentSeasonId": 25603
+  },
+  {
+    "id": 459,
+    "name": "Polish Cup",
+    "country": "Poland",
+    "currentSeasonId": 25549
+  },
+  {
+    "id": 462,
+    "name": "Liga Portugal",
+    "country": "Portugal",
+    "currentSeasonId": 25745
+  },
+  {
+    "id": 465,
+    "name": "Liga Portugal 2",
+    "country": "Portugal",
+    "currentSeasonId": 25690
+  },
+  {
+    "id": 468,
+    "name": "Taça De Portugal",
+    "country": "Portugal",
+    "currentSeasonId": 26227
+  },
+  {
+    "id": 471,
+    "name": "Taça da Liga",
+    "country": "Portugal",
+    "currentSeasonId": 25746
+  },
+  {
+    "id": 474,
+    "name": "Superliga",
+    "country": "Romania",
+    "currentSeasonId": 25641
+  },
+  {
+    "id": 483,
+    "name": "Romania Cup",
+    "country": "Romania",
+    "currentSeasonId": 25998
+  },
+  {
+    "id": 486,
+    "name": "Premier League",
+    "country": "Russia",
+    "currentSeasonId": 25599
+  },
+  {
+    "id": 489,
+    "name": "FNL",
+    "country": "Russia",
+    "currentSeasonId": 25732
+  },
+  {
+    "id": 492,
+    "name": "Russian Cup",
+    "country": "Russia",
+    "currentSeasonId": 25683
+  },
+  {
+    "id": 495,
+    "name": "Premier League Play-offs",
+    "country": "Russia",
+    "currentSeasonId": 27591
+  },
+  {
+    "id": 498,
+    "name": "Youth League",
+    "country": "Russia",
+    "currentSeasonId": 27615
+  },
+  {
+    "id": 501,
+    "name": "Premiership",
+    "country": "Scotland",
+    "currentSeasonId": 25598
+  },
+  {
+    "id": 504,
+    "name": "Championship",
+    "country": "Scotland",
+    "currentSeasonId": 25640
+  },
+  {
+    "id": 507,
+    "name": "Scottish Cup",
+    "country": "Scotland",
+    "currentSeasonId": 26098
+  },
+  {
+    "id": 510,
+    "name": "League Cup",
+    "country": "Scotland",
+    "currentSeasonId": 27619
+  },
+  {
+    "id": 513,
+    "name": "Premiership Play-Offs",
+    "country": "Scotland",
+    "currentSeasonId": 27622
+  },
+  {
+    "id": 516,
+    "name": "League One",
+    "country": "Scotland",
+    "currentSeasonId": 25605
+  },
+  {
+    "id": 519,
+    "name": "League Two",
+    "country": "Scotland",
+    "currentSeasonId": 25606
+  },
+  {
+    "id": 522,
+    "name": "Challenge Cup",
+    "country": "Scotland",
+    "currentSeasonId": 25999
+  },
+  {
+    "id": 525,
+    "name": "Championship Play-Offs",
+    "country": "Scotland",
+    "currentSeasonId": 27623
+  },
+  {
+    "id": 528,
+    "name": "League One Play-Offs",
+    "country": "Scotland",
+    "currentSeasonId": 27621
+  },
+  {
+    "id": 531,
+    "name": "Super Liga",
+    "country": "Serbia",
+    "currentSeasonId": 25567
+  },
+  {
+    "id": 534,
+    "name": "Prva Liga",
+    "country": "Serbia",
+    "currentSeasonId": 25568
+  },
+  {
+    "id": 540,
+    "name": "Niké Liga",
+    "country": "Slovakia",
+    "currentSeasonId": 25601
+  },
+  {
+    "id": 543,
+    "name": "2. Liga",
+    "country": "Slovakia",
+    "currentSeasonId": 25762
+  },
+  {
+    "id": 552,
+    "name": "Slovakia Cup",
+    "country": "Slovakia",
+    "currentSeasonId": 25748
+  },
+  {
+    "id": 555,
+    "name": "1. SNL",
+    "country": "Slovenia",
+    "currentSeasonId": 25644
+  },
+  {
+    "id": 558,
+    "name": "2. SNL",
+    "country": "Slovenia",
+    "currentSeasonId": 25645
+  },
+  {
+    "id": 564,
+    "name": "La Liga",
+    "country": "Spain",
+    "currentSeasonId": 25659
+  },
+  {
+    "id": 567,
+    "name": "La Liga 2",
+    "country": "Spain",
+    "currentSeasonId": 25673
+  },
+  {
+    "id": 570,
+    "name": "Copa Del Rey",
+    "country": "Spain",
+    "currentSeasonId": 26557
+  },
+  {
+    "id": 573,
+    "name": "Allsvenskan",
+    "country": "Sweden",
+    "currentSeasonId": 26806
+  },
+  {
+    "id": 576,
+    "name": "Damallsvenskan",
+    "country": "Sweden",
+    "currentSeasonId": 26782
+  },
+  {
+    "id": 579,
+    "name": "Superettan",
+    "country": "Sweden",
+    "currentSeasonId": 26807
+  },
+  {
+    "id": 582,
+    "name": "Svenska Cupen",
+    "country": "Sweden",
+    "currentSeasonId": 25446
+  },
+  {
+    "id": 585,
+    "name": "Ettan: North",
+    "country": "Sweden",
+    "currentSeasonId": 27677
+  },
+  {
+    "id": 588,
+    "name": "Ettan: South",
+    "country": "Sweden",
+    "currentSeasonId": 27678
+  },
+  {
+    "id": 591,
+    "name": "Super League",
+    "country": "Switzerland",
+    "currentSeasonId": 25607
+  },
+  {
+    "id": 594,
+    "name": "Challenge League",
+    "country": "Switzerland",
+    "currentSeasonId": 25608
+  },
+  {
+    "id": 597,
+    "name": "Swiss Cup",
+    "country": "Switzerland",
+    "currentSeasonId": 25674
+  },
+  {
+    "id": 600,
+    "name": "Super Lig",
+    "country": "Turkey",
+    "currentSeasonId": 25682
+  },
+  {
+    "id": 603,
+    "name": "1. Lig",
+    "country": "Turkey",
+    "currentSeasonId": 25749
+  },
+  {
+    "id": 606,
+    "name": "Turkish Cup",
+    "country": "Turkey",
+    "currentSeasonId": 26074
+  },
+  {
+    "id": 609,
+    "name": "Premier League",
+    "country": "Ukraine",
+    "currentSeasonId": 25675
+  },
+  {
+    "id": 612,
+    "name": "Persha Liga",
+    "country": "Ukraine",
+    "currentSeasonId": 25750
+  },
+  {
+    "id": 615,
+    "name": "Ukrainian Cup",
+    "country": "Ukraine",
+    "currentSeasonId": 26282
+  },
+  {
+    "id": 618,
+    "name": "Second League",
+    "country": "Ukraine",
+    "currentSeasonId": 25757
+  },
+  {
+    "id": 624,
+    "name": "Premier League",
+    "country": "Wales",
+    "currentSeasonId": 25868
+  },
+  {
+    "id": 633,
+    "name": "Welsh Cup",
+    "country": "Wales",
+    "currentSeasonId": 26473
+  },
+  {
+    "id": 636,
+    "name": "Liga Profesional de Fútbol",
+    "country": "Argentina",
+    "currentSeasonId": 26808
+  },
+  {
+    "id": 639,
+    "name": "Torneo Federal B - Pampeana Norte",
+    "country": "Argentina",
+    "currentSeasonId": 26613
+  },
+  {
+    "id": 642,
+    "name": "Copa Argentina",
+    "country": "Argentina",
+    "currentSeasonId": 26830
+  },
+  {
+    "id": 645,
+    "name": "Primera B Nacional",
+    "country": "Argentina",
+    "currentSeasonId": 26809
+  },
+  {
+    "id": 648,
+    "name": "Serie A",
+    "country": "Brazil",
+    "currentSeasonId": 26763
+  },
+  {
+    "id": 651,
+    "name": "Serie B",
+    "country": "Brazil",
+    "currentSeasonId": 27198
+  },
+  {
+    "id": 654,
+    "name": "Copa do Brasil",
+    "country": "Brazil",
+    "currentSeasonId": 27151
+  },
+  {
+    "id": 657,
+    "name": "Serie C",
+    "country": "Brazil",
+    "currentSeasonId": 27199
+  },
+  {
+    "id": 660,
+    "name": "Serie D",
+    "country": "Brazil",
+    "currentSeasonId": 27183
+  },
+  {
+    "id": 663,
+    "name": "Primera Division",
+    "country": "Chile",
+    "currentSeasonId": 26873
+  },
+  {
+    "id": 666,
+    "name": "Primera B",
+    "country": "Chile",
+    "currentSeasonId": 27220
+  },
+  {
+    "id": 669,
+    "name": "Chilean Cup",
+    "country": "Chile",
+    "currentSeasonId": 27219
+  },
+  {
+    "id": 672,
+    "name": "Liga BetPlay",
+    "country": "Colombia",
+    "currentSeasonId": 26881
+  },
+  {
+    "id": 678,
+    "name": "Torneo Betplay",
+    "country": "Colombia",
+    "currentSeasonId": 27229
+  },
+  {
+    "id": 681,
+    "name": "Copa Colombia",
+    "country": "Colombia",
+    "currentSeasonId": 27227
+  },
+  {
+    "id": 687,
+    "name": "Primera Division",
+    "country": "Costa Rica",
+    "currentSeasonId": 25761
+  },
+  {
+    "id": 690,
+    "name": "Liga de Ascenso",
+    "country": "Costa Rica",
+    "currentSeasonId": 26292
+  },
+  {
+    "id": 696,
+    "name": "Liga Pro",
+    "country": "Ecuador",
+    "currentSeasonId": 27249
+  },
+  {
+    "id": 699,
+    "name": "Liga Pro Serie B",
+    "country": "Ecuador",
+    "currentSeasonId": 27254
+  },
+  {
+    "id": 702,
+    "name": "Primera Division",
+    "country": "El Salvador",
+    "currentSeasonId": 25889
+  },
+  {
+    "id": 705,
+    "name": "Liga Nacional",
+    "country": "Guatemala",
+    "currentSeasonId": 25593
+  },
+  {
+    "id": 708,
+    "name": "Primera Division",
+    "country": "Guatemala",
+    "currentSeasonId": 25594
+  },
+  {
+    "id": 711,
+    "name": "CAF World Cup Qualifiers",
+    "country": "Africa",
+    "currentSeasonId": 22005
+  },
+  {
+    "id": 720,
+    "name": "WC Qualification Europe",
+    "country": "Europe",
+    "currentSeasonId": 21887
+  },
+  {
+    "id": 723,
+    "name": "WC Qualification Oceania",
+    "country": "Oceania",
+    "currentSeasonId": 23962
+  },
+  {
+    "id": 732,
+    "name": "World Cup",
+    "country": "Europe",
+    "currentSeasonId": 26618
+  },
+  {
+    "id": 1088,
+    "name": "AFC Champions League Two",
+    "country": "Asia",
+    "currentSeasonId": 25586
+  },
+  {
+    "id": 1103,
+    "name": "African Nations Championship",
+    "country": "Africa",
+    "currentSeasonId": 26803
+  },
+  {
+    "id": 1106,
+    "name": "Asian Cup Qualification",
+    "country": "Asia",
+    "currentSeasonId": 21892
+  },
+  {
+    "id": 1118,
+    "name": "Africa Cup of Nations Qualifications",
+    "country": "Africa",
+    "currentSeasonId": 26934
+  },
+  {
+    "id": 1127,
+    "name": "SAFF Championship",
+    "country": "Asia",
+    "currentSeasonId": 26999
+  },
+  {
+    "id": 1368,
+    "name": "Tournoi Maurice Revello",
+    "country": "Europe",
+    "currentSeasonId": 27762
+  },
+  {
+    "id": 1372,
+    "name": "Singapore Cup",
+    "country": "Singapore",
+    "currentSeasonId": 26651
+  },
+  {
+    "id": 1373,
+    "name": "Algeria Cup",
+    "country": "Algeria",
+    "currentSeasonId": 26672
+  },
+  {
+    "id": 1374,
+    "name": "Estonian Cup",
+    "country": "Estonia",
+    "currentSeasonId": 25507
+  },
+  {
+    "id": 1375,
+    "name": "Super Cup",
+    "country": "Estonia",
+    "currentSeasonId": 27826
+  },
+  {
+    "id": 1392,
+    "name": "Nation Link Telecom Championship",
+    "country": "Somalia",
+    "currentSeasonId": 26822
+  },
+  {
+    "id": 1393,
+    "name": "Malaysia Cup",
+    "country": "Malaysia",
+    "currentSeasonId": 26878
+  },
+  {
+    "id": 1399,
+    "name": "Australian Cup",
+    "country": "Australia",
+    "currentSeasonId": 27009
+  },
+  {
+    "id": 1400,
+    "name": "Cotif Tournament",
+    "country": "Europe",
+    "currentSeasonId": 27738
+  },
+  {
+    "id": 1455,
+    "name": "1st Division",
+    "country": "South Africa",
+    "currentSeasonId": 26396
+  },
+  {
+    "id": 1456,
+    "name": "Sao Paolo Youth Cup",
+    "country": "Brazil",
+    "currentSeasonId": 26767
+  },
+  {
+    "id": 1458,
+    "name": "Presidents Cup",
+    "country": "United Arab Emirates",
+    "currentSeasonId": 26469
+  },
+  {
+    "id": 1459,
+    "name": "Tipsport Liga",
+    "country": "Czech Republic",
+    "currentSeasonId": 27799
+  },
+  {
+    "id": 1473,
+    "name": "Reykjavik Cup",
+    "country": "Iceland",
+    "currentSeasonId": 27830
+  },
+  {
+    "id": 1474,
+    "name": "President Cup",
+    "country": "Indonesia",
+    "currentSeasonId": 27386
+  },
+  {
+    "id": 1475,
+    "name": "Npfl",
+    "country": "Nigeria",
+    "currentSeasonId": 26134
+  },
+  {
+    "id": 1477,
+    "name": "Lpf",
+    "country": "Panama",
+    "currentSeasonId": 26892
+  },
+  {
+    "id": 1485,
+    "name": "Npl South Australian",
+    "country": "Australia",
+    "currentSeasonId": 27046
+  },
+  {
+    "id": 1486,
+    "name": "Copa Libertadores U20",
+    "country": "South America",
+    "currentSeasonId": 27645
+  },
+  {
+    "id": 1508,
+    "name": "Kazakhstan Cup",
+    "country": "Kazakhstan",
+    "currentSeasonId": 27437
+  },
+  {
+    "id": 1510,
+    "name": "Regionalliga: Mitte",
+    "country": "Austria",
+    "currentSeasonId": 25679
+  },
+  {
+    "id": 1511,
+    "name": "Regionalliga: Ost",
+    "country": "Austria",
+    "currentSeasonId": 25677
+  },
+  {
+    "id": 1512,
+    "name": "Regionalliga: West",
+    "country": "Austria",
+    "currentSeasonId": 25678
+  },
+  {
+    "id": 1513,
+    "name": "Copa Do Brasil U20",
+    "country": "Brazil",
+    "currentSeasonId": 27154
+  },
+  {
+    "id": 1514,
+    "name": "Northern Nsw",
+    "country": "Australia",
+    "currentSeasonId": 26912
+  },
+  {
+    "id": 1544,
+    "name": "Ligue 1",
+    "country": "Republic of the Congo",
+    "currentSeasonId": 26445
+  },
+  {
+    "id": 1551,
+    "name": "Copa Venezuela",
+    "country": "Venezuela",
+    "currentSeasonId": 27721
+  },
+  {
+    "id": 1552,
+    "name": "Svenska Cupen Women",
+    "country": "Sweden",
+    "currentSeasonId": 25552
+  },
+  {
+    "id": 1553,
+    "name": "Mocambola",
+    "country": "Mozambique",
+    "currentSeasonId": 27487
+  },
+  {
+    "id": 1554,
+    "name": "Kansallinen Liiga Women",
+    "country": "Finland",
+    "currentSeasonId": 26913
+  },
+  {
+    "id": 1555,
+    "name": "Asian Games",
+    "country": "Asia",
+    "currentSeasonId": 26993
+  },
+  {
+    "id": 1566,
+    "name": "Friendly International U18",
+    "country": "Europe",
+    "currentSeasonId": 26831
+  },
+  {
+    "id": 1583,
+    "name": "A-League Women",
+    "country": "Australia",
+    "currentSeasonId": 26530
+  },
+  {
+    "id": 1585,
+    "name": "Liga 3",
+    "country": "Georgia",
+    "currentSeasonId": 27338
+  },
+  {
+    "id": 1586,
+    "name": "David Kipiani Cup",
+    "country": "Georgia",
+    "currentSeasonId": 27344
+  },
+  {
+    "id": 1587,
+    "name": "Super Cup",
+    "country": "Georgia",
+    "currentSeasonId": 27348
+  },
+  {
+    "id": 1588,
+    "name": "Serie D: Playoffs",
+    "country": "Italy",
+    "currentSeasonId": 26238
+  },
+  {
+    "id": 1589,
+    "name": "Tercera - Playoffs",
+    "country": "Spain",
+    "currentSeasonId": 26194
+  },
+  {
+    "id": 1590,
+    "name": "Reykjavik Youth Cup",
+    "country": "Iceland",
+    "currentSeasonId": 27360
+  },
+  {
+    "id": 1591,
+    "name": "COSAFA U20 Championship",
+    "country": "Africa",
+    "currentSeasonId": 26951
+  },
+  {
+    "id": 1614,
+    "name": "Asian Cup Women",
+    "country": "Asia",
+    "currentSeasonId": 26599
+  },
+  {
+    "id": 1652,
+    "name": "Friendly International U23",
+    "country": "Europe",
+    "currentSeasonId": 26840
+  },
+  {
+    "id": 1693,
+    "name": "4. Deild",
+    "country": "Iceland",
+    "currentSeasonId": 27372
+  },
+  {
+    "id": 1694,
+    "name": "3. Deild",
+    "country": "Iceland",
+    "currentSeasonId": 27369
+  },
+  {
+    "id": 1695,
+    "name": "Landesliga: Vorarlberg",
+    "country": "Austria",
+    "currentSeasonId": 25805
+  },
+  {
+    "id": 1696,
+    "name": "Western Australia FFA Cup Preliminary",
+    "country": "Australia",
+    "currentSeasonId": 27075
+  },
+  {
+    "id": 1697,
+    "name": "Brisbane Reserves Premier League",
+    "country": "Australia",
+    "currentSeasonId": 27020
+  },
+  {
+    "id": 1698,
+    "name": "Copa Rio",
+    "country": "Brazil",
+    "currentSeasonId": 27146
+  },
+  {
+    "id": 1699,
+    "name": "Segunda División",
+    "country": "Chile",
+    "currentSeasonId": 27221
+  },
+  {
+    "id": 1700,
+    "name": "Premiership Women",
+    "country": "Northern Ireland",
+    "currentSeasonId": 27527
+  },
+  {
+    "id": 1701,
+    "name": "Championship Women",
+    "country": "Northern Ireland",
+    "currentSeasonId": 27531
+  },
+  {
+    "id": 1702,
+    "name": "U21 Championship",
+    "country": "Vietnam",
+    "currentSeasonId": 27725
+  },
+  {
+    "id": 1703,
+    "name": "Club Friendlies Women",
+    "country": "Europe",
+    "currentSeasonId": 26834
+  },
+  {
+    "id": 1715,
+    "name": "CECAFA Club Cup",
+    "country": "Africa",
+    "currentSeasonId": 26947
+  },
+  {
+    "id": 1730,
+    "name": "Toto Cup Ligat Leumit",
+    "country": "Israel",
+    "currentSeasonId": 27399
+  },
+  {
+    "id": 1785,
+    "name": "Premier League Play-offs",
+    "country": "Bahrain",
+    "currentSeasonId": 27087
+  },
+  {
+    "id": 1786,
+    "name": "Supercopa",
+    "country": "Peru",
+    "currentSeasonId": 24681
+  },
+  {
+    "id": 1787,
+    "name": "Copa Perú",
+    "country": "Peru",
+    "currentSeasonId": 27563
+  },
+  {
+    "id": 1810,
+    "name": "Premier League",
+    "country": "Saint Kitts and Nevis",
+    "currentSeasonId": 26684
+  },
+  {
+    "id": 1811,
+    "name": "Ligue A",
+    "country": "Burundi",
+    "currentSeasonId": 26043
+  },
+  {
+    "id": 1812,
+    "name": "U17 Club Friendlies",
+    "country": "Europe",
+    "currentSeasonId": 26843
+  },
+  {
+    "id": 2005,
+    "name": "Copa Gaúcha",
+    "country": "Brazil",
+    "currentSeasonId": 27073
+  },
+  {
+    "id": 2006,
+    "name": "Copa Do Nordeste U20",
+    "country": "Brazil",
+    "currentSeasonId": 27156
+  },
+  {
+    "id": 2007,
+    "name": "Regionalliga Women - Play-offs",
+    "country": "Germany",
+    "currentSeasonId": 26242
+  },
+  {
+    "id": 2008,
+    "name": "National 3: Group D",
+    "country": "France",
+    "currentSeasonId": 26063
+  },
+  {
+    "id": 2010,
+    "name": "Copa Fares Lopes",
+    "country": "Brazil",
+    "currentSeasonId": 27072
+  },
+  {
+    "id": 2013,
+    "name": "Esiliiga Women",
+    "country": "Iceland",
+    "currentSeasonId": 27275
+  },
+  {
+    "id": 2014,
+    "name": "Copa Santa Catarina",
+    "country": "Brazil",
+    "currentSeasonId": 27145
+  },
+  {
+    "id": 2015,
+    "name": "Feminine Division 2",
+    "country": "France",
+    "currentSeasonId": 26484
+  },
+  {
+    "id": 2016,
+    "name": "Bangalore Super Division",
+    "country": "India",
+    "currentSeasonId": 26602
+  },
+  {
+    "id": 2025,
+    "name": "Western Australia NPL Night Series",
+    "country": "Australia",
+    "currentSeasonId": 27815
+  },
+  {
+    "id": 2026,
+    "name": "Ligue 2",
+    "country": "Tunisia",
+    "currentSeasonId": 26482
+  },
+  {
+    "id": 2027,
+    "name": "Kampionati i Femrave",
+    "country": "Albania",
+    "currentSeasonId": 26567
+  },
+  {
+    "id": 2030,
+    "name": "Women's Cup",
+    "country": "Finland",
+    "currentSeasonId": 27335
+  },
+  {
+    "id": 2031,
+    "name": "League Cup Women A",
+    "country": "Iceland",
+    "currentSeasonId": 26754
+  },
+  {
+    "id": 2032,
+    "name": "League Cup Women B",
+    "country": "Iceland",
+    "currentSeasonId": 27377
+  },
+  {
+    "id": 2033,
+    "name": "League Cup Women C",
+    "country": "Iceland",
+    "currentSeasonId": 27373
+  },
+  {
+    "id": 2034,
+    "name": "Liga Prom",
+    "country": "Panama",
+    "currentSeasonId": 26922
+  },
+  {
+    "id": 2035,
+    "name": "League Cup B",
+    "country": "Iceland",
+    "currentSeasonId": 26755
+  },
+  {
+    "id": 2036,
+    "name": "League Cup C",
+    "country": "Iceland",
+    "currentSeasonId": 26756
+  },
+  {
+    "id": 2037,
+    "name": "Eredivisie Cup",
+    "country": "Netherlands",
+    "currentSeasonId": 27509
+  },
+  {
+    "id": 2039,
+    "name": "Copa Libertadores Women",
+    "country": "South America",
+    "currentSeasonId": 27648
+  },
+  {
+    "id": 2298,
+    "name": "Liga 1 - Play-offs",
+    "country": "Romania",
+    "currentSeasonId": 27572
+  },
+  {
+    "id": 2299,
+    "name": "U21 League",
+    "country": "Sweden",
+    "currentSeasonId": 27676
+  },
+  {
+    "id": 2300,
+    "name": "Denmark Series - Play-offs",
+    "country": "Denmark",
+    "currentSeasonId": 27871
+  },
+  {
+    "id": 2301,
+    "name": "Future Cup",
+    "country": "Denmark",
+    "currentSeasonId": 26208
+  },
+  {
+    "id": 2302,
+    "name": "Gaúcho 3",
+    "country": "Brazil",
+    "currentSeasonId": 27157
+  },
+  {
+    "id": 2303,
+    "name": "Gaúcho Women",
+    "country": "Brazil",
+    "currentSeasonId": 27158
+  },
+  {
+    "id": 2304,
+    "name": "Primavera 3",
+    "country": "Italy",
+    "currentSeasonId": 26243
+  },
+  {
+    "id": 2305,
+    "name": "U19 League",
+    "country": "Estonia",
+    "currentSeasonId": 27289
+  },
+  {
+    "id": 2306,
+    "name": "1st Division Women",
+    "country": "Denmark",
+    "currentSeasonId": 27250
+  },
+  {
+    "id": 2307,
+    "name": "Super Cup",
+    "country": "Andorra",
+    "currentSeasonId": 26477
+  },
+  {
+    "id": 2308,
+    "name": "Copa Constitució",
+    "country": "Andorra",
+    "currentSeasonId": 26867
+  },
+  {
+    "id": 2310,
+    "name": "Nationalliga A Women - Playoffs",
+    "country": "Switzerland",
+    "currentSeasonId": 27684
+  },
+  {
+    "id": 2311,
+    "name": "U21 Euro Qualification",
+    "country": "Europe",
+    "currentSeasonId": 25176
+  },
+  {
+    "id": 2312,
+    "name": "WPSL",
+    "country": "United States",
+    "currentSeasonId": 27703
+  },
+  {
+    "id": 2316,
+    "name": "TFV Cup",
+    "country": "Austria",
+    "currentSeasonId": 25832
+  },
+  {
+    "id": 2317,
+    "name": "VFV Cup",
+    "country": "Austria",
+    "currentSeasonId": 26216
+  },
+  {
+    "id": 2405,
+    "name": "UEFA U19 Championship Qualification",
+    "country": "Europe",
+    "currentSeasonId": 25341
+  },
+  {
+    "id": 2406,
+    "name": "UEFA U17 Championship Qualification",
+    "country": "Europe",
+    "currentSeasonId": 25589
+  },
+  {
+    "id": 2409,
+    "name": "Gozo First Division",
+    "country": "Malta",
+    "currentSeasonId": 26471
+  },
+  {
+    "id": 2410,
+    "name": "Torneio Otavio Pinto Guimaraes U20",
+    "country": "Brazil",
+    "currentSeasonId": 27201
+  },
+  {
+    "id": 2411,
+    "name": "Goiano U20",
+    "country": "Brazil",
+    "currentSeasonId": 27164
+  },
+  {
+    "id": 2412,
+    "name": "Sergipano 2",
+    "country": "Brazil",
+    "currentSeasonId": 27195
+  },
+  {
+    "id": 2413,
+    "name": "Carioca Women",
+    "country": "Brazil",
+    "currentSeasonId": 27134
+  },
+  {
+    "id": 2414,
+    "name": "Catarinense 3",
+    "country": "Brazil",
+    "currentSeasonId": 27136
+  },
+  {
+    "id": 2415,
+    "name": "1st Division Women",
+    "country": "Portugal",
+    "currentSeasonId": 26449
+  },
+  {
+    "id": 2416,
+    "name": "Carioca B2",
+    "country": "Brazil",
+    "currentSeasonId": 27131
+  },
+  {
+    "id": 2417,
+    "name": "BFV Cup",
+    "country": "Austria",
+    "currentSeasonId": 26217
+  },
+  {
+    "id": 2418,
+    "name": "SFV Cup",
+    "country": "Austria",
+    "currentSeasonId": 26010
+  },
+  {
+    "id": 2419,
+    "name": "WFV Cup",
+    "country": "Austria",
+    "currentSeasonId": 25892
+  },
+  {
+    "id": 2420,
+    "name": "OOEFV Cup",
+    "country": "Austria",
+    "currentSeasonId": 25688
+  },
+  {
+    "id": 2421,
+    "name": "STFV Cup",
+    "country": "Austria",
+    "currentSeasonId": 25596
+  },
+  {
+    "id": 2422,
+    "name": "NSW FFA Cup Preliminary",
+    "country": "Australia",
+    "currentSeasonId": 27024
+  },
+  {
+    "id": 2423,
+    "name": "Capital Territory FFA Cup Preliminary",
+    "country": "Australia",
+    "currentSeasonId": 27012
+  },
+  {
+    "id": 2424,
+    "name": "South Australia FFA Cup Preliminary",
+    "country": "Australia",
+    "currentSeasonId": 27044
+  },
+  {
+    "id": 2425,
+    "name": "Central League",
+    "country": "England",
+    "currentSeasonId": 26162
+  },
+  {
+    "id": 2426,
+    "name": "UEFA U19 Championship Women Qualification",
+    "country": "Europe",
+    "currentSeasonId": 25849
+  },
+  {
+    "id": 2427,
+    "name": "AFC U23 Asian Cup Qualification",
+    "country": "Asia",
+    "currentSeasonId": 25521
+  },
+  {
+    "id": 2434,
+    "name": "Gaúcho - Estadual Junior U20",
+    "country": "Brazil",
+    "currentSeasonId": 27144
+  },
+  {
+    "id": 2435,
+    "name": "Alagoano U20",
+    "country": "Brazil",
+    "currentSeasonId": 27111
+  },
+  {
+    "id": 2436,
+    "name": "Hun Sen Cup",
+    "country": "Cambodia",
+    "currentSeasonId": 27205
+  },
+  {
+    "id": 2437,
+    "name": "U19 League",
+    "country": "Serbia",
+    "currentSeasonId": 26163
+  },
+  {
+    "id": 2439,
+    "name": "Montenegro Cup",
+    "country": "Montenegro",
+    "currentSeasonId": 26632
+  },
+  {
+    "id": 2452,
+    "name": "Club Friendlies 4",
+    "country": "Europe",
+    "currentSeasonId": 26741
+  },
+  {
+    "id": 2539,
+    "name": "Copa Alagoas",
+    "country": "Brazil",
+    "currentSeasonId": 27142
+  },
+  {
+    "id": 2540,
+    "name": "Division 2",
+    "country": "Saudi Arabia",
+    "currentSeasonId": 26401
+  },
+  {
+    "id": 2541,
+    "name": "South Australia State League 1 Reserves",
+    "country": "Australia",
+    "currentSeasonId": 27050
+  },
+  {
+    "id": 2542,
+    "name": "Super Cup",
+    "country": "Mongolia",
+    "currentSeasonId": 27485
+  },
+  {
+    "id": 2543,
+    "name": "Super Cup",
+    "country": "Angola",
+    "currentSeasonId": 26141
+  },
+  {
+    "id": 2544,
+    "name": "Super Cup",
+    "country": "Ecuador",
+    "currentSeasonId": 27255
+  },
+  {
+    "id": 2545,
+    "name": "MLS Next Pro",
+    "country": "United States",
+    "currentSeasonId": 27571
+  },
+  {
+    "id": 2546,
+    "name": "Hybrid Friendlies Women",
+    "country": "Europe",
+    "currentSeasonId": 26842
+  },
+  {
+    "id": 2560,
+    "name": "Womens League",
+    "country": "Macedonia",
+    "currentSeasonId": 26265
+  },
+  {
+    "id": 2561,
+    "name": "Victoria NPL Women",
+    "country": "Australia",
+    "currentSeasonId": 27066
+  },
+  {
+    "id": 2562,
+    "name": "Third Division - Moskva",
+    "country": "Russia",
+    "currentSeasonId": 27600
+  },
+  {
+    "id": 2563,
+    "name": "Third Division - Center",
+    "country": "Russia",
+    "currentSeasonId": 25362
+  },
+  {
+    "id": 2564,
+    "name": "Third Division - Moskva Oblast",
+    "country": "Russia",
+    "currentSeasonId": 27601
+  },
+  {
+    "id": 2565,
+    "name": "Third Division - Ural and Western Siberia",
+    "country": "Russia",
+    "currentSeasonId": 27602
+  },
+  {
+    "id": 2567,
+    "name": "Third Division - Privolzhye",
+    "country": "Russia",
+    "currentSeasonId": 27603
+  },
+  {
+    "id": 2569,
+    "name": "Third Division - North-West",
+    "country": "Russia",
+    "currentSeasonId": 27604
+  },
+  {
+    "id": 2570,
+    "name": "Third Division - Golden Ring",
+    "country": "Russia",
+    "currentSeasonId": 27605
+  },
+  {
+    "id": 2572,
+    "name": "Third Division - Championship Round",
+    "country": "Russia",
+    "currentSeasonId": 27606
+  },
+  {
+    "id": 2573,
+    "name": "Third Division - Finals",
+    "country": "Russia",
+    "currentSeasonId": 27607
+  },
+  {
+    "id": 2574,
+    "name": "Conmebol - UEFA Cup of Champions",
+    "country": "Europe",
+    "currentSeasonId": 26789
+  },
+  {
+    "id": 2583,
+    "name": "Sud Ladies Cup",
+    "country": "Europe",
+    "currentSeasonId": 27761
+  },
+  {
+    "id": 2604,
+    "name": "Carioca A2",
+    "country": "Brazil",
+    "currentSeasonId": 27129
+  },
+  {
+    "id": 2605,
+    "name": "Queensland Champions Cup",
+    "country": "Europe",
+    "currentSeasonId": 26819
+  },
+  {
+    "id": 2680,
+    "name": "New South Wales NPL 3",
+    "country": "Australia",
+    "currentSeasonId": 27026
+  },
+  {
+    "id": 2681,
+    "name": "New South Wales NPL 3 Youth",
+    "country": "Australia",
+    "currentSeasonId": 27027
+  },
+  {
+    "id": 2682,
+    "name": "Superliga Femenina",
+    "country": "Ecuador",
+    "currentSeasonId": 27258
+  },
+  {
+    "id": 2683,
+    "name": "Reg. Cup Baden",
+    "country": "Germany",
+    "currentSeasonId": 26090
+  },
+  {
+    "id": 2684,
+    "name": "League Cup",
+    "country": "Wales",
+    "currentSeasonId": 27858
+  },
+  {
+    "id": 2685,
+    "name": "Paraibano U20",
+    "country": "Brazil",
+    "currentSeasonId": 27177
+  },
+  {
+    "id": 2686,
+    "name": "Baltic Women's League",
+    "country": "Europe",
+    "currentSeasonId": 26925
+  },
+  {
+    "id": 2687,
+    "name": "Munster Senior Cup",
+    "country": "Republic of Ireland",
+    "currentSeasonId": 26898
+  },
+  {
+    "id": 2688,
+    "name": "Capital Territory NPL 2 Youth",
+    "country": "Australia",
+    "currentSeasonId": 27011
+  },
+  {
+    "id": 2691,
+    "name": "SAFF U20 Championship",
+    "country": "Asia",
+    "currentSeasonId": 27869
+  },
+  {
+    "id": 2694,
+    "name": "Potiguar U20",
+    "country": "Brazil",
+    "currentSeasonId": 27191
+  },
+  {
+    "id": 2695,
+    "name": "Northamptonshire Senior Cup",
+    "country": "England",
+    "currentSeasonId": 26450
+  },
+  {
+    "id": 2697,
+    "name": "Western Australia NPL Youth League",
+    "country": "Australia",
+    "currentSeasonId": 27080
+  },
+  {
+    "id": 2698,
+    "name": "Lincolnshire Senior Cup",
+    "country": "England",
+    "currentSeasonId": 25556
+  },
+  {
+    "id": 2699,
+    "name": "Regional Leagues: West of Scotland",
+    "country": "Scotland",
+    "currentSeasonId": 25862
+  },
+  {
+    "id": 2701,
+    "name": "Queensland PL Youth",
+    "country": "Australia",
+    "currentSeasonId": 27040
+  },
+  {
+    "id": 2702,
+    "name": "VIC Premier League Womens",
+    "country": "Australia",
+    "currentSeasonId": 27062
+  },
+  {
+    "id": 2703,
+    "name": "Capital Territory NPL 2",
+    "country": "Australia",
+    "currentSeasonId": 27010
+  },
+  {
+    "id": 2704,
+    "name": "New South Wales Waratah Cup",
+    "country": "Australia",
+    "currentSeasonId": 27032
+  },
+  {
+    "id": 2705,
+    "name": "Goiano 2",
+    "country": "Brazil",
+    "currentSeasonId": 27162
+  },
+  {
+    "id": 2706,
+    "name": "Mineiro 3",
+    "country": "Brazil",
+    "currentSeasonId": 27169
+  },
+  {
+    "id": 2707,
+    "name": "Brasileiro Feminino A3",
+    "country": "Brazil",
+    "currentSeasonId": 27121
+  },
+  {
+    "id": 2708,
+    "name": "Paranaense Women",
+    "country": "Brazil",
+    "currentSeasonId": 27182
+  },
+  {
+    "id": 2709,
+    "name": "Copa Catalunya",
+    "country": "Spain",
+    "currentSeasonId": 26525
+  },
+  {
+    "id": 2711,
+    "name": "Brasileiro U17",
+    "country": "Brazil",
+    "currentSeasonId": 27122
+  },
+  {
+    "id": 2712,
+    "name": "Play-offs 1/2",
+    "country": "Kenya",
+    "currentSeasonId": 27441
+  },
+  {
+    "id": 2713,
+    "name": "4. liga: East",
+    "country": "Slovakia",
+    "currentSeasonId": 25902
+  },
+  {
+    "id": 2714,
+    "name": "4. liga: Bratislava",
+    "country": "Slovakia",
+    "currentSeasonId": 25903
+  },
+  {
+    "id": 2715,
+    "name": "4. liga: Center",
+    "country": "Slovakia",
+    "currentSeasonId": 25751
+  },
+  {
+    "id": 2716,
+    "name": "4. liga: West",
+    "country": "Slovakia",
+    "currentSeasonId": 25904
+  },
+  {
+    "id": 2717,
+    "name": "U19 League",
+    "country": "Sweden",
+    "currentSeasonId": 27682
+  },
+  {
+    "id": 2721,
+    "name": "U19 Club Friendlies",
+    "country": "Europe",
+    "currentSeasonId": 26845
+  },
+  {
+    "id": 2729,
+    "name": "Catarinense U20",
+    "country": "Brazil",
+    "currentSeasonId": 27137
+  },
+  {
+    "id": 2730,
+    "name": "FA Women's Cup",
+    "country": "Northern Ireland",
+    "currentSeasonId": 27532
+  },
+  {
+    "id": 2731,
+    "name": "Primera Division Women",
+    "country": "Argentina",
+    "currentSeasonId": 26966
+  },
+  {
+    "id": 2732,
+    "name": "Liechtenstein Cup",
+    "country": "Liechtenstein",
+    "currentSeasonId": 25907
+  },
+  {
+    "id": 2733,
+    "name": "Islamic Solidarity Games",
+    "country": "Europe",
+    "currentSeasonId": 27744
+  },
+  {
+    "id": 2781,
+    "name": "Liga TDP: Group 1",
+    "country": "Mexico",
+    "currentSeasonId": 26493
+  },
+  {
+    "id": 2814,
+    "name": "Paraibano 2",
+    "country": "Brazil",
+    "currentSeasonId": 27176
+  },
+  {
+    "id": 2815,
+    "name": "Paranaense 3",
+    "country": "Brazil",
+    "currentSeasonId": 27180
+  },
+  {
+    "id": 2816,
+    "name": "LFA First Division",
+    "country": "Liberia",
+    "currentSeasonId": 26646
+  },
+  {
+    "id": 2827,
+    "name": "Paraense 2",
+    "country": "Brazil",
+    "currentSeasonId": 27172
+  },
+  {
+    "id": 2828,
+    "name": "Alan Turvey Trophy",
+    "country": "England",
+    "currentSeasonId": 26435
+  },
+  {
+    "id": 2829,
+    "name": "U17 Premier League Cup",
+    "country": "England",
+    "currentSeasonId": 26372
+  },
+  {
+    "id": 2830,
+    "name": "National Amateur League",
+    "country": "Malta",
+    "currentSeasonId": 25821
+  },
+  {
+    "id": 2832,
+    "name": "Jugendliga U16",
+    "country": "Austria",
+    "currentSeasonId": 25622
+  },
+  {
+    "id": 2833,
+    "name": "Pernambucano 2",
+    "country": "Brazil",
+    "currentSeasonId": 27185
+  },
+  {
+    "id": 2834,
+    "name": "Segunda Categoria",
+    "country": "Ecuador",
+    "currentSeasonId": 27257
+  },
+  {
+    "id": 2835,
+    "name": "OFC U19 Championship",
+    "country": "Oceania",
+    "currentSeasonId": 27548
+  },
+  {
+    "id": 2881,
+    "name": "Autonómicas: Canarias - Tenerife 1",
+    "country": "Spain",
+    "currentSeasonId": 26337
+  },
+  {
+    "id": 2883,
+    "name": "Autonómicas: Baleares - Mallorca A",
+    "country": "Spain",
+    "currentSeasonId": 26338
+  },
+  {
+    "id": 2885,
+    "name": "Autonómicas: Cantabria",
+    "country": "Spain",
+    "currentSeasonId": 26341
+  },
+  {
+    "id": 2886,
+    "name": "Autonómicas: Castilla LM - Gr 1",
+    "country": "Spain",
+    "currentSeasonId": 26339
+  },
+  {
+    "id": 2887,
+    "name": "Autonómicas: Castilla LM - Gr 2",
+    "country": "Spain",
+    "currentSeasonId": 26340
+  },
+  {
+    "id": 2891,
+    "name": "Autonómicas: Euskadi - Vizcaya",
+    "country": "Spain",
+    "currentSeasonId": 26342
+  },
+  {
+    "id": 2892,
+    "name": "Autonómicas: C Madrid - GR 1",
+    "country": "Spain",
+    "currentSeasonId": 26343
+  },
+  {
+    "id": 2893,
+    "name": "Autonómicas: Euskadi - Guipúzcoa",
+    "country": "Spain",
+    "currentSeasonId": 26344
+  },
+  {
+    "id": 2894,
+    "name": "Autonómicas: Asturias",
+    "country": "Spain",
+    "currentSeasonId": 26345
+  },
+  {
+    "id": 2895,
+    "name": "Autonómicas: Castilla León - GR A",
+    "country": "Spain",
+    "currentSeasonId": 26346
+  },
+  {
+    "id": 2896,
+    "name": "Autonómicas: Castilla León - GR B",
+    "country": "Spain",
+    "currentSeasonId": 26347
+  },
+  {
+    "id": 2897,
+    "name": "Autonómicas: Galicia - GR 1",
+    "country": "Spain",
+    "currentSeasonId": 26349
+  },
+  {
+    "id": 2898,
+    "name": "Autonómicas: Navarra",
+    "country": "Spain",
+    "currentSeasonId": 26348
+  },
+  {
+    "id": 2899,
+    "name": "Autonómicas: C Madrid - GR 2",
+    "country": "Spain",
+    "currentSeasonId": 26350
+  },
+  {
+    "id": 2900,
+    "name": "Autonómicas: Galicia - Gr 2",
+    "country": "Spain",
+    "currentSeasonId": 26351
+  },
+  {
+    "id": 2901,
+    "name": "Autonómicas: Baleares - Ibiza",
+    "country": "Spain",
+    "currentSeasonId": 26352
+  },
+  {
+    "id": 2904,
+    "name": "Autonómicas: La Rioja",
+    "country": "Spain",
+    "currentSeasonId": 26353
+  },
+  {
+    "id": 2905,
+    "name": "Autonómicas: Extremadura - GR 4",
+    "country": "Spain",
+    "currentSeasonId": 26354
+  },
+  {
+    "id": 2906,
+    "name": "Autonómicas: Murcia",
+    "country": "Spain",
+    "currentSeasonId": 26355
+  },
+  {
+    "id": 2907,
+    "name": "Autonómicas: Aragón - GR 2",
+    "country": "Spain",
+    "currentSeasonId": 26356
+  },
+  {
+    "id": 2908,
+    "name": "Autonómicas: Extremadura - GR 1",
+    "country": "Spain",
+    "currentSeasonId": 26326
+  },
+  {
+    "id": 2909,
+    "name": "Autonómicas: Extremadura - GR 2",
+    "country": "Spain",
+    "currentSeasonId": 26327
+  },
+  {
+    "id": 2910,
+    "name": "Autonómicas: Extremadura - GR 3",
+    "country": "Spain",
+    "currentSeasonId": 26328
+  },
+  {
+    "id": 2911,
+    "name": "Autonómicas: Andalucía - GR 1",
+    "country": "Spain",
+    "currentSeasonId": 26362
+  },
+  {
+    "id": 2912,
+    "name": "Autonómicas: Andalucía - GR 2",
+    "country": "Spain",
+    "currentSeasonId": 26363
+  },
+  {
+    "id": 2913,
+    "name": "Autonómicas: Baleares - Menorca",
+    "country": "Spain",
+    "currentSeasonId": 26361
+  },
+  {
+    "id": 2914,
+    "name": "Autonómicas: Euskadi - Álava",
+    "country": "Spain",
+    "currentSeasonId": 26360
+  },
+  {
+    "id": 2915,
+    "name": "Autonómicas: Aragón - GR 1",
+    "country": "Spain",
+    "currentSeasonId": 26358
+  },
+  {
+    "id": 2916,
+    "name": "Autonómicas: Aragón - GR 3",
+    "country": "Spain",
+    "currentSeasonId": 26628
+  },
+  {
+    "id": 2917,
+    "name": "Autonómicas: Cataluña",
+    "country": "Spain",
+    "currentSeasonId": 26359
+  },
+  {
+    "id": 2920,
+    "name": "Autonómicas: Melilla",
+    "country": "Spain",
+    "currentSeasonId": 26322
+  },
+  {
+    "id": 2921,
+    "name": "Autonómicas: Ceuta",
+    "country": "Spain",
+    "currentSeasonId": 26325
+  },
+  {
+    "id": 2923,
+    "name": "Autonómicas: La Rioja - 2nd Phase",
+    "country": "Spain",
+    "currentSeasonId": 26324
+  },
+  {
+    "id": 2925,
+    "name": "Autonómicas: Murcia - Relegation PO",
+    "country": "Spain",
+    "currentSeasonId": 26323
+  },
+  {
+    "id": 2926,
+    "name": "Autonómicas: Ibiza - Ascenso 1st Round",
+    "country": "Spain",
+    "currentSeasonId": 26318
+  },
+  {
+    "id": 2927,
+    "name": "Autonómicas: Extremadura - Ascenso 1st Round",
+    "country": "Spain",
+    "currentSeasonId": 26321
+  },
+  {
+    "id": 2928,
+    "name": "Autonómicas: Extremadura - Ascenso Campeones",
+    "country": "Spain",
+    "currentSeasonId": 26320
+  },
+  {
+    "id": 2930,
+    "name": "Autonómicas : Canarias - Tenerife 1st Round",
+    "country": "Spain",
+    "currentSeasonId": 26319
+  },
+  {
+    "id": 2932,
+    "name": "Autonómicas : Navarra - Ascenso",
+    "country": "Spain",
+    "currentSeasonId": 26317
+  },
+  {
+    "id": 2934,
+    "name": "Autonómicas: C Valenciana - Finals",
+    "country": "Spain",
+    "currentSeasonId": 26311
+  },
+  {
+    "id": 2935,
+    "name": "Autonómicas: Baleares - Finals",
+    "country": "Spain",
+    "currentSeasonId": 26315
+  },
+  {
+    "id": 2936,
+    "name": "Autonómicas: Castilla León - Finals",
+    "country": "Spain",
+    "currentSeasonId": 26312
+  },
+  {
+    "id": 2937,
+    "name": "Autonómicas: Galicia - Ascenso",
+    "country": "Spain",
+    "currentSeasonId": 26310
+  },
+  {
+    "id": 2941,
+    "name": "Bölgesel Amatör Lig - Region 10",
+    "country": "Turkey",
+    "currentSeasonId": 26641
+  },
+  {
+    "id": 2947,
+    "name": "Baiano Women",
+    "country": "Brazil",
+    "currentSeasonId": 27118
+  },
+  {
+    "id": 2948,
+    "name": "Alagoano Women",
+    "country": "Brazil",
+    "currentSeasonId": 27112
+  },
+  {
+    "id": 2949,
+    "name": "FA WNL Cup",
+    "country": "England",
+    "currentSeasonId": 26389
+  },
+  {
+    "id": 2950,
+    "name": "Eerste Klasse",
+    "country": "Netherlands",
+    "currentSeasonId": 26373
+  },
+  {
+    "id": 2951,
+    "name": "Hoofdklasse Women",
+    "country": "Netherlands",
+    "currentSeasonId": 26015
+  },
+  {
+    "id": 2952,
+    "name": "Eerste Klasse Women",
+    "country": "Netherlands",
+    "currentSeasonId": 26016
+  },
+  {
+    "id": 2953,
+    "name": "Taça da Liga Feminina",
+    "country": "Portugal",
+    "currentSeasonId": 26624
+  },
+  {
+    "id": 2955,
+    "name": "U19 League",
+    "country": "Ukraine",
+    "currentSeasonId": 25810
+  },
+  {
+    "id": 2956,
+    "name": "FAI Women's Cup",
+    "country": "Republic of Ireland",
+    "currentSeasonId": 27583
+  },
+  {
+    "id": 2957,
+    "name": "Topklasse Women",
+    "country": "Netherlands",
+    "currentSeasonId": 25927
+  },
+  {
+    "id": 2958,
+    "name": "Campionato Primavera 4",
+    "country": "Italy",
+    "currentSeasonId": 26253
+  },
+  {
+    "id": 2959,
+    "name": "Cearense Women",
+    "country": "Brazil",
+    "currentSeasonId": 27141
+  },
+  {
+    "id": 2960,
+    "name": "Potiguar 2",
+    "country": "Brazil",
+    "currentSeasonId": 27190
+  },
+  {
+    "id": 2961,
+    "name": "Northumberland Senior Cup",
+    "country": "England",
+    "currentSeasonId": 26507
+  },
+  {
+    "id": 2962,
+    "name": "Aberdeenshire Shield",
+    "country": "Scotland",
+    "currentSeasonId": 27618
+  },
+  {
+    "id": 2963,
+    "name": "Women's Cup",
+    "country": "Ukraine",
+    "currentSeasonId": 26543
+  },
+  {
+    "id": 2964,
+    "name": "Walsall Senior Cup",
+    "country": "England",
+    "currentSeasonId": 26452
+  },
+  {
+    "id": 2965,
+    "name": "U17 National Team Friendlies",
+    "country": "Europe",
+    "currentSeasonId": 26838
+  },
+  {
+    "id": 2977,
+    "name": "Inter District Championship",
+    "country": "Fiji",
+    "currentSeasonId": 27324
+  },
+  {
+    "id": 2978,
+    "name": "South American Women's Games",
+    "country": "South America",
+    "currentSeasonId": 27649
+  },
+  {
+    "id": 2986,
+    "name": "Cheshire Senior Cup",
+    "country": "England",
+    "currentSeasonId": 26552
+  },
+  {
+    "id": 2987,
+    "name": "Nottinghamshire Saturday Senior Cup",
+    "country": "England",
+    "currentSeasonId": 27273
+  },
+  {
+    "id": 2988,
+    "name": "Suffolk FA Premier Cup",
+    "country": "England",
+    "currentSeasonId": 26375
+  },
+  {
+    "id": 2989,
+    "name": "Surrey Senior Cup",
+    "country": "England",
+    "currentSeasonId": 26533
+  },
+  {
+    "id": 2990,
+    "name": "U17 Women's World Cup",
+    "country": "Europe",
+    "currentSeasonId": 27740
+  },
+  {
+    "id": 3007,
+    "name": "Sydney Super Cup",
+    "country": "Europe",
+    "currentSeasonId": 26797
+  },
+  {
+    "id": 3065,
+    "name": "Super Cup",
+    "country": "Kazakhstan",
+    "currentSeasonId": 27833
+  },
+  {
+    "id": 3085,
+    "name": "State Cup Women",
+    "country": "Israel",
+    "currentSeasonId": 26769
+  },
+  {
+    "id": 3086,
+    "name": "Shield Cup",
+    "country": "Kenya",
+    "currentSeasonId": 27442
+  },
+  {
+    "id": 3087,
+    "name": "Women's Play-offs 2/3",
+    "country": "Denmark",
+    "currentSeasonId": 27252
+  },
+  {
+    "id": 3088,
+    "name": "Super Cup",
+    "country": "Iceland",
+    "currentSeasonId": 27378
+  },
+  {
+    "id": 3089,
+    "name": "CONMEBOL/UEFA Women's Finalissima",
+    "country": "Europe",
+    "currentSeasonId": 27735
+  },
+  {
+    "id": 3109,
+    "name": "Indian Women's League",
+    "country": "India",
+    "currentSeasonId": 26774
+  },
+  {
+    "id": 3110,
+    "name": "Huntingdonshire Senior Cup",
+    "country": "England",
+    "currentSeasonId": 27263
+  },
+  {
+    "id": 3112,
+    "name": "Centenary Shield U18 Schoolboys",
+    "country": "Europe",
+    "currentSeasonId": 27295
+  },
+  {
+    "id": 3113,
+    "name": "Play-offs 3/4",
+    "country": "Israel",
+    "currentSeasonId": 27398
+  },
+  {
+    "id": 3114,
+    "name": "CAF U17 Cup of Nations",
+    "country": "Africa",
+    "currentSeasonId": 26943
+  },
+  {
+    "id": 3136,
+    "name": "Play-offs 2/3",
+    "country": "Luxembourg",
+    "currentSeasonId": 27470
+  },
+  {
+    "id": 3137,
+    "name": "3. Liga - Final Stages",
+    "country": "Romania",
+    "currentSeasonId": 26423
+  },
+  {
+    "id": 3138,
+    "name": "Third Division - Sankt-Peterburg",
+    "country": "Russia",
+    "currentSeasonId": 27608
+  },
+  {
+    "id": 3139,
+    "name": "U21 League",
+    "country": "China",
+    "currentSeasonId": 27209
+  },
+  {
+    "id": 3141,
+    "name": "Women's Play-offs 2/3",
+    "country": "Netherlands",
+    "currentSeasonId": 27521
+  },
+  {
+    "id": 3143,
+    "name": "TT Premier League 2",
+    "country": "Trinidad and Tobago",
+    "currentSeasonId": 27693
+  },
+  {
+    "id": 3144,
+    "name": "Autonómicas: Castilla LM - Ascenso Finals",
+    "country": "Spain",
+    "currentSeasonId": 26305
+  },
+  {
+    "id": 3147,
+    "name": "Premier League Summer Series",
+    "country": "Europe",
+    "currentSeasonId": 26821
+  },
+  {
+    "id": 3169,
+    "name": "Women's Play-offs 1/2",
+    "country": "Croatia",
+    "currentSeasonId": 27236
+  },
+  {
+    "id": 3171,
+    "name": "State Leagues: Südwest/Rheinland/Saarland - Promotion",
+    "country": "Germany",
+    "currentSeasonId": 25926
+  },
+  {
+    "id": 3172,
+    "name": "Play-offs 2/3",
+    "country": "Croatia",
+    "currentSeasonId": 27234
+  },
+  {
+    "id": 3173,
+    "name": "Play-offs 3/4",
+    "country": "Croatia",
+    "currentSeasonId": 27235
+  },
+  {
+    "id": 3174,
+    "name": "Alagoano 2",
+    "country": "Brazil",
+    "currentSeasonId": 27110
+  },
+  {
+    "id": 3175,
+    "name": "Trofeo Angelo Dossena",
+    "country": "Europe",
+    "currentSeasonId": 27302
+  },
+  {
+    "id": 3176,
+    "name": "Play-offs 1/2",
+    "country": "Nicaragua",
+    "currentSeasonId": 27523
+  },
+  {
+    "id": 3178,
+    "name": "Super Cup Women",
+    "country": "Russia",
+    "currentSeasonId": 27593
+  },
+  {
+    "id": 3179,
+    "name": "Women's Premiership League Cup",
+    "country": "Northern Ireland",
+    "currentSeasonId": 27535
+  },
+  {
+    "id": 3180,
+    "name": "OFC U19 Women's Championship",
+    "country": "Oceania",
+    "currentSeasonId": 25417
+  },
+  {
+    "id": 3191,
+    "name": "Charity Shield",
+    "country": "Northern Ireland",
+    "currentSeasonId": 25628
+  },
+  {
+    "id": 3194,
+    "name": "Federation Cup",
+    "country": "Lebanon",
+    "currentSeasonId": 27460
+  },
+  {
+    "id": 3195,
+    "name": "U23 League",
+    "country": "Mexico",
+    "currentSeasonId": 27476
+  },
+  {
+    "id": 3218,
+    "name": "CEE Cup",
+    "country": "Europe",
+    "currentSeasonId": 27294
+  },
+  {
+    "id": 3219,
+    "name": "National 3: Group J",
+    "country": "France",
+    "currentSeasonId": 26114
+  },
+  {
+    "id": 3220,
+    "name": "Concacaf Central American Cup",
+    "country": "North America",
+    "currentSeasonId": 27493
+  },
+  {
+    "id": 3247,
+    "name": "Autonómicas: C Valenciana - Nord",
+    "country": "Spain",
+    "currentSeasonId": 26302
+  },
+  {
+    "id": 3248,
+    "name": "Trophée des Championnes Féminin",
+    "country": "France",
+    "currentSeasonId": 27342
+  },
+  {
+    "id": 3249,
+    "name": "Women's Nations League",
+    "country": "Europe",
+    "currentSeasonId": 24768
+  },
+  {
+    "id": 3250,
+    "name": "Super Cup",
+    "country": "Gibraltar",
+    "currentSeasonId": 26205
+  },
+  {
+    "id": 3251,
+    "name": "Super Cup Women",
+    "country": "Cyprus",
+    "currentSeasonId": 27242
+  },
+  {
+    "id": 3252,
+    "name": "Second Division A",
+    "country": "Egypt",
+    "currentSeasonId": 25888
+  },
+  {
+    "id": 3253,
+    "name": "Challenge Cup",
+    "country": "Malaysia",
+    "currentSeasonId": 27474
+  },
+  {
+    "id": 3254,
+    "name": "Africa Women Cup of Nations Qualification",
+    "country": "Africa",
+    "currentSeasonId": 25200
+  },
+  {
+    "id": 3258,
+    "name": "Women's Asian Games",
+    "country": "Asia",
+    "currentSeasonId": 27007
+  },
+  {
+    "id": 3263,
+    "name": "UEFA U17 Championship Women Qualification",
+    "country": "Europe",
+    "currentSeasonId": 25632
+  },
+  {
+    "id": 3264,
+    "name": "U17 National Team Friendlies Women 1",
+    "country": "Europe",
+    "currentSeasonId": 26839
+  },
+  {
+    "id": 3271,
+    "name": "Women's Play-offs 1/2",
+    "country": "Finland",
+    "currentSeasonId": 27315
+  },
+  {
+    "id": 3272,
+    "name": "Thai League 3 Cup",
+    "country": "Thailand",
+    "currentSeasonId": 26715
+  },
+  {
+    "id": 3273,
+    "name": "Pernambucano 3",
+    "country": "Brazil",
+    "currentSeasonId": 27186
+  },
+  {
+    "id": 3274,
+    "name": "Potiguar Women",
+    "country": "Brazil",
+    "currentSeasonId": 27192
+  },
+  {
+    "id": 3275,
+    "name": "Bedfordshire Senior Challenge Cup",
+    "country": "England",
+    "currentSeasonId": 26257
+  },
+  {
+    "id": 3276,
+    "name": "Leicestershire and Rutland Challenge Cup",
+    "country": "England",
+    "currentSeasonId": 27265
+  },
+  {
+    "id": 3277,
+    "name": "U23 Olympic League",
+    "country": "Qatar",
+    "currentSeasonId": 26581
+  },
+  {
+    "id": 3278,
+    "name": "Women's Play-offs 1/2",
+    "country": "Estonia",
+    "currentSeasonId": 27290
+  },
+  {
+    "id": 3279,
+    "name": "U16 National Team Friendlies Women",
+    "country": "Europe",
+    "currentSeasonId": 26841
+  },
+  {
+    "id": 3288,
+    "name": "U15 National Team Friendlies",
+    "country": "Europe",
+    "currentSeasonId": 26850
+  },
+  {
+    "id": 3304,
+    "name": "Feminine Division 3",
+    "country": "France",
+    "currentSeasonId": 27540
+  },
+  {
+    "id": 3305,
+    "name": "WAFF Women's Championship",
+    "country": "Asia",
+    "currentSeasonId": 26968
+  },
+  {
+    "id": 3312,
+    "name": "Torneo Promocional Amateur",
+    "country": "Argentina",
+    "currentSeasonId": 26973
+  },
+  {
+    "id": 3313,
+    "name": "Pinatar Cup",
+    "country": "Europe",
+    "currentSeasonId": 27758
+  },
+  {
+    "id": 3339,
+    "name": "Qatar-UAE Super Cup",
+    "country": "Asia",
+    "currentSeasonId": 26796
+  },
+  {
+    "id": 3342,
+    "name": "Cadete de Honor Gipuzkoa",
+    "country": "Spain",
+    "currentSeasonId": 27651
+  },
+  {
+    "id": 3343,
+    "name": "Third Division - South",
+    "country": "Russia",
+    "currentSeasonId": 27609
+  },
+  {
+    "id": 3344,
+    "name": "Third Division - Center-East",
+    "country": "Russia",
+    "currentSeasonId": 27610
+  },
+  {
+    "id": 3345,
+    "name": "Third Division - Center-West",
+    "country": "Russia",
+    "currentSeasonId": 27611
+  },
+  {
+    "id": 3346,
+    "name": "Third Division - Siberia and Far East",
+    "country": "Russia",
+    "currentSeasonId": 27612
+  },
+  {
+    "id": 3348,
+    "name": "Preferente Cadete Gipuzkoa",
+    "country": "Spain",
+    "currentSeasonId": 27667
+  },
+  {
+    "id": 3349,
+    "name": "League Cup",
+    "country": "Trinidad and Tobago",
+    "currentSeasonId": 27687
+  },
+  {
+    "id": 3353,
+    "name": "Matogrossense 2",
+    "country": "Brazil",
+    "currentSeasonId": 27167
+  },
+  {
+    "id": 3354,
+    "name": "USL League One Cup",
+    "country": "United States",
+    "currentSeasonId": 26928
+  },
+  {
+    "id": 3356,
+    "name": "Community Shield",
+    "country": "Singapore",
+    "currentSeasonId": 27636
+  },
+  {
+    "id": 3357,
+    "name": "AFC U17 Women's Asian Cup",
+    "country": "Asia",
+    "currentSeasonId": 26978
+  },
+  {
+    "id": 3361,
+    "name": "Infantil Handi Gipuzkoa",
+    "country": "Spain",
+    "currentSeasonId": 27665
+  },
+  {
+    "id": 3362,
+    "name": "Cadete Honor Femenino Gipuzkoa",
+    "country": "Spain",
+    "currentSeasonId": 27650
+  },
+  {
+    "id": 3363,
+    "name": "Puskás Cup",
+    "country": "Europe",
+    "currentSeasonId": 27298
+  },
+  {
+    "id": 3364,
+    "name": "MFL Cup",
+    "country": "Malaysia",
+    "currentSeasonId": 27469
+  },
+  {
+    "id": 3374,
+    "name": "Concacaf W Champions Cup",
+    "country": "North America",
+    "currentSeasonId": 26365
+  },
+  {
+    "id": 3382,
+    "name": "AFC Challenge League",
+    "country": "Asia",
+    "currentSeasonId": 25564
+  },
+  {
+    "id": 3410,
+    "name": "Infantil Txiki Gipuzkoa",
+    "country": "Spain",
+    "currentSeasonId": 27666
+  },
+  {
+    "id": 3411,
+    "name": "Superliga U21",
+    "country": "Kosovo",
+    "currentSeasonId": 27451
+  },
+  {
+    "id": 3418,
+    "name": "Division One",
+    "country": "Ghana",
+    "currentSeasonId": 26561
+  },
+  {
+    "id": 3419,
+    "name": "Mladinska Super liga",
+    "country": "Macedonia",
+    "currentSeasonId": 26713
+  },
+  {
+    "id": 3424,
+    "name": "Eerste Divisie A Women",
+    "country": "Netherlands",
+    "currentSeasonId": 27508
+  },
+  {
+    "id": 3425,
+    "name": "Super League 2 K19",
+    "country": "Greece",
+    "currentSeasonId": 26591
+  },
+  {
+    "id": 3426,
+    "name": "Liga 1 U20",
+    "country": "Indonesia",
+    "currentSeasonId": 26675
+  },
+  {
+    "id": 3427,
+    "name": "Play-offs 3/4",
+    "country": "Japan",
+    "currentSeasonId": 27414
+  },
+  {
+    "id": 3428,
+    "name": "Women Premier League",
+    "country": "Kenya",
+    "currentSeasonId": 26732
+  },
+  {
+    "id": 3429,
+    "name": "First Youth League",
+    "country": "Montenegro",
+    "currentSeasonId": 27486
+  },
+  {
+    "id": 3430,
+    "name": "Super Cup",
+    "country": "Iran",
+    "currentSeasonId": 25635
+  },
+  {
+    "id": 3484,
+    "name": "Play-offs 1/2",
+    "country": "Morocco",
+    "currentSeasonId": 27483
+  },
+  {
+    "id": 3485,
+    "name": "Copa Vasca Cadete Femenina",
+    "country": "Spain",
+    "currentSeasonId": 27659
+  },
+  {
+    "id": 3486,
+    "name": "Women's Play-offs 4/5",
+    "country": "Netherlands",
+    "currentSeasonId": 27519
+  },
+  {
+    "id": 3499,
+    "name": "Cymru Championship South",
+    "country": "Wales",
+    "currentSeasonId": 25742
+  },
+  {
+    "id": 3500,
+    "name": "2. Liga Interregional - Group 2",
+    "country": "Switzerland",
+    "currentSeasonId": 25708
+  },
+  {
+    "id": 3501,
+    "name": "2. Liga Interregional - Group 3",
+    "country": "Switzerland",
+    "currentSeasonId": 25709
+  },
+  {
+    "id": 3502,
+    "name": "2. Liga Interregional - Group 4",
+    "country": "Switzerland",
+    "currentSeasonId": 25710
+  },
+  {
+    "id": 3503,
+    "name": "2. Liga Interregional - Group 5",
+    "country": "Switzerland",
+    "currentSeasonId": 25711
+  },
+  {
+    "id": 3504,
+    "name": "FA Cup",
+    "country": "Iraq",
+    "currentSeasonId": 26644
+  },
+  {
+    "id": 3505,
+    "name": "Regional Leagues: Midlands",
+    "country": "Scotland",
+    "currentSeasonId": 25881
+  },
+  {
+    "id": 3506,
+    "name": "Regional Leagues: East of Scotland",
+    "country": "Scotland",
+    "currentSeasonId": 25882
+  },
+  {
+    "id": 3507,
+    "name": "Regional Leagues: North Caledonian",
+    "country": "Scotland",
+    "currentSeasonId": 25880
+  },
+  {
+    "id": 3508,
+    "name": "Regional Leagues: North JFA",
+    "country": "Scotland",
+    "currentSeasonId": 25879
+  },
+  {
+    "id": 3515,
+    "name": "Durand Cup",
+    "country": "India",
+    "currentSeasonId": 26364
+  },
+  {
+    "id": 3516,
+    "name": "II Lyga",
+    "country": "Lithuania",
+    "currentSeasonId": 26366
+  },
+  {
+    "id": 3521,
+    "name": "Women's Serie A Cup",
+    "country": "Italy",
+    "currentSeasonId": 27401
+  },
+  {
+    "id": 3523,
+    "name": "UEFA Women Europa League",
+    "country": "Europe",
+    "currentSeasonId": 26501
+  },
+  {
+    "id": 3525,
+    "name": "FIFA Women's Champions Cup",
+    "country": "Europe",
+    "currentSeasonId": 26580
+  },
+  {
+    "id": 3546,
+    "name": "Super Cup",
+    "country": "Kosovo",
+    "currentSeasonId": 27784
+  },
+  {
+    "id": 3547,
+    "name": "National League",
+    "country": "Nepal",
+    "currentSeasonId": 26931
+  },
+  {
+    "id": 3549,
+    "name": "Division 2 Féminin",
+    "country": "Morocco",
+    "currentSeasonId": 27780
+  },
+  {
+    "id": 3550,
+    "name": "J2/J3 100 Year Vision League",
+    "country": "Japan",
+    "currentSeasonId": 27793
+  },
+  {
+    "id": 3551,
+    "name": "Copa El Salvador",
+    "country": "El Salvador",
+    "currentSeasonId": 27804
+  },
+  {
+    "id": 3552,
+    "name": "Super Cup",
+    "country": "Lithuania",
+    "currentSeasonId": 27805
+  },
+  {
+    "id": 3553,
+    "name": "Copa de La Liga",
+    "country": "Chile",
+    "currentSeasonId": 27837
+  },
+  {
+    "id": 3554,
+    "name": "Copa Sul-Sudeste",
+    "country": "Brazil",
+    "currentSeasonId": 27860
+  },
+  {
+    "id": 3555,
+    "name": "Copa Centro-Oeste",
+    "country": "Brazil",
+    "currentSeasonId": 27861
+  },
+  {
+    "id": 3556,
+    "name": "Super Cup",
+    "country": "Bosnia and Herzegovina",
+    "currentSeasonId": 27862
+  },
+  {
+    "id": 3557,
+    "name": "Copa Norte",
+    "country": "Brazil",
+    "currentSeasonId": 27863
+  },
+  {
+    "id": 3558,
+    "name": "U19 League",
+    "country": "Montenegro",
+    "currentSeasonId": 27864
+  },
+  {
+    "id": 3559,
+    "name": "JFL Cup",
+    "country": "Japan",
+    "currentSeasonId": 27865
+  },
+  {
+    "id": 3560,
+    "name": "UEFA U19 Championship Round 1 Qualification",
+    "country": "Europe",
+    "currentSeasonId": 27868
+  },
+  {
+    "id": 3562,
+    "name": "3. Liga: Promotion Group",
+    "country": "Romania",
+    "currentSeasonId": 27870
+  }
+]

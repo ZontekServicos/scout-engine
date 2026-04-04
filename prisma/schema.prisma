@@ -330,6 +330,20 @@ model MatchEvent {
 }
 
 // ---------------------------------------------------------------------------
+// Ingestion tracking
+// ---------------------------------------------------------------------------
+
+/**
+ * One row per league — records the most recent fixture date ingested.
+ * Used by seed-leagues.ts for incremental runs (skip already-seen fixtures).
+ */
+model IngestionCheckpoint {
+  leagueExternalId Int       @id            // Sportmonks league ID
+  lastFixtureDate  DateTime?               // starting_at of newest ingested fixture
+  lastRunAt        DateTime  @updatedAt
+}
+
+// ---------------------------------------------------------------------------
 // Enums
 // ---------------------------------------------------------------------------
 

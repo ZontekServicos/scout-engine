@@ -119,3 +119,11 @@ ALTER TABLE "PlayerStats" DROP CONSTRAINT IF EXISTS "PlayerStats_seasonId_fkey";
 ALTER TABLE "PlayerStats" ADD CONSTRAINT "PlayerStats_seasonId_fkey"
   FOREIGN KEY ("seasonId") REFERENCES "Season"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 CREATE INDEX IF NOT EXISTS "PlayerStats_seasonId_idx" ON "PlayerStats"("seasonId");
+
+-- IngestionCheckpoint — one row per league, tracks last ingested fixture date
+CREATE TABLE IF NOT EXISTS "IngestionCheckpoint" (
+  "leagueExternalId" INTEGER NOT NULL,
+  "lastFixtureDate"  TIMESTAMP(3),
+  "lastRunAt"        TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT "IngestionCheckpoint_pkey" PRIMARY KEY ("leagueExternalId")
+);
