@@ -285,7 +285,11 @@ model Match {
 
 model MatchEvent {
   id         String  @id @default(uuid())
-  externalId Int?    @unique // Sportmonks event ID (nullable — some events are synthetic)
+  externalId Int?    @unique // Sportmonks event ID (nullable — some events have no ID)
+  // Deterministic hash for events without an externalId (SHA-256, 32 chars).
+  // Enables skipDuplicates for synthetic events. PostgreSQL enforces uniqueness
+  // via a partial unique index (WHERE "sourceHash" IS NOT NULL) in migration SQL.
+  sourceHash String?          // not @unique here — partial index lives in SQL
 
   matchId    String
   match      Match   @relation(fields: [matchId], references: [id], onDelete: Cascade)
@@ -341,6 +345,21 @@ model IngestionCheckpoint {
   leagueExternalId Int       @id            // Sportmonks league ID
   lastFixtureDate  DateTime?               // starting_at of newest ingested fixture
   lastRunAt        DateTime  @updatedAt
+}
+
+/**
+ * Persists API strategy detection results across deploys.
+ * Replaces the file-based filter-support.json that evaporated on each Railway deploy.
+ *
+ * key examples:
+ *   "fixtures_by_league_v3"      — which strategy works for /fixtures?league_id
+ *   "endpoint_filters:/fixtures" — what filters /filters API reports for /fixtures
+ */
+model ApiStrategyCache {
+  key       String   @id
+  data      Json                  // StrategyEntry | EndpointFilterInfo
+  expiresAt DateTime              // TTL — re-probe if now > expiresAt
+  updatedAt DateTime @updatedAt
 }
 
 // ---------------------------------------------------------------------------

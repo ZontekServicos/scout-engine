@@ -24,6 +24,7 @@
  *   Internally calls Layer 3 (enrich) on top of whatever is already in the DB.
  */
 
+import { createHash } from "crypto";
 import { prisma } from "../lib/prisma";
 import { Prisma } from "@prisma/client";
 import {
@@ -33,6 +34,7 @@ import {
   fetchFixturesAfterById,
 } from "../integrations/sportmonks/sportmonks.client";
 import { fetchFixturesSmart } from "../integrations/sportmonks/sportmonks.strategy";
+import { isTransientError, errorLabel } from "../lib/errors";
 import type {
   SportmonksFixture,
   SportmonksParticipant,
@@ -180,13 +182,46 @@ function mapOutcome(dev: string | null | undefined, result: string | null | unde
   return result?.toUpperCase() ?? null;
 }
 
-async function batchInsertEvents(events: SportmonksEvent[], matchDbId: string): Promise<number> {
+/**
+ * Generates a deterministic SHA-256 hash for events that have no Sportmonks externalId.
+ * Used as `sourceHash` so createMany + skipDuplicates still works.
+ *
+ * Input fields: matchDbId, player_id, participant_id, developer_name, minute, extra_minute.
+ * Returns first 32 hex chars (128 bits) — collision probability negligible for match events.
+ */
+function generateEventHash(event: SportmonksEvent, matchDbId: string): string {
+  const key = [
+    matchDbId,
+    event.player_id ?? "",
+    event.participant_id ?? "",
+    event.type?.developer_name ?? "",
+    event.minute ?? "",
+    event.extra_minute ?? "",
+  ].join("|");
+  return createHash("sha256").update(key).digest("hex").slice(0, 32);
+}
+
+export interface BatchInsertResult {
+  inserted: number;
+  withCoords: number;
+  skippedNoId: number;
+}
+
+async function batchInsertEvents(
+  events: SportmonksEvent[],
+  matchDbId: string,
+): Promise<BatchInsertResult> {
+  if (events.length === 0) return { inserted: 0, withCoords: 0, skippedNoId: 0 };
+
+  // Split into identifiable (have Sportmonks ID) and hash-only (no ID)
   const identifiable = events.filter((e) => e.id != null);
-  if (identifiable.length === 0) return 0;
+  const hashOnly     = events.filter((e) => e.id == null);
+
+  const allEvents = [...identifiable, ...hashOnly];
 
   // Resolve player/team DB IDs in 2 queries total
-  const playerExtIds = [...new Set(identifiable.map((e) => e.player_id).filter((id): id is number => id != null))];
-  const teamExtIds   = [...new Set(identifiable.map((e) => e.participant_id).filter((id): id is number => id != null))];
+  const playerExtIds = [...new Set(allEvents.map((e) => e.player_id).filter((id): id is number => id != null))];
+  const teamExtIds   = [...new Set(allEvents.map((e) => e.participant_id).filter((id): id is number => id != null))];
 
   const [players, teams] = await Promise.all([
     playerExtIds.length > 0
@@ -200,7 +235,9 @@ async function batchInsertEvents(events: SportmonksEvent[], matchDbId: string): 
   const playerMap = new Map(players.map((p) => [Number(p.externalId), p.id]));
   const teamMap   = new Map(teams.map((t) => [t.externalId, t.id]));
 
-  const rows = identifiable.map((event) => {
+  let withCoords = 0;
+
+  const buildRow = (event: SportmonksEvent, hasExternalId: boolean) => {
     const dev = event.type?.developer_name;
     const { id, fixture_id, period_id, participant_id, player_id, type: _t,
       minute, extra_minute, coordinates, result, info, addition, ...rest } = event;
@@ -210,25 +247,34 @@ async function batchInsertEvents(events: SportmonksEvent[], matchDbId: string): 
     if (addition) metaRaw["addition"] = addition;
     if (Object.keys(rest).length > 0) metaRaw["raw"] = rest;
 
+    const x    = event.coordinates?.x     ?? null;
+    const y    = event.coordinates?.y     ?? null;
+    const endX = event.coordinates?.end_x ?? null;
+    const endY = event.coordinates?.end_y ?? null;
+    if (x != null || y != null) withCoords++;
+
     return {
-      externalId:  event.id,
+      externalId:  hasExternalId ? (event.id ?? null) : null,
+      sourceHash:  hasExternalId ? null : generateEventHash(event, matchDbId),
       matchId:     matchDbId,
-      playerId:    event.player_id != null    ? (playerMap.get(event.player_id)    ?? null) : null,
+      playerId:    event.player_id    != null ? (playerMap.get(event.player_id)    ?? null) : null,
       teamId:      event.participant_id != null ? (teamMap.get(event.participant_id) ?? null) : null,
       type:        mapEventType(dev),
       minute:      event.minute ?? null,
       extraMinute: event.extra_minute ?? null,
-      x:    event.coordinates?.x    ?? null,
-      y:    event.coordinates?.y    ?? null,
-      endX: event.coordinates?.end_x ?? null,
-      endY: event.coordinates?.end_y ?? null,
+      x, y, endX, endY,
       outcome: mapOutcome(dev, event.result),
       ...(Object.keys(metaRaw).length > 0 ? { meta: metaRaw as Prisma.InputJsonValue } : {}),
     };
-  });
+  };
+
+  const rows = [
+    ...identifiable.map((e) => buildRow(e, true)),
+    ...hashOnly.map((e) => buildRow(e, false)),
+  ];
 
   const r = await prisma.matchEvent.createMany({ data: rows, skipDuplicates: true });
-  return r.count;
+  return { inserted: r.count, withCoords, skippedNoId: hashOnly.length };
 }
 
 // ---------------------------------------------------------------------------
@@ -342,6 +388,9 @@ export interface FixtureFirstResult {
   fixturesFinished: number;
   fixturesIngested: number;
   eventsTotal: number;
+  eventsWithCoords: number;
+  eventsSkipped: number;
+  durationMs: number;
 }
 
 export interface IngestLeagueOptions {
@@ -365,6 +414,7 @@ export async function ingestLeagueViaFixtures(
   leagueExternalId: number,
   opts: IngestLeagueOptions = {},
 ): Promise<FixtureFirstResult> {
+  const startedAt   = Date.now();
   const maxFinished = opts.maxFinishedFixtures ?? 5;
   const maxPages    = opts.maxPages ?? 4;
   const sinceDate   = opts.sinceDate ?? null;
@@ -382,6 +432,9 @@ export async function ingestLeagueViaFixtures(
     fixturesFinished: 0,
     fixturesIngested: 0,
     eventsTotal:      0,
+    eventsWithCoords: 0,
+    eventsSkipped:    0,
+    durationMs:       0,
   };
 
   // --- Date-based incremental filter ---
@@ -401,7 +454,10 @@ export async function ingestLeagueViaFixtures(
         awayTeam ? upsertTeam(awayTeam) : null,
       ]);
       await upsertMatch(fixture, season?.id ?? null, homeDb?.id ?? null, awayDb?.id ?? null);
-    } catch { /* skip broken fixture */ }
+    } catch (err) {
+      if (isTransientError(err)) throw err; // transient = abort, let caller retry
+      console.warn(`[ingest] Skipping fixture ${(fixture as SportmonksFixture).id}: ${errorLabel(err)}`);
+    }
   }
 
   // --- Enrich finished matches with events (capped, most recent first) ---
@@ -426,9 +482,16 @@ export async function ingestLeagueViaFixtures(
       if (!dbMatch) continue;
 
       const events = await fetchMatchEvents(fixture.id);
-      result.eventsTotal += await batchInsertEvents(events, dbMatch.id);
-    } catch { /* non-fatal */ }
+      const batchResult = await batchInsertEvents(events, dbMatch.id);
+      result.eventsTotal      += batchResult.inserted;
+      result.eventsWithCoords += batchResult.withCoords;
+      result.eventsSkipped    += batchResult.skippedNoId;
+    } catch (err) {
+      if (isTransientError(err)) throw err;
+      console.warn(`[ingest] Event fetch failed for fixture ${(fixture as SportmonksFixture).id}: ${errorLabel(err)}`);
+    }
   }
 
+  result.durationMs = Date.now() - startedAt;
   return result;
 }

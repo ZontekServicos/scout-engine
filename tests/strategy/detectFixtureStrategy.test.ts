@@ -1,49 +1,55 @@
 /**
  * tests/strategy/detectFixtureStrategy.test.ts
  *
- * Tests strategy detection, cache behaviour, and fallback rotation.
- * Mocks: fetch (API), fs (cache file), sportmonks.client functions.
+ * Tests strategy detection, DB cache behaviour, and fallback rotation.
+ * Mocks: fetch (API calls), prisma.apiStrategyCache (DB cache).
  */
 
 import { jest } from "@jest/globals";
 import { makeFixture, mockOkResponse, mockErrorResponse, paginatedResponse } from "../helpers/fixtures";
+import { prismaMock, resetPrismaMock } from "../helpers/prisma.mock";
 
 process.env.SPORTMONKS_API_TOKEN = "test-token";
 
-// Mock fs to prevent reading/writing filter-support.json on disk
-jest.mock("fs", () => ({
-  existsSync: jest.fn().mockReturnValue(false),
-  readFileSync: jest.fn().mockReturnValue("{}"),
-  writeFileSync: jest.fn(),
-}));
+// Mock prisma so DB cache never hits a real database
+jest.mock("../../src/lib/prisma", () => ({ prisma: prismaMock }));
+
+// ---------------------------------------------------------------------------
+// Helpers: default cache-miss behaviour (findUnique → null, upsert → ok)
+// ---------------------------------------------------------------------------
+
+function setupCacheMiss() {
+  prismaMock.apiStrategyCache.findUnique.mockResolvedValue(null as never);
+  prismaMock.apiStrategyCache.upsert.mockResolvedValue({} as never);
+}
+
+// ---------------------------------------------------------------------------
+// detectFixtureStrategy
+// ---------------------------------------------------------------------------
 
 describe("detectFixtureStrategy", () => {
   let mockFetch: jest.MockedFunction<typeof fetch>;
-  let clearStrategyCache: () => void;
-  let detectFixtureStrategy: (id: number, seasonId?: number) => Promise<{ strategy: string; confirmedAt: string; expiresAt: string }>;
-  let fetchFixturesSmart: (opts: { leagueId: number; maxPages?: number }) => Promise<unknown[]>;
+  let detectFixtureStrategy: (id: number, seasonId?: number) => Promise<{
+    strategy: string;
+    confirmedAt: string;
+    expiresAt: string;
+    supportsFilters: boolean;
+  }>;
 
   beforeEach(async () => {
     jest.resetModules();
-
-    // Reset fs mock to "no cache file"
-    const fsMock = await import("fs");
-    (fsMock.existsSync as jest.Mock).mockReturnValue(false);
-    (fsMock.writeFileSync as jest.Mock).mockImplementation(() => {});
+    resetPrismaMock();
+    setupCacheMiss();
 
     mockFetch = jest.fn() as jest.MockedFunction<typeof fetch>;
     global.fetch = mockFetch;
 
     const strategy = await import("../../src/integrations/sportmonks/sportmonks.strategy");
-    clearStrategyCache = strategy.clearStrategyCache;
     detectFixtureStrategy = strategy.detectFixtureStrategy;
-    fetchFixturesSmart = strategy.fetchFixturesSmart;
   });
 
   it("selects FILTER_LEAGUE_ID when filters=league_id:X works", async () => {
-    mockFetch.mockResolvedValue(
-      mockOkResponse(paginatedResponse([makeFixture()])),
-    );
+    mockFetch.mockResolvedValue(mockOkResponse(paginatedResponse([makeFixture()])));
 
     const entry = await detectFixtureStrategy(648);
 
@@ -51,10 +57,8 @@ describe("detectFixtureStrategy", () => {
   });
 
   it("falls back to FILTER_SEASON_ID when league filter returns 400", async () => {
-    // First call (league filter probe) → 400
     mockFetch
       .mockResolvedValueOnce(mockErrorResponse(400, "filter not supported"))
-      // Second call (season filter probe) → 200
       .mockResolvedValueOnce(mockOkResponse(paginatedResponse([makeFixture()])));
 
     const entry = await detectFixtureStrategy(648, 25580);
@@ -87,16 +91,68 @@ describe("detectFixtureStrategy", () => {
     expect(new Date(entry.expiresAt).getTime()).toBeGreaterThan(Date.now());
   });
 
-  it("writes detected strategy to cache (fs.writeFileSync called)", async () => {
-    const fs = await import("fs");
+  it("writes detected strategy to DB cache (apiStrategyCache.upsert called)", async () => {
     mockFetch.mockResolvedValue(mockOkResponse(paginatedResponse([makeFixture()])));
 
     await detectFixtureStrategy(648);
 
-    expect(fs.writeFileSync).toHaveBeenCalled();
-    const written = (fs.writeFileSync as jest.Mock).mock.calls[0][1] as string;
-    const parsed = JSON.parse(written);
-    expect(parsed.strategies).toBeDefined();
+    expect(prismaMock.apiStrategyCache.upsert).toHaveBeenCalledTimes(1);
+    const call = prismaMock.apiStrategyCache.upsert.mock.calls[0][0] as {
+      where: { key: string };
+      create: { key: string; data: unknown };
+    };
+    expect(call.where.key).toBe("fixtures_by_league_v3");
+    expect((call.create.data as { strategy: string }).strategy).toBe("FILTER_LEAGUE_ID");
+  });
+
+  it("returns cached strategy without probing when cache is fresh", async () => {
+    const cachedEntry = {
+      strategy: "FILTER_LEAGUE_ID",
+      supportsFilters: true,
+      confirmedAt: new Date().toISOString(),
+      expiresAt: new Date(Date.now() + 3_600_000).toISOString(),
+    };
+    prismaMock.apiStrategyCache.findUnique.mockResolvedValue({
+      key: "fixtures_by_league_v3",
+      data: cachedEntry,
+      expiresAt: new Date(Date.now() + 3_600_000),
+      updatedAt: new Date(),
+    } as never);
+
+    const entry = await detectFixtureStrategy(648);
+
+    expect(entry.strategy).toBe("FILTER_LEAGUE_ID");
+    // fetch should NOT be called — cache hit, no probe needed
+    expect(mockFetch).not.toHaveBeenCalled();
+  });
+
+  it("re-probes when cached entry is expired", async () => {
+    // Return an expired cache row
+    prismaMock.apiStrategyCache.findUnique.mockResolvedValue({
+      key: "fixtures_by_league_v3",
+      data: { strategy: "BULK_CLIENT_SIDE", expiresAt: new Date(Date.now() - 1000).toISOString() },
+      expiresAt: new Date(Date.now() - 1000), // expired
+      updatedAt: new Date(),
+    } as never);
+    mockFetch.mockResolvedValue(mockOkResponse(paginatedResponse([makeFixture()])));
+
+    const entry = await detectFixtureStrategy(648);
+
+    // Should re-probe and find FILTER_LEAGUE_ID
+    expect(entry.strategy).toBe("FILTER_LEAGUE_ID");
+    expect(mockFetch).toHaveBeenCalled();
+  });
+
+  it("falls through to BULK_CLIENT_SIDE when probe gets a transient 429 (probe is best-effort)", async () => {
+    // During detection, transient errors are treated like permanent ones for probe purposes.
+    // We can't afford to block detection — BULK_CLIENT_SIDE always works as a last resort.
+    mockFetch.mockResolvedValue(mockErrorResponse(429, "rate limited"));
+
+    const entry = await detectFixtureStrategy(648);
+
+    expect(entry.strategy).toBe("BULK_CLIENT_SIDE");
+    // Cache should be written so we don't re-probe on every call
+    expect(prismaMock.apiStrategyCache.upsert).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -114,10 +170,8 @@ describe("fetchFixturesSmart", () => {
 
   beforeEach(async () => {
     jest.resetModules();
-
-    const fsMock = await import("fs");
-    (fsMock.existsSync as jest.Mock).mockReturnValue(false);
-    (fsMock.writeFileSync as jest.Mock).mockImplementation(() => {});
+    resetPrismaMock();
+    setupCacheMiss();
 
     mockFetch = jest.fn() as jest.MockedFunction<typeof fetch>;
     global.fetch = mockFetch;
@@ -137,37 +191,43 @@ describe("fetchFixturesSmart", () => {
     expect(results.length).toBeGreaterThan(0);
   });
 
-  it("auto-rotates to next strategy if cached strategy fails at runtime", async () => {
-    // Simulate: detection succeeds (FILTER_LEAGUE_ID cached)
-    // but actual runtime call fails → should rotate and retry with next strategy
+  it("auto-rotates to BULK_CLIENT_SIDE when cached FILTER_LEAGUE_ID fails at runtime (permanent error)", async () => {
+    const fixture = makeFixture({ id: 42, league_id: 648 });
 
-    const fixture = makeFixture({ id: 42 });
-
-    // probe = success (detection caches FILTER_LEAGUE_ID)
+    // Probe succeeds → caches FILTER_LEAGUE_ID
+    // Smart call #1 fails with 400 (permanent) → rotates to BULK_CLIENT_SIDE
+    // Bulk call succeeds
     mockFetch
-      .mockResolvedValueOnce(mockOkResponse(paginatedResponse([fixture])))   // probe ok
-      .mockResolvedValueOnce(mockErrorResponse(400, "now broken"))            // first smart call fails
-      .mockResolvedValueOnce(mockOkResponse(paginatedResponse([fixture])));   // fallback ok
+      .mockResolvedValueOnce(mockOkResponse(paginatedResponse([fixture]))) // probe ok
+      .mockResolvedValueOnce(mockErrorResponse(400, "now broken"))          // smart call fails
+      .mockResolvedValueOnce(mockOkResponse(paginatedResponse([fixture]))); // bulk fallback
 
     const results = await fetchFixturesSmart({ leagueId: 648, maxPages: 1 });
 
     expect(Array.isArray(results)).toBe(true);
   });
 
+  it("does NOT rotate on transient error (429) — propagates to caller", async () => {
+    // Probe succeeds, but runtime call hits 429 (transient)
+    mockFetch
+      .mockResolvedValueOnce(mockOkResponse(paginatedResponse([makeFixture()])))
+      .mockResolvedValueOnce(mockErrorResponse(429, "rate limit"));
+
+    await expect(fetchFixturesSmart({ leagueId: 648, maxPages: 1 })).rejects.toThrow();
+  });
+
   it("filters fixtures by league_id in BULK_CLIENT_SIDE strategy", async () => {
-    // Force BULK_CLIENT_SIDE by making all filter probes fail
     const wrongLeague = makeFixture({ id: 1, league_id: 999 });
     const rightLeague = makeFixture({ id: 2, league_id: 648 });
 
+    // Force BULK_CLIENT_SIDE by making probes fail
     mockFetch
-      .mockResolvedValueOnce(mockErrorResponse(400, ""))   // probe fails
+      .mockResolvedValueOnce(mockErrorResponse(400, ""))   // league probe fails
       .mockResolvedValueOnce(mockErrorResponse(400, ""))   // season probe fails (no seasonId)
-      // BULK_CLIENT_SIDE: returns both fixtures, should filter to league 648
       .mockResolvedValueOnce(mockOkResponse(paginatedResponse([wrongLeague, rightLeague])));
 
     const results = await fetchFixturesSmart({ leagueId: 648, maxPages: 1 });
 
-    // Only the fixture matching league_id=648 should be returned
     expect(results).toHaveLength(1);
     expect((results[0] as { league_id: number }).league_id).toBe(648);
   });

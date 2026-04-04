@@ -127,3 +127,19 @@ CREATE TABLE IF NOT EXISTS "IngestionCheckpoint" (
   "lastRunAt"        TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
   CONSTRAINT "IngestionCheckpoint_pkey" PRIMARY KEY ("leagueExternalId")
 );
+
+-- MatchEvent.sourceHash — deduplication key for events that have no Sportmonks externalId
+-- Partial unique index: allows multiple NULLs but enforces uniqueness when set
+ALTER TABLE "MatchEvent" ADD COLUMN IF NOT EXISTS "sourceHash" TEXT;
+CREATE UNIQUE INDEX IF NOT EXISTS "MatchEvent_sourceHash_key"
+  ON "MatchEvent"("sourceHash") WHERE "sourceHash" IS NOT NULL;
+
+-- ApiStrategyCache — persists API strategy detection results across deploys
+-- Replaces the ephemeral filter-support.json file
+CREATE TABLE IF NOT EXISTS "ApiStrategyCache" (
+  "key"       TEXT NOT NULL,
+  "data"      JSONB NOT NULL,
+  "expiresAt" TIMESTAMP(3) NOT NULL,
+  "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT "ApiStrategyCache_pkey" PRIMARY KEY ("key")
+);

@@ -152,9 +152,9 @@ describe("Failure scenarios", () => {
     });
   });
 
-  it("skips events without an externalId (prevents untrackable duplicates)", async () => {
+  it("inserts events without an externalId using sourceHash for deduplication", async () => {
     const fixture = makeFixture({ state: "FT" });
-    // Event with no id — should be filtered out before createMany
+    // Event with no id — should be inserted via sourceHash, not skipped
     const eventNoId = { ...makeEvent({ id: 0 }), id: undefined } as unknown as ReturnType<typeof makeEvent>;
     const league = makeLeague();
 
@@ -166,15 +166,15 @@ describe("Failure scenarios", () => {
 
     await ingestLeagueViaFixtures(648, { maxPages: 1, maxFinishedFixtures: 1 });
 
-    // createMany should not be called with the id-less event
-    if (prismaMock.matchEvent.createMany.mock.calls.length > 0) {
-      const rows = (
-        prismaMock.matchEvent.createMany.mock.calls[0] as [{ data: unknown[] }]
-      )[0].data;
-      expect(rows).toHaveLength(0);
-    }
-    // OR createMany was not called at all (identifiable array was empty)
-    // Both outcomes are acceptable — the important thing is no exception
+    // createMany should have been called with the id-less event carrying a sourceHash
+    expect(prismaMock.matchEvent.createMany).toHaveBeenCalledTimes(1);
+    const rows = (
+      prismaMock.matchEvent.createMany.mock.calls[0] as [{ data: Array<{ externalId: unknown; sourceHash: unknown }> }]
+    )[0].data;
+    expect(rows).toHaveLength(1);
+    expect(rows[0].externalId).toBeNull();
+    expect(typeof rows[0].sourceHash).toBe("string");
+    expect(rows[0].sourceHash).toHaveLength(32); // first 32 hex chars of SHA-256
   });
 
   // -------------------------------------------------------------------------

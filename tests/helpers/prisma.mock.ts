@@ -18,6 +18,7 @@ const makeModel = () => ({
   update:       jest.fn(),
   updateMany:   jest.fn(),
   delete:       jest.fn(),
+  deleteMany:   jest.fn(),
   findUnique:   jest.fn(),
   findFirst:    jest.fn(),
   findMany:     jest.fn(),
@@ -25,17 +26,18 @@ const makeModel = () => ({
 });
 
 export const prismaMock = {
-  country:            makeModel(),
-  league:             makeModel(),
-  season:             makeModel(),
-  team:               makeModel(),
-  player:             makeModel(),
-  match:              makeModel(),
-  matchEvent:         makeModel(),
-  playerStats:        makeModel(),
+  country:             makeModel(),
+  league:              makeModel(),
+  season:              makeModel(),
+  team:                makeModel(),
+  player:              makeModel(),
+  match:               makeModel(),
+  matchEvent:          makeModel(),
+  playerStats:         makeModel(),
   ingestionCheckpoint: makeModel(),
-  $transaction:       jest.fn(),
-  $disconnect:        jest.fn(),
+  apiStrategyCache:    makeModel(),
+  $transaction:        jest.fn(),
+  $disconnect:         jest.fn(),
 };
 
 /** Reset all mock calls and return values between tests. */
