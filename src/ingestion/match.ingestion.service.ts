@@ -120,7 +120,9 @@ async function upsertMatch(fixture: SportmonksFixture) {
       : null,
   ]);
 
-  const status = fixture.state?.short_name ?? null;
+  const status = typeof fixture.state === "string"
+    ? fixture.state.toUpperCase()
+    : (fixture.state?.short_name ?? fixture.state?.state ?? null);
 
   return prisma.match.upsert({
     where: { externalId: fixture.id },

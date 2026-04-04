@@ -153,13 +153,22 @@ export interface SportmonksParticipant {
   meta?: { location?: "home" | "away" };
 }
 
+export interface SportmonksFixtureState {
+  id?: number | null;
+  state?: string | null;        // e.g. "FT", "NS", "LIVE"
+  short_name?: string | null;   // e.g. "FT"
+  developer_name?: string | null; // e.g. "finished"
+  name?: string | null;
+}
+
 export interface SportmonksFixture {
   id: number;
   season_id?: number | null;
   league_id?: number | null;
   starting_at?: string | null;
   result_info?: string | null;
-  state?: { short_name?: string | null } | null;
+  // state can be a nested object OR a flat string depending on include
+  state?: SportmonksFixtureState | string | null;
   scores?: SportmonksScore[] | null;
   participants?: SportmonksParticipant[] | null;
   events?: SportmonksEvent[] | null;

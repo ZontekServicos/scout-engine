@@ -1,20 +1,18 @@
 /**
  * seed-global.ts
  *
- * Populates the database with real data from all leagues available in the
- * Sportmonks plan. Volume is controlled by MAX_LEAGUES and MAX_MATCHES_PER_LEAGUE.
+ * Fixture-first global seed — populates the DB from all leagues available
+ * in the Sportmonks plan without depending on /seasons, /teams, or /players filters.
  *
  * Flow:
- *   clearDatabase()
- *   fetchLeagues()               — all leagues the plan exposes
- *   slice(0, MAX_LEAGUES)        — cap to avoid massive ingestion
+ *   fetchLeagues()                    — all leagues in the plan
+ *   slice(0, MAX_LEAGUES)             — volume cap
  *   per league:
- *     ingestLeague()
- *     ingestSeasonsByLeague()    → picks current season (falls back to most recent)
- *     ingestTeamsBySeason()
- *     per team: ingestPlayersByTeam()
- *     ingestMatchesBySeason()    → picks N most recent FT/AET/PEN matches
- *     per match: ingestMatchFull() (match + events with coordinates)
+ *     ingestLeagueViaFixtures()
+ *       → fetchFixturesByLeague()     — filter=league_id (confirmed working)
+ *       → upsert League, Season, Teams, Matches from fixture data
+ *       → fetchMatchEvents()          — filter=fixture_id (confirmed working)
+ *       → upsert MatchEvent with x/y coordinates
  *
  * Run:
  *   npm run seed:global
@@ -25,29 +23,29 @@
 
 import "dotenv/config";
 import { PrismaClient } from "@prisma/client";
-import {
-  ingestLeague,
-  ingestSeasonsByLeague,
-  ingestTeamsBySeason,
-  ingestPlayersByTeam,
-} from "../src/ingestion/hierarchy.ingestion.service";
-import {
-  ingestMatchesBySeason,
-  ingestMatchFull,
-} from "../src/ingestion/match.ingestion.service";
 import { fetchLeagues } from "../src/integrations/sportmonks/sportmonks.client";
+import { ingestLeagueViaFixtures } from "../src/ingestion/fixture-first.ingestion.service";
 
 const prisma = new PrismaClient();
 
 // ---------------------------------------------------------------------------
-// Config — tune these to control ingestion volume
+// Config
 // ---------------------------------------------------------------------------
 
-/** How many leagues to process. Set to Infinity to process all. */
+/** How many leagues to process. Raise after confirming the pipeline works. */
 const MAX_LEAGUES = 5;
 
-/** Max finished matches to ingest per league. Each match = 1 extra API call for events. */
-const MAX_MATCHES_PER_LEAGUE = 5;
+/**
+ * Max finished fixtures to ingest events for, per league.
+ * Each fixture = 1 API call to /events — keep low initially.
+ */
+const MAX_FINISHED_FIXTURES = 5;
+
+/**
+ * Pagination cap for /fixtures per league (4 pages × 25 = ~100 fixtures).
+ * Raise only if you need full season coverage.
+ */
+const FIXTURE_PAGES = 4;
 
 // ---------------------------------------------------------------------------
 // Logger
@@ -58,7 +56,7 @@ function log(msg: string) {
 }
 
 // ---------------------------------------------------------------------------
-// Step 1 — Clear database (ingestion tables only, FK-safe order)
+// Clear database
 // ---------------------------------------------------------------------------
 
 async function clearDatabase() {
@@ -81,90 +79,7 @@ async function clearDatabase() {
 }
 
 // ---------------------------------------------------------------------------
-// Step 2 — Per-league ingestion
-// ---------------------------------------------------------------------------
-
-async function ingestLeagueData(leagueExternalId: number, leagueName: string): Promise<{
-  teams: number;
-  players: number;
-  matches: number;
-  events: number;
-}> {
-  const stats = { teams: 0, players: 0, matches: 0, events: 0 };
-
-  // League
-  await ingestLeague(leagueExternalId);
-
-  // Seasons → pick current, fall back to most recent
-  const seasons = await ingestSeasonsByLeague(leagueExternalId);
-  if (seasons.length === 0) {
-    log(`  ⚠  No seasons found`);
-    return stats;
-  }
-
-  const season =
-    seasons.find((s) => s.isCurrent) ??
-    [...seasons].sort((a, b) => (b.year ?? 0) - (a.year ?? 0))[0];
-
-  log(`  Season: "${season.name}" (isCurrent=${season.isCurrent})`);
-
-  // Teams
-  let teams;
-  try {
-    teams = await ingestTeamsBySeason(season.externalId);
-    stats.teams = teams.length;
-    log(`  Teams: ${stats.teams}`);
-  } catch (err) {
-    log(`  ⚠  Teams failed: ${(err as Error).message}`);
-    return stats;
-  }
-
-  // Players (per team — each failure isolated)
-  for (const team of teams) {
-    try {
-      const players = await ingestPlayersByTeam(team.externalId, season.externalId);
-      stats.players += players.length;
-    } catch (err) {
-      log(`  ⚠  Players "${team.name}": ${(err as Error).message}`);
-    }
-  }
-  log(`  Players: ${stats.players}`);
-
-  // Matches
-  let allMatches;
-  try {
-    allMatches = await ingestMatchesBySeason(season.externalId);
-    log(`  Total matches in season: ${allMatches.length}`);
-  } catch (err) {
-    log(`  ⚠  Matches failed: ${(err as Error).message}`);
-    return stats;
-  }
-
-  // Finished matches — most recent first — capped
-  const finished = allMatches
-    .filter((m) => ["FT", "AET", "PEN", "FT_PEN"].includes(m.status ?? ""))
-    .sort((a, b) => (b.startingAt?.getTime() ?? 0) - (a.startingAt?.getTime() ?? 0))
-    .slice(0, MAX_MATCHES_PER_LEAGUE);
-
-  stats.matches = finished.length;
-  log(`  Ingesting events for ${stats.matches} finished match(es) (cap=${MAX_MATCHES_PER_LEAGUE})…`);
-
-  // Events
-  for (const match of finished) {
-    try {
-      const result = await ingestMatchFull(match.externalId);
-      stats.events += result.eventsIngested;
-      log(`    Match ${match.externalId}: ${result.eventsIngested} event(s)`);
-    } catch (err) {
-      log(`    ⚠  Match ${match.externalId}: ${(err as Error).message}`);
-    }
-  }
-
-  return stats;
-}
-
-// ---------------------------------------------------------------------------
-// Step 3 — Summary
+// Summary
 // ---------------------------------------------------------------------------
 
 async function printSummary() {
@@ -193,7 +108,12 @@ async function printSummary() {
   log("─────────────────────────────────────────────────────────");
 
   if (events > 0 && withCoords === 0) {
-    log("⚠  Events have no coordinates — verify your Sportmonks plan includes spatial data.");
+    log("⚠  Zero events have coordinates.");
+    log("   Sportmonks only includes x/y on Enterprise/advanced plans.");
+    log("   Heatmaps will be empty until coordinates are available.");
+  }
+  if (events === 0) {
+    log("⚠  No events ingested. Check if finished fixtures exist in the current season.");
   }
 }
 
@@ -203,49 +123,48 @@ async function printSummary() {
 
 async function main() {
   if (process.env.NODE_ENV !== "development") {
-    console.error(
-      "[seed-global] ❌  Aborted: NODE_ENV is not 'development'.",
-    );
+    console.error("[seed-global] ❌  Aborted: NODE_ENV must be 'development'.");
     process.exit(1);
   }
 
-  log(`Starting global seed  (MAX_LEAGUES=${MAX_LEAGUES}  MAX_MATCHES=${MAX_MATCHES_PER_LEAGUE})`);
+  log(`Config: MAX_LEAGUES=${MAX_LEAGUES}  MAX_FINISHED_FIXTURES=${MAX_FINISHED_FIXTURES}  FIXTURE_PAGES=${FIXTURE_PAGES}`);
 
   await clearDatabase();
 
   // Fetch all available leagues
-  log("Fetching leagues from Sportmonks…");
+  log("Fetching leagues…");
   const allLeagues = await fetchLeagues();
-  log(`Found ${allLeagues.length} league(s) available in this plan:`);
+  log(`${allLeagues.length} league(s) available in this plan:`);
   allLeagues.forEach((l) =>
-    log(`  id=${l.id}  country_id=${l.country_id}  country="${l.country?.name ?? "?"}"  "${l.name}"`),
+    log(`  id=${l.id}  country="${l.country?.name ?? "?"}"  "${l.name}"`),
   );
 
-  const leaguesToProcess = allLeagues.slice(0, MAX_LEAGUES);
-  log(`\nWill process ${leaguesToProcess.length} league(s) (capped at MAX_LEAGUES=${MAX_LEAGUES})`);
+  const toProcess = allLeagues.slice(0, MAX_LEAGUES);
+  log(`\nProcessing ${toProcess.length} league(s)…`);
 
-  // Per-league ingestion totals
-  let totalTeams = 0, totalPlayers = 0, totalMatches = 0, totalEvents = 0;
+  let totalEvents = 0;
 
-  for (let i = 0; i < leaguesToProcess.length; i++) {
-    const l = leaguesToProcess[i];
-    log(`\n── [${i + 1}/${leaguesToProcess.length}] "${l.name}" (id=${l.id}) ──`);
+  for (let i = 0; i < toProcess.length; i++) {
+    const league = toProcess[i];
+    log(`\n── [${i + 1}/${toProcess.length}] "${league.name}" (id=${league.id}) ──`);
 
     try {
-      const stats = await ingestLeagueData(l.id, l.name);
-      totalTeams   += stats.teams;
-      totalPlayers += stats.players;
-      totalMatches += stats.matches;
-      totalEvents  += stats.events;
-      log(`  ✓ Done: ${stats.teams} teams | ${stats.players} players | ${stats.matches} matches | ${stats.events} events`);
+      const result = await ingestLeagueViaFixtures(league.id, {
+        maxFinishedFixtures: MAX_FINISHED_FIXTURES,
+        maxPages: FIXTURE_PAGES,
+      });
+
+      totalEvents += result.eventsTotal;
+      log(`  League    : ${result.leagueName}`);
+      log(`  Fixtures  : ${result.fixturesTotal} total | ${result.fixturesFinished} finished | ${result.fixturesIngested} ingested`);
+      log(`  Events    : ${result.eventsTotal}`);
     } catch (err) {
-      log(`  ✗ League "${l.name}" failed: ${(err as Error).message}`);
+      log(`  ✗ Failed: ${(err as Error).message}`);
       log("  Continuing with next league…");
     }
   }
 
-  log(`\nIngestion complete: ${totalTeams} teams | ${totalPlayers} players | ${totalMatches} matches | ${totalEvents} events`);
-
+  log(`\nTotal events ingested: ${totalEvents}`);
   await printSummary();
   log("Done.");
 }
