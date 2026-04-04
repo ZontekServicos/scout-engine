@@ -1,29 +1,27 @@
 /**
- * sportmonks.strategy.ts
+ * sportmonks.strategy.ts — Strategy layer for fixture fetching
  *
- * Smart fixture fetching with automatic strategy detection and file-based cache.
+ * Sits above sportmonks.client.ts. Adds:
+ *   - Filter capability discovery via /filters endpoint + file-based cache
+ *   - Multi-strategy fixture fetching with automatic fallback
+ *   - Bulk and incremental sync wrappers
  *
- * Strategies (tried in order):
- *   1. FILTER_LEAGUE_ID  — GET /fixtures?filters=league_id:X       ← confirmed working
- *   2. FILTER_SEASON_ID  — GET /fixtures?filters=season_id:Y       ← requires seasonId
- *   3. CLIENT_SIDE       — GET /fixtures?filters=populate, filter in JS ← last resort
+ * Strategy priority for fetching fixtures by league:
+ *   1. FILTER_LEAGUE_ID  — /fixtures?filters=league_id:X          ← confirmed working
+ *   2. FILTER_SEASON_ID  — /fixtures?filters=season_id:Y          ← needs seasonId
+ *   3. BULK_CLIENT_SIDE  — /fixtures?filters=populate, filter JS  ← last resort
  *
- * Cache file: src/integrations/sportmonks/filter-support.json
- * TTL: 24 hours.
- *
- * Additionally exposes:
- *   detectSupportedFilters(endpoint) — queries /filters API + probes endpoint
- *   fetchFixturesIncremental(lastId)  — idAfter-based incremental sync
+ * Cache file: src/integrations/sportmonks/filter-support.json (TTL: 24 h)
  */
 
 import * as fs from "fs";
 import * as path from "path";
 import {
+  fetchAvailableFilters,
   fetchFixturesByLeague,
   fetchFixturesBySeason,
-  fetchAllFixtures,
-  fetchFixturesAfter,
-  fetchAvailableFilters,
+  fetchAllFixturesBulk,
+  fetchFixturesAfterById,
 } from "./sportmonks.client";
 import type { SportmonksFixture } from "./sportmonks.types";
 
@@ -33,8 +31,8 @@ import type { SportmonksFixture } from "./sportmonks.types";
 
 export type FixtureStrategy =
   | "FILTER_LEAGUE_ID"   // /fixtures?filters=league_id:X
-  | "FILTER_SEASON_ID"   // /fixtures?filters=season_id:Y (requires seasonId)
-  | "CLIENT_SIDE";       // /fixtures?filters=populate, then filter in JS
+  | "FILTER_SEASON_ID"   // /fixtures?filters=season_id:Y
+  | "BULK_CLIENT_SIDE";  // /fixtures?filters=populate → filter in JS
 
 interface StrategyEntry {
   strategy: FixtureStrategy;
@@ -46,13 +44,12 @@ interface StrategyEntry {
 
 interface EndpointFilterInfo {
   endpoint: string;
-  supportedFilters: string[];   // from /filters API
-  probedAt: string;
+  supportedFilters: string[];
   expiresAt: string;
 }
 
-interface StrategyCache {
-  _version: number;
+interface SupportCache {
+  _version: 3;
   strategies: Record<string, StrategyEntry>;
   endpointFilters: Record<string, EndpointFilterInfo>;
 }
@@ -61,174 +58,177 @@ interface StrategyCache {
 // Cache I/O
 // ---------------------------------------------------------------------------
 
-const CACHE_PATH    = path.resolve(__dirname, "filter-support.json");
+const CACHE_FILE    = path.resolve(__dirname, "filter-support.json");
 const TTL_HOURS     = 24;
-const CACHE_VERSION = 2;
+const CACHE_VERSION = 3 as const;
 
-function loadCache(): StrategyCache {
+function readCache(): SupportCache {
   try {
-    if (fs.existsSync(CACHE_PATH)) {
-      const raw = JSON.parse(fs.readFileSync(CACHE_PATH, "utf-8")) as StrategyCache;
+    if (fs.existsSync(CACHE_FILE)) {
+      const raw = JSON.parse(fs.readFileSync(CACHE_FILE, "utf-8")) as SupportCache;
       if (raw._version === CACHE_VERSION) return raw;
     }
   } catch { /* corrupt — rebuild */ }
   return { _version: CACHE_VERSION, strategies: {}, endpointFilters: {} };
 }
 
-function saveCache(cache: StrategyCache) {
-  fs.writeFileSync(CACHE_PATH, JSON.stringify(cache, null, 2), "utf-8");
+function writeCache(cache: SupportCache): void {
+  fs.writeFileSync(CACHE_FILE, JSON.stringify(cache, null, 2), "utf-8");
 }
 
-function isExpired(entry: { expiresAt: string }): boolean {
+function futureIso(hours = TTL_HOURS): string {
+  return new Date(Date.now() + hours * 3_600_000).toISOString();
+}
+
+function isStale(entry: { expiresAt: string }): boolean {
   return new Date(entry.expiresAt) < new Date();
 }
 
-function makeExpiry(): string {
-  return new Date(Date.now() + TTL_HOURS * 3_600_000).toISOString();
-}
-
 // ---------------------------------------------------------------------------
-// detectSupportedFilters — queries /filters endpoint + optional probe
+// detectSupportedFilters — /filters API + cache
 // ---------------------------------------------------------------------------
 
 /**
- * Queries the Sportmonks /filters API to discover which filters are available
- * for a given endpoint path, then optionally probes with a test request.
+ * Returns the list of filter names supported by a given endpoint path,
+ * as reported by the Sportmonks /filters discovery endpoint.
  *
- * Results are cached for TTL_HOURS hours in filter-support.json.
+ * Results are cached in filter-support.json for TTL_HOURS hours.
+ * If /filters fails (plan restriction, network error), returns an empty array.
  *
  * @example
- * const info = await detectSupportedFilters("/fixtures", { probe: true, probeFilter: "league_id:648" });
- * console.log(info.supportedFilters);  // ["league_id", "season_id", "idAfter", ...]
+ * const info = await detectSupportedFilters("/fixtures");
+ * info.supportedFilters  // ["idAfter", "leagueIds", "populate", ...]
  */
-export async function detectSupportedFilters(
-  endpointPath: string,
-  opts: { probe?: boolean; probeFilter?: string } = {},
-): Promise<EndpointFilterInfo> {
-  const cache = loadCache();
-  const existing = cache.endpointFilters[endpointPath];
+export async function detectSupportedFilters(endpoint: string): Promise<EndpointFilterInfo> {
+  const cache = readCache();
+  const existing = cache.endpointFilters[endpoint];
 
-  if (existing && !isExpired(existing)) {
-    console.log(`[strategy] /filters cache hit for ${endpointPath}`);
+  if (existing && !isStale(existing)) {
+    console.log(`[strategy] /filters cache hit: ${endpoint} (${existing.supportedFilters.length} filters)`);
     return existing;
   }
 
-  console.log(`[strategy] Fetching available filters for ${endpointPath} from /filters API…`);
-
+  console.log(`[strategy] Querying /filters for ${endpoint}…`);
   const supportedFilters: string[] = [];
 
   try {
     const all = await fetchAvailableFilters();
-    // /filters returns definitions with a "route" field matching the endpoint
-    const match = all.filter(
-      (f) => f.route === endpointPath || f.route === endpointPath.replace(/^\//, ""),
+    // Normalise: route may be "/fixtures" or "fixtures" (without leading slash)
+    const normalised = endpoint.replace(/^\//, "");
+    const matched = all.filter(
+      (f) => f.route === endpoint || f.route === normalised,
     );
-    supportedFilters.push(...match.map((f) => f.name));
-    console.log(`[strategy] /filters API: ${supportedFilters.length} filter(s) for ${endpointPath}`);
+    supportedFilters.push(...matched.map((f) => f.name));
+    console.log(`[strategy] Found ${supportedFilters.length} filter(s) for ${endpoint}`);
   } catch (err) {
-    console.warn(`[strategy] /filters API failed: ${(err as Error).message}`);
-    console.warn("[strategy] Falling back to probe-only detection");
+    console.warn(`[strategy] /filters query failed: ${(err as Error).message}`);
+    console.warn("[strategy] Continuing without filter capability info");
   }
 
-  const info: EndpointFilterInfo = {
-    endpoint: endpointPath,
+  const entry: EndpointFilterInfo = {
+    endpoint,
     supportedFilters,
-    probedAt: new Date().toISOString(),
-    expiresAt: makeExpiry(),
+    expiresAt: futureIso(),
   };
 
-  cache.endpointFilters[endpointPath] = info;
-  saveCache(cache);
-  return info;
+  cache.endpointFilters[endpoint] = entry;
+  writeCache(cache);
+  return entry;
 }
 
 // ---------------------------------------------------------------------------
-// Strategy detection for fixtures
+// detectFixtureStrategy — probe + cache
 // ---------------------------------------------------------------------------
 
-const FIXTURES_STRATEGY_KEY = "fixtures_by_league";
+const STRATEGY_KEY = "fixtures_by_league_v3";
 
-function makeStrategyEntry(strategy: FixtureStrategy, note?: string): StrategyEntry {
+function makeEntry(strategy: FixtureStrategy, note?: string): StrategyEntry {
   return {
     strategy,
-    supportsFilters: strategy !== "CLIENT_SIDE",
+    supportsFilters: strategy !== "BULK_CLIENT_SIDE",
     confirmedAt: new Date().toISOString(),
-    expiresAt: makeExpiry(),
+    expiresAt: futureIso(),
     note,
   };
 }
 
 /**
  * Determines the best strategy for fetching fixtures by league.
- * Tries strategies in order and caches the first one that succeeds.
+ * Probes the API once and caches the result for TTL_HOURS.
+ * On cache hit, returns immediately without any API call.
  *
- * @param probeLeagueId  A league ID to use in the probe request.
- * @param probeSeasonId  Optional — enables FILTER_SEASON_ID as a candidate.
+ * @param probeLeagueId   League ID used for the probe request (must have fixtures)
+ * @param probeSeasonId   Optional — enables FILTER_SEASON_ID as a candidate
  */
 export async function detectFixtureStrategy(
   probeLeagueId: number,
   probeSeasonId?: number,
 ): Promise<StrategyEntry> {
-  const cache = loadCache();
-  const existing = cache.strategies[FIXTURES_STRATEGY_KEY];
+  const cache = readCache();
+  const hit = cache.strategies[STRATEGY_KEY];
 
-  if (existing && !isExpired(existing)) {
-    console.log(`[strategy] Cache hit: ${existing.strategy} (expires ${existing.expiresAt.slice(0, 16)})`);
-    return existing;
+  if (hit && !isStale(hit)) {
+    console.log(`[strategy] Strategy cache hit: ${hit.strategy}`);
+    return hit;
   }
 
-  console.log("[strategy] Probing fixture strategies…");
+  console.log("[strategy] Probing fixture strategy…");
 
-  const save = (entry: StrategyEntry): StrategyEntry => {
-    cache.strategies[FIXTURES_STRATEGY_KEY] = entry;
-    saveCache(cache);
+  const save = (entry: StrategyEntry) => {
+    cache.strategies[STRATEGY_KEY] = entry;
+    writeCache(cache);
     return entry;
   };
 
-  // 1. FILTER_LEAGUE_ID — confirmed working in our live tests
+  // 1 — filters=league_id:X
   try {
     await fetchFixturesByLeague(probeLeagueId, 1);
-    console.log("[strategy] ✓ FILTER_LEAGUE_ID works");
-    return save(makeStrategyEntry("FILTER_LEAGUE_ID", "filters=league_id:X confirmed"));
+    console.log("[strategy] ✓ FILTER_LEAGUE_ID confirmed");
+    return save(makeEntry("FILTER_LEAGUE_ID", "filters=league_id:X works"));
   } catch (err) {
     console.warn(`[strategy] ✗ FILTER_LEAGUE_ID: ${(err as Error).message}`);
   }
 
-  // 2. FILTER_SEASON_ID
+  // 2 — filters=season_id:Y
   if (probeSeasonId != null) {
     try {
       await fetchFixturesBySeason(probeSeasonId, 1);
-      console.log("[strategy] ✓ FILTER_SEASON_ID works");
-      return save(makeStrategyEntry("FILTER_SEASON_ID", `filters=season_id:Y confirmed (probe=${probeSeasonId})`));
+      console.log("[strategy] ✓ FILTER_SEASON_ID confirmed");
+      return save(makeEntry("FILTER_SEASON_ID", `filters=season_id:Y works (probe=${probeSeasonId})`));
     } catch (err) {
       console.warn(`[strategy] ✗ FILTER_SEASON_ID: ${(err as Error).message}`);
     }
   }
 
-  // 3. CLIENT_SIDE — last resort (expensive but always works)
-  console.warn("[strategy] ⚠ Falling back to CLIENT_SIDE");
-  return save(makeStrategyEntry("CLIENT_SIDE", "No server-side filter works"));
-}
-
-/** Clear cached strategy — forces re-detection on next call. */
-export function clearStrategyCache(key?: string) {
-  const cache = loadCache();
-  if (key) {
-    delete cache.strategies[key];
-  } else {
-    cache.strategies = {};
-  }
-  saveCache(cache);
-  console.log(`[strategy] Cache cleared${key ? ` (${key})` : " (all)"}`);
-}
-
-/** Read current cached strategy without triggering detection. */
-export function getStrategyCache(): StrategyEntry | null {
-  return loadCache().strategies[FIXTURES_STRATEGY_KEY] ?? null;
+  // 3 — bulk + client-side filter
+  console.warn("[strategy] ⚠ Using BULK_CLIENT_SIDE (expensive — no server-side filter works)");
+  return save(makeEntry("BULK_CLIENT_SIDE", "No server-side filter available"));
 }
 
 // ---------------------------------------------------------------------------
-// fetchFixturesSmart — uses detected strategy with automatic fallback
+// clearStrategyCache / getStrategyCache
+// ---------------------------------------------------------------------------
+
+/** Force re-detection on next call. Pass `endpoint` to clear only filter info. */
+export function clearStrategyCache(endpoint?: string): void {
+  const cache = readCache();
+  if (endpoint) {
+    delete cache.endpointFilters[endpoint];
+  } else {
+    cache.strategies = {};
+    cache.endpointFilters = {};
+  }
+  writeCache(cache);
+  console.log(`[strategy] Cache cleared${endpoint ? ` (${endpoint})` : " (all)"}`);
+}
+
+/** Inspect current cached strategy without triggering a probe. */
+export function getStrategyCache(): StrategyEntry | null {
+  return readCache().strategies[STRATEGY_KEY] ?? null;
+}
+
+// ---------------------------------------------------------------------------
+// fetchFixturesSmart — multi-strategy with runtime fallback
 // ---------------------------------------------------------------------------
 
 export interface FetchFixturesSmartOptions {
@@ -240,82 +240,90 @@ export interface FetchFixturesSmartOptions {
 /**
  * Fetches fixtures using the best available strategy.
  *
- * First call:  probes the API, caches the working strategy.
- * Later calls: reads the cache, skips straight to the confirmed strategy.
- * On runtime failure: rotates to the next strategy automatically.
+ * First call: probes the API and caches the working strategy.
+ * Subsequent calls: reads from cache, no probe needed.
+ * If the cached strategy fails at runtime, auto-rotates to the next strategy.
  *
  * @example
- * // Simple usage
  * const fixtures = await fetchFixturesSmart({ leagueId: 648 });
- *
- * // With season fallback enabled
  * const fixtures = await fetchFixturesSmart({ leagueId: 648, seasonId: 25580, maxPages: 6 });
  */
 export async function fetchFixturesSmart(
-  options: FetchFixturesSmartOptions,
+  opts: FetchFixturesSmartOptions,
 ): Promise<SportmonksFixture[]> {
-  const { leagueId, seasonId, maxPages = 4 } = options;
-
+  const { leagueId, seasonId, maxPages = 4 } = opts;
   let entry = await detectFixtureStrategy(leagueId, seasonId);
 
-  const execute = async (strategy: FixtureStrategy): Promise<SportmonksFixture[]> => {
+  const run = async (strategy: FixtureStrategy): Promise<SportmonksFixture[]> => {
     switch (strategy) {
       case "FILTER_LEAGUE_ID":
         return fetchFixturesByLeague(leagueId, maxPages);
 
       case "FILTER_SEASON_ID":
         if (!seasonId) {
-          console.warn("[strategy] FILTER_SEASON_ID needs seasonId — rotating to CLIENT_SIDE");
-          return execute("CLIENT_SIDE");
+          console.warn("[strategy] FILTER_SEASON_ID requires seasonId — falling back");
+          return run("BULK_CLIENT_SIDE");
         }
         return fetchFixturesBySeason(seasonId, maxPages);
 
-      case "CLIENT_SIDE": {
-        console.warn("[strategy] CLIENT_SIDE: fetching all fixtures and filtering in memory");
-        const all = await fetchAllFixtures(maxPages);
+      case "BULK_CLIENT_SIDE": {
+        console.warn("[strategy] BULK_CLIENT_SIDE: fetching all fixtures, filtering in memory");
+        const all = await fetchAllFixturesBulk(maxPages);
         return all.filter((f) => f.league_id === leagueId);
       }
     }
   };
 
   try {
-    return await execute(entry.strategy);
+    return await run(entry.strategy);
   } catch (err) {
-    // Runtime failure — rotate to next strategy and update cache
     console.warn(`[strategy] ${entry.strategy} failed at runtime: ${(err as Error).message}`);
-    const nextStrategy: FixtureStrategy =
-      entry.strategy === "FILTER_LEAGUE_ID" ? (seasonId ? "FILTER_SEASON_ID" : "CLIENT_SIDE")
-      : entry.strategy === "FILTER_SEASON_ID" ? "CLIENT_SIDE"
-      : "CLIENT_SIDE";
 
-    const cache = loadCache();
-    entry = makeStrategyEntry(nextStrategy, `Auto-rotated from ${entry.strategy} after runtime failure`);
-    cache.strategies[FIXTURES_STRATEGY_KEY] = entry;
-    saveCache(cache);
+    // Rotate to next strategy and persist
+    const next: FixtureStrategy =
+      entry.strategy === "FILTER_LEAGUE_ID"
+        ? seasonId ? "FILTER_SEASON_ID" : "BULK_CLIENT_SIDE"
+        : "BULK_CLIENT_SIDE";
 
-    return execute(nextStrategy);
+    const cache = readCache();
+    entry = makeEntry(next, `Auto-rotated from ${entry.strategy}`);
+    cache.strategies[STRATEGY_KEY] = entry;
+    writeCache(cache);
+
+    return run(next);
   }
 }
 
 // ---------------------------------------------------------------------------
-// fetchFixturesIncremental — idAfter-based sync (from docs)
+// Bulk + incremental wrappers (clean API for the ingestion layer)
 // ---------------------------------------------------------------------------
 
 /**
- * Fetches only fixtures with id > lastKnownId.
+ * Full bulk fixture sync.
+ * Uses filters=populate → no includes, per_page=1000.
+ * Ideal for initial DB bootstrap.
  *
- * Sportmonks docs: "Use filters=idAfter:12345 to fetch only those records
- * whose IDs are greater than the last known ID."
+ * Docs: "For your initial sync, use filters=populate to bootstrap your
+ *        dataset quickly and with fewer API calls."
+ */
+export async function fetchAllFixturesBulkSync(maxPages = 10): Promise<SportmonksFixture[]> {
+  return fetchAllFixturesBulk(maxPages);
+}
+
+/**
+ * Incremental fixture sync — only new fixtures since lastKnownId.
+ * Uses filters=populate;idAfter:X → lightweight, 1000/page.
  *
- * Combine with your IngestionCheckpoint to track lastKnownId per league.
+ * Docs: "Use filters=idAfter:12345 to fetch only those records whose IDs
+ *        are greater than the last known ID."
  *
  * @example
- * const lastId = await getLastFixtureId(leagueId);
+ * const lastId = await getMaxFixtureIdFromDb();
  * const newFixtures = await fetchFixturesIncremental(lastId);
  */
 export async function fetchFixturesIncremental(
   lastKnownId: number,
   maxPages = 10,
 ): Promise<SportmonksFixture[]> {
-  return fetchFixturesAfter(lastKnownId, maxPages);
+  return fetchFixturesAfterById(lastKnownId, maxPages);
 }

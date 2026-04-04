@@ -1,30 +1,15 @@
 /**
- * sportmonks.client.ts
+ * sportmonks.client.ts — Sportmonks Football API v3 HTTP layer
  *
- * Sportmonks Football API v3 — typed HTTP client.
- * Base URL : https://api.sportmonks.com/v3/football
- * Docs     : https://docs.sportmonks.com/football
+ * Docs reference: https://docs.sportmonks.com/football
  *
- * Syntax rules (from official docs):
- *   ;  → separates different filter fields AND different includes
- *         &filters=league_id:648;season_id:1
- *         &include=participants;events;state
- *   :  → separates key from value
- *         league_id:648
- *   ,  → separates multiple values for the SAME filter key (IDs)
- *         &filters=league_id:648,651
+ * Syntax rules (official):
+ *   include=participants;events;state   — ";" separates different includes
+ *   filters=league_id:648               — ":" separates key from value
+ *   filters=league_id:648,651           — "," separates multiple values for the SAME key
+ *   filters=populate;idAfter:12345      — ";" separates different filter tokens
  *
- * Special filter keywords (no value):
- *   populate  → disables includes, raises per_page limit to 1000 (bulk sync)
- *   idAfter:X → incremental sync, only records with id > X
- *
- * Filter support (tested against live API):
- *   /leagues              — no filter needed (fetch all)       ✓
- *   /fixtures?league_id   — works                              ✓
- *   /events?fixture_id    — works                              ✓
- *   /seasons?league_id    — 400 filter unsupported             ✗
- *   /teams?season_id      — 400 filter unsupported             ✗
- *   /players?team_id      — 400 filter unsupported             ✗
+ * Auth: Authorization header (primary) — api_token query param (fallback)
  */
 
 import type {
@@ -36,86 +21,101 @@ import type {
   SportmonksEvent,
 } from "./sportmonks.types";
 
+// ---------------------------------------------------------------------------
+// Base URL
+// ---------------------------------------------------------------------------
+
 const BASE_URL = "https://api.sportmonks.com/v3/football";
 
 // ---------------------------------------------------------------------------
-// buildFilters — object → Sportmonks v3 filter string
+// buildFilters
 // ---------------------------------------------------------------------------
 
+/**
+ * Accepted value per filter key.
+ * Array → multiple IDs joined by "," (same-key multi-value).
+ * null / undefined / empty array → entry is silently dropped.
+ */
 export type FilterValue = string | number | (string | number)[] | null | undefined;
 
-export interface FilterInput {
+/**
+ * Filter input as a typed object.
+ * Special keys:
+ *   populate — keyword filter (no value); disables includes, raises per_page to 1000
+ *   idAfter  — incremental sync; fetches records with id > value
+ */
+export interface FilterObject {
   [key: string]: FilterValue | boolean;
-  /**
-   * Disable all includes and raise per_page limit to 1000 — ideal for bulk/initial sync.
-   * Docs: "Use filters=populate on endpoints to disable all includes."
-   */
   populate?: boolean;
-  /**
-   * Incremental sync: only fetch records with id > value.
-   * Docs: "Use filters=idAfter:12345 to fetch only those records whose IDs are greater
-   * than the last known ID."
-   */
   idAfter?: number;
 }
 
 /**
- * Converts a plain object into the Sportmonks v3 filter string.
+ * buildFilters accepts three forms:
+ *   string              → returned as-is (passthrough for pre-built strings)
+ *   string[]            → tokens joined by ";" (e.g. ["populate", "idAfter:123"])
+ *   FilterObject        → keys serialised to "key:value" joined by ";"
  *
- * Separator rules per official docs:
- *   ;  separates different filter fields
- *   :  separates a key from its value
- *   ,  separates multiple values for the SAME key (array of IDs)
+ * Separator rules from official docs:
+ *   ";" between different filter entries (tokens or key:value pairs)
+ *   "," between multiple values for the SAME key
  *
  * @example
- * buildFilters({ league_id: 648 })
+ * buildFilters("league_id:648")
  * // → "league_id:648"
  *
- * buildFilters({ league_id: 648, season_id: 1 })
- * // → "league_id:648;season_id:1"
+ * buildFilters(["populate", "idAfter:5000"])
+ * // → "populate;idAfter:5000"
+ *
+ * buildFilters({ league_id: 648 })
+ * // → "league_id:648"
  *
  * buildFilters({ league_id: [648, 651] })
  * // → "league_id:648,651"
  *
- * buildFilters({ populate: true })
- * // → "populate"
+ * buildFilters({ league_id: 648, season_id: 1 })
+ * // → "league_id:648;season_id:1"
  *
- * buildFilters({ idAfter: 5000, populate: true })
+ * buildFilters({ populate: true, idAfter: 5000 })
  * // → "populate;idAfter:5000"
  *
- * buildFilters({ league_id: null, season_id: undefined })
- * // → ""  (both dropped — null/undefined are ignored)
+ * buildFilters({ league_id: null })
+ * // → ""
  */
-export function buildFilters(input: FilterInput): string {
+export function buildFilters(input: string | string[] | FilterObject): string {
+  if (typeof input === "string") return input;
+
+  if (Array.isArray(input)) return input.filter(Boolean).join(";");
+
   const parts: string[] = [];
 
-  // Special keywords first
+  // Special keywords first (order matters: populate before idAfter)
   if (input.populate === true) parts.push("populate");
-  if (input.idAfter != null)   parts.push(`idAfter:${input.idAfter}`);
+  if (typeof input.idAfter === "number") parts.push(`idAfter:${input.idAfter}`);
 
   for (const [key, value] of Object.entries(input)) {
     if (key === "populate" || key === "idAfter") continue;
-    if (value === null || value === undefined) continue;
+    if (value === null || value === undefined || value === false) continue;
 
     if (Array.isArray(value)) {
       const valid = (value as (string | number)[]).filter((v) => v != null);
       if (valid.length === 0) continue;
-      parts.push(`${key}:${valid.join(",")}`); // , for multiple values of same key
+      parts.push(`${key}:${valid.join(",")}`);      // "," for multi-value same key
     } else {
       parts.push(`${key}:${value}`);
     }
   }
 
-  return parts.join(";"); // ; separates different filter fields
+  return parts.join(";");   // ";" between different filter entries
 }
 
 // ---------------------------------------------------------------------------
-// buildInclude — string[] | string → Sportmonks include string
+// buildInclude
 // ---------------------------------------------------------------------------
 
 /**
- * Joins includes with ";" per the official Sportmonks v3 syntax.
- * Accepts either a pre-built string (passthrough) or an array.
+ * Joins include names with ";" per Sportmonks v3 docs.
+ * Accepts either a pre-built string or an array.
  *
  * @example
  * buildInclude(["participants", "scores", "state"])
@@ -130,7 +130,7 @@ export function buildInclude(include: string | string[]): string {
 }
 
 // ---------------------------------------------------------------------------
-// Internal: token
+// Auth token
 // ---------------------------------------------------------------------------
 
 function getApiToken(): string {
@@ -140,33 +140,42 @@ function getApiToken(): string {
 }
 
 // ---------------------------------------------------------------------------
-// Internal: retry with exponential backoff
+// fetchWithRetry — core HTTP + retry logic
 // ---------------------------------------------------------------------------
 
 const MAX_RETRIES   = 3;
 const BASE_DELAY_MS = 1_000;
 
-function sleep(ms: number) {
-  return new Promise<void>((resolve) => setTimeout(resolve, ms));
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 /**
- * Wraps fetch with retry + exponential backoff for 429 and 5xx.
- * Surfaces the API error body for 4xx (non-retryable).
+ * Wraps native fetch with:
+ *   - Authorization header (primary auth method)
+ *   - api_token query param (secondary / fallback)
+ *   - Retry on 429 and 5xx with exponential backoff
+ *   - Honour Retry-After header from API
+ *   - Immediate failure on non-retryable 4xx with body in error message
  */
-async function fetchWithRetry(url: string): Promise<Response> {
+export async function fetchWithRetry(url: string): Promise<Response> {
+  const token = getApiToken();
   let lastError: Error = new Error("unknown");
 
   for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
-    const res = await fetch(url, { headers: { Accept: "application/json" } });
+    const res = await fetch(url, {
+      headers: {
+        Accept: "application/json",
+        Authorization: token,          // primary auth
+      },
+    });
 
     if (res.ok) return res;
 
     if (res.status === 429 || res.status >= 500) {
-      // Check for Retry-After header (docs recommend honouring it)
-      const retryAfter = res.headers.get("Retry-After");
-      const delay = retryAfter
-        ? parseInt(retryAfter, 10) * 1_000
+      const retryAfterHeader = res.headers.get("Retry-After");
+      const delay = retryAfterHeader
+        ? parseInt(retryAfterHeader, 10) * 1_000
         : BASE_DELAY_MS * Math.pow(2, attempt);
 
       const body = await res.text().catch(() => "");
@@ -179,9 +188,10 @@ async function fetchWithRetry(url: string): Promise<Response> {
       continue;
     }
 
+    // 4xx (except 429) — not retryable
     const body = await res.text().catch(() => "");
     throw new Error(
-      `Sportmonks ${res.status} ${res.statusText} — ${new URL(url).pathname}\n` +
+      `Sportmonks ${res.status} ${res.statusText} on ${new URL(url).pathname}\n` +
       (body ? `  Body: ${body.slice(0, 400)}` : ""),
     );
   }
@@ -190,17 +200,11 @@ async function fetchWithRetry(url: string): Promise<Response> {
 }
 
 // ---------------------------------------------------------------------------
-// Internal: single-page GET
+// smGet / smGetAll — typed core
 // ---------------------------------------------------------------------------
 
 export interface SmGetOptions {
-  /** Filter object — serialised by buildFilters(). */
-  filters?: FilterInput | string;
-  /**
-   * Related entities to include.
-   * Accepts array ["participants","scores"] or pre-built string "participants;scores".
-   * Uses ";" as separator per Sportmonks v3 docs.
-   */
+  filters?: string | string[] | FilterObject;
   include?: string | string[];
   page?: number;
   perPage?: number;
@@ -208,12 +212,10 @@ export interface SmGetOptions {
 
 async function smGet<T>(path: string, options: SmGetOptions = {}): Promise<T> {
   const url = new URL(`${BASE_URL}${path}`);
-  url.searchParams.set("api_token", getApiToken());
+  url.searchParams.set("api_token", getApiToken());     // secondary auth (query param)
 
-  if (options.filters) {
-    const filterStr = typeof options.filters === "string"
-      ? options.filters
-      : buildFilters(options.filters);
+  if (options.filters !== undefined && options.filters !== null) {
+    const filterStr = buildFilters(options.filters as string | string[] | FilterObject);
     if (filterStr) url.searchParams.set("filters", filterStr);
   }
 
@@ -228,16 +230,12 @@ async function smGet<T>(path: string, options: SmGetOptions = {}): Promise<T> {
   return res.json() as Promise<T>;
 }
 
-// ---------------------------------------------------------------------------
-// Internal: paginated GET — auto-fetches all pages up to maxPages
-// ---------------------------------------------------------------------------
-
 interface PaginatedResponse<T> {
   data: T[];
   meta?: {
     pagination?: {
-      total_pages?:   number;
-      current_page?:  number;
+      total_pages?:  number;
+      current_page?: number;
     };
   };
 }
@@ -263,8 +261,7 @@ async function smGetAll<T>(
 }
 
 // ---------------------------------------------------------------------------
-// Reference data (cache-friendly — rarely changes)
-// Docs recommend caching: Countries, Types, States, Continents, Regions, Cities
+// Reference / discovery
 // ---------------------------------------------------------------------------
 
 export interface SportmonksFilterDefinition {
@@ -273,22 +270,11 @@ export interface SportmonksFilterDefinition {
 }
 
 /**
- * Returns available filters per endpoint from the /filters API.
- * Cache this response — it changes rarely.
- * Use it to build detectSupportedFilters() logic.
+ * Queries the /filters endpoint which lists available filters per endpoint.
+ * Cache the result — it changes rarely (daily TTL is fine).
  */
 export async function fetchAvailableFilters(): Promise<SportmonksFilterDefinition[]> {
   const raw = await smGet<{ data: SportmonksFilterDefinition[] }>("/filters");
-  return raw.data ?? [];
-}
-
-export async function fetchTypes() {
-  const raw = await smGet<{ data: unknown[] }>("/types");
-  return raw.data ?? [];
-}
-
-export async function fetchStates() {
-  const raw = await smGet<{ data: unknown[] }>("/states");
   return raw.data ?? [];
 }
 
@@ -311,7 +297,7 @@ export async function fetchLeagueById(leagueId: number): Promise<SportmonksLeagu
 // Seasons
 // ---------------------------------------------------------------------------
 
-/** ⚠ Returns 400 on some plans — extract season from fixture data instead. */
+/** ⚠ Returns 400 on some plans — prefer extracting season_id from fixture data. */
 export async function fetchSeasonsByLeague(leagueId: number): Promise<SportmonksSeason[]> {
   return smGetAll<SportmonksSeason>("/seasons", {
     filters: { league_id: leagueId },
@@ -327,7 +313,7 @@ export async function fetchSeasonById(seasonId: number): Promise<SportmonksSeaso
 // Teams
 // ---------------------------------------------------------------------------
 
-/** ⚠ Returns 400 on some plans — extract teams from fixture participants instead. */
+/** ⚠ Returns 400 on some plans — prefer extracting from fixture participants. */
 export async function fetchTeamsBySeason(seasonId: number): Promise<SportmonksTeam[]> {
   return smGetAll<SportmonksTeam>("/teams", {
     filters: { season_id: seasonId },
@@ -364,83 +350,75 @@ export async function fetchPlayersByTeam(
 }
 
 // ---------------------------------------------------------------------------
-// Fixtures — PRIMARY ingestion source
+// Fixtures — primary ingestion source
 // ---------------------------------------------------------------------------
 
-/**
- * Fetch fixtures for a league — filters=league_id:X confirmed working.
- * maxPages × 25 = max fixtures returned.
- */
+const FIXTURE_INCLUDE = ["participants", "scores", "state"] as const;
+
+/** filters=league_id:X — confirmed working */
 export async function fetchFixturesByLeague(
   leagueId: number,
   maxPages = 4,
 ): Promise<SportmonksFixture[]> {
   return smGetAll<SportmonksFixture>(
     "/fixtures",
-    {
-      filters: { league_id: leagueId },
-      include: ["participants", "scores", "state"],
-    },
+    { filters: { league_id: leagueId }, include: [...FIXTURE_INCLUDE] },
     maxPages,
   );
 }
 
-/** ⚠ season_id filter may not work on all plans. */
+/** ⚠ season_id filter may return 400 on some plans */
 export async function fetchFixturesBySeason(
   seasonId: number,
   maxPages = 4,
 ): Promise<SportmonksFixture[]> {
   return smGetAll<SportmonksFixture>(
     "/fixtures",
-    {
-      filters: { season_id: seasonId },
-      include: ["scores", "participants", "state"],
-    },
+    { filters: { season_id: seasonId }, include: [...FIXTURE_INCLUDE] },
     maxPages,
   );
 }
 
 export async function fetchMatchById(fixtureId: number): Promise<SportmonksFixture> {
   const raw = await smGet<{ data: SportmonksFixture }>(`/fixtures/${fixtureId}`, {
-    include: ["scores", "participants", "state"],
+    include: [...FIXTURE_INCLUDE],
   });
   return raw.data;
 }
 
 /**
- * Bulk fixture fetch with filters=populate (no includes, 1000/page).
- * Use for initial sync — much fewer pages than standard requests.
- * Docs: "Use filters=populate on endpoints to disable all includes.
- *        This... enables a page size of 1000 records."
+ * Bulk fixture sync — filters=populate removes includes, per_page rises to 1000.
+ * Use for initial DB bootstrap. Returns lightweight fixture records (no nested data).
+ * Docs: "Use filters=populate on endpoints to disable all includes. This ensures
+ *        the response payload is minimal and enables a page size of 1000 records."
  */
-export async function fetchAllFixtures(maxPages = 10): Promise<SportmonksFixture[]> {
+export async function fetchAllFixturesBulk(maxPages = 10): Promise<SportmonksFixture[]> {
   return smGetAll<SportmonksFixture>(
     "/fixtures",
-    { filters: { populate: true } },
+    { filters: { populate: true }, perPage: 1000 },
     maxPages,
   );
 }
 
 /**
- * Incremental fixture sync — only fixtures with id > lastId.
+ * Incremental fixture sync — filters=populate;idAfter:LAST_ID.
+ * Fetches only fixtures with id > lastKnownId. Combine with IngestionCheckpoint.
  * Docs: "Use filters=idAfter:12345 to fetch only those records whose IDs are
  *        greater than the last known ID."
  */
-export async function fetchFixturesAfter(
-  lastId: number,
+export async function fetchFixturesAfterById(
+  lastKnownId: number,
   maxPages = 10,
 ): Promise<SportmonksFixture[]> {
   return smGetAll<SportmonksFixture>(
     "/fixtures",
-    {
-      filters: { populate: true, idAfter: lastId },
-    },
+    { filters: { populate: true, idAfter: lastKnownId }, perPage: 1000 },
     maxPages,
   );
 }
 
 // ---------------------------------------------------------------------------
-// Events — filters=fixture_id:X CONFIRMED working
+// Events — filters=fixture_id:X confirmed working
 // ---------------------------------------------------------------------------
 
 export async function fetchMatchEvents(fixtureId: number): Promise<SportmonksEvent[]> {

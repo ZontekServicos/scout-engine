@@ -1,43 +1,47 @@
 /**
  * fixture-first.ingestion.service.ts
  *
- * Fixture-first ingestion pipeline — the only approach that works reliably
- * with Sportmonks v3 because filter support varies per endpoint:
+ * Three-layer ingestion pipeline (per Sportmonks best-practices docs):
  *
- *   /leagues              → no filters needed (fetch all)  ✓
- *   /fixtures?league_id   → works                          ✓
- *   /events?fixture_id    → works                          ✓
- *   /seasons?league_id    → 400 (filter unsupported)       ✗
- *   /teams?season_id      → 400 (filter unsupported)       ✗
- *   /players?team_id      → 400 (filter unsupported)       ✗
+ *   Layer 1 — Bootstrap
+ *     fetchAllFixturesBulk() — filters=populate, per_page=1000, no includes
+ *     → Upserts Match records with minimal data (no teams/events yet)
+ *     → Run once on first deploy or full re-sync
  *
- * Performance:
- *   - League/Season/Team upserts: individual (few per call, need update on re-run)
- *   - Match upserts: individual (need score/status updates on re-run)
- *   - MatchEvent inserts: createMany + skipDuplicates (10–20× faster than per-row upsert)
- *     Events without externalId are skipped to avoid duplicate rows on re-runs.
+ *   Layer 2 — Incremental
+ *     fetchFixturesAfterById(lastId) — filters=populate;idAfter:X
+ *     → Upserts only new Match records since last run
+ *     → Run periodically (cron / seed re-runs)
  *
- * Incremental:
- *   Pass `sinceDate` to skip fixtures whose `starting_at` is on or before that date.
- *   seed-leagues.ts reads/writes IngestionCheckpoint per league automatically.
+ *   Layer 3 — Enrich
+ *     fetchFixturesByLeague() with participants;scores;state includes
+ *     fetchMatchEvents() per finished fixture
+ *     → Resolves League, Season, Teams, scores, and MatchEvent rows
+ *     → Called only for fixtures that need enrichment (not yet fully processed)
+ *
+ * Backwards-compatible entry point:
+ *   ingestLeagueViaFixtures() — used by seed-leagues.ts / seed-brazil-validated.ts
+ *   Internally calls Layer 3 (enrich) on top of whatever is already in the DB.
  */
 
 import { prisma } from "../lib/prisma";
+import { Prisma } from "@prisma/client";
 import {
-  fetchFixturesByLeague,
-  fetchMatchEvents,
   fetchLeagueById,
+  fetchMatchEvents,
+  fetchAllFixturesBulk,
+  fetchFixturesAfterById,
 } from "../integrations/sportmonks/sportmonks.client";
+import { fetchFixturesSmart } from "../integrations/sportmonks/sportmonks.strategy";
 import type {
   SportmonksFixture,
   SportmonksParticipant,
   SportmonksFixtureState,
   SportmonksEvent,
 } from "../integrations/sportmonks/sportmonks.types";
-import { Prisma } from "@prisma/client";
 
 // ---------------------------------------------------------------------------
-// Helpers — fixture state → status string
+// Shared helpers — fixture state resolution
 // ---------------------------------------------------------------------------
 
 function resolveStatus(state: SportmonksFixture["state"]): string | null {
@@ -53,49 +57,29 @@ export function isFinished(fixture: SportmonksFixture): boolean {
   return FINISHED_STATUSES.has(resolveStatus(fixture.state) ?? "");
 }
 
-// ---------------------------------------------------------------------------
-// Helpers — participants → home / away
-// ---------------------------------------------------------------------------
-
-function resolveParticipants(participants: SportmonksParticipant[] | null | undefined): {
-  homeId: number | null;
-  awayId: number | null;
-  homeTeam: SportmonksParticipant | null;
-  awayTeam: SportmonksParticipant | null;
-} {
+function resolveParticipants(participants: SportmonksParticipant[] | null | undefined) {
   const home = participants?.find((p) => p.meta?.location === "home") ?? null;
   const away = participants?.find((p) => p.meta?.location === "away") ?? null;
-  return {
-    homeId: home?.id ?? null,
-    awayId: away?.id ?? null,
-    homeTeam: home,
-    awayTeam: away,
-  };
+  return { homeTeam: home, awayTeam: away };
 }
 
-// ---------------------------------------------------------------------------
-// Helpers — scores
-// ---------------------------------------------------------------------------
-
-function resolveScores(fixture: SportmonksFixture): { home: number | null; away: number | null } {
+function resolveScores(fixture: SportmonksFixture) {
   let home: number | null = null;
   let away: number | null = null;
-
   for (const score of fixture.scores ?? []) {
     if (score.type_id === 1) {
       if (score.participant === "home") home = score.score?.goals ?? null;
       if (score.participant === "away") away = score.score?.goals ?? null;
     }
   }
-
   return { home, away };
 }
 
 // ---------------------------------------------------------------------------
-// Upsert helpers — League / Season / Team / Match
+// Shared helpers — DB upserts
 // ---------------------------------------------------------------------------
 
-async function upsertLeagueFromFixture(leagueExternalId: number) {
+async function upsertLeague(leagueExternalId: number) {
   let name = `League #${leagueExternalId}`;
   let countryId: number | null = null;
   let type: string | null = null;
@@ -120,9 +104,7 @@ async function upsertLeagueFromFixture(leagueExternalId: number) {
         },
       });
     }
-  } catch {
-    // Non-fatal — fall back to minimal record
-  }
+  } catch { /* non-fatal — continue with minimal data */ }
 
   const countryDbId = countryId
     ? (await prisma.country.findUnique({ where: { externalId: countryId }, select: { id: true } }))?.id ?? null
@@ -135,26 +117,20 @@ async function upsertLeagueFromFixture(leagueExternalId: number) {
   });
 }
 
-async function upsertSeasonFromFixture(fixture: SportmonksFixture, leagueDbId: string) {
-  const seasonExternalId = fixture.season_id;
-  if (!seasonExternalId) return null;
-
+async function upsertSeason(fixture: SportmonksFixture, leagueDbId: string) {
+  if (!fixture.season_id) return null;
   return prisma.season.upsert({
-    where: { externalId: seasonExternalId },
+    where: { externalId: fixture.season_id },
     update: { leagueId: leagueDbId },
-    create: {
-      externalId: seasonExternalId,
-      name: `Season ${seasonExternalId}`,
-      leagueId: leagueDbId,
-    },
+    create: { externalId: fixture.season_id, name: `Season ${fixture.season_id}`, leagueId: leagueDbId },
   });
 }
 
-async function upsertTeam(participant: SportmonksParticipant) {
+async function upsertTeam(p: SportmonksParticipant) {
   return prisma.team.upsert({
-    where: { externalId: participant.id },
-    update: { name: participant.name },
-    create: { externalId: participant.id, name: participant.name },
+    where: { externalId: p.id },
+    update: { name: p.name },
+    create: { externalId: p.id, name: p.name },
   });
 }
 
@@ -166,244 +142,279 @@ async function upsertMatch(
 ) {
   const status = resolveStatus(fixture.state);
   const { home: homeScore, away: awayScore } = resolveScores(fixture);
+  const startingAt = fixture.starting_at ? new Date(fixture.starting_at) : null;
 
   return prisma.match.upsert({
     where: { externalId: fixture.id },
-    update: { status, homeScore, awayScore,
-      startingAt: fixture.starting_at ? new Date(fixture.starting_at) : null,
-      homeTeamId: homeTeamDbId, awayTeamId: awayTeamDbId, seasonId: seasonDbId },
-    create: {
-      externalId: fixture.id, status, homeScore, awayScore,
-      startingAt: fixture.starting_at ? new Date(fixture.starting_at) : null,
-      homeTeamId: homeTeamDbId, awayTeamId: awayTeamDbId, seasonId: seasonDbId,
-    },
+    update: { status, homeScore, awayScore, startingAt, homeTeamId: homeTeamDbId, awayTeamId: awayTeamDbId, seasonId: seasonDbId },
+    create: { externalId: fixture.id, status, homeScore, awayScore, startingAt, homeTeamId: homeTeamDbId, awayTeamId: awayTeamDbId, seasonId: seasonDbId },
   });
 }
 
 // ---------------------------------------------------------------------------
-// Event type mapping
+// Event ingestion — batch insert (createMany + skipDuplicates)
 // ---------------------------------------------------------------------------
 
 const EVENT_TYPE_MAP: Record<string, string> = {
-  "goal": "GOAL",
-  "goal-allowed": "GOAL",
-  "yellowcard": "YELLOW_CARD",
-  "redcard": "RED_CARD",
-  "yellowredcard": "RED_CARD",
+  "goal": "GOAL", "goal-allowed": "GOAL",
+  "yellowcard": "YELLOW_CARD", "redcard": "RED_CARD", "yellowredcard": "RED_CARD",
   "substitution": "SUBSTITUTION",
-  "penalty": "PENALTY",
-  "penalty-missed": "PENALTY_MISSED",
-  "shot-offgoal": "SHOT",
-  "shot-ongoal": "SHOT",
-  "shot-blocked": "SHOT",
-  "pass": "PASS",
-  "cross": "PASS",
-  "tackle": "TACKLE",
-  "interception": "INTERCEPTION",
-  "clearance": "CLEARANCE",
-  "save": "SAVE",
-  "foul": "FOUL",
-  "dribble": "DRIBBLE",
+  "penalty": "PENALTY", "penalty-missed": "PENALTY_MISSED",
+  "shot-offgoal": "SHOT", "shot-ongoal": "SHOT", "shot-blocked": "SHOT",
+  "pass": "PASS", "cross": "PASS",
+  "tackle": "TACKLE", "interception": "INTERCEPTION",
+  "clearance": "CLEARANCE", "save": "SAVE",
+  "foul": "FOUL", "dribble": "DRIBBLE",
 };
 
-function mapEventType(developerName: string | null | undefined): string {
-  return EVENT_TYPE_MAP[developerName?.toLowerCase() ?? ""] ?? "OTHER";
+function mapEventType(dev: string | null | undefined): string {
+  return EVENT_TYPE_MAP[dev?.toLowerCase() ?? ""] ?? "OTHER";
 }
 
-function mapOutcome(developerName: string | null | undefined, result: string | null | undefined): string | null {
-  if (developerName === "shot-ongoal") return "ON_TARGET";
-  if (developerName === "shot-offgoal") return "OFF_TARGET";
-  if (developerName === "shot-blocked") return "BLOCKED";
-  if (developerName === "goal" || developerName === "goal-allowed") return "SUCCESS";
-  if (developerName === "penalty-missed") return "FAIL";
+function mapOutcome(dev: string | null | undefined, result: string | null | undefined): string | null {
+  if (dev === "shot-ongoal") return "ON_TARGET";
+  if (dev === "shot-offgoal") return "OFF_TARGET";
+  if (dev === "shot-blocked") return "BLOCKED";
+  if (dev === "goal" || dev === "goal-allowed") return "SUCCESS";
+  if (dev === "penalty-missed") return "FAIL";
   return result?.toUpperCase() ?? null;
 }
 
-// ---------------------------------------------------------------------------
-// Batch event insert — createMany + skipDuplicates (10–20× faster)
-// ---------------------------------------------------------------------------
-
-/**
- * Resolves player/team DB IDs for all events in one pass (N queries → 2 queries).
- */
-async function resolveEventActors(events: SportmonksEvent[]): Promise<{
-  playerMap: Map<number, string>;
-  teamMap: Map<number, string>;
-}> {
-  const playerExternalIds = [...new Set(
-    events.map((e) => e.player_id).filter((id): id is number => id != null),
-  )];
-  const teamExternalIds = [...new Set(
-    events.map((e) => e.participant_id).filter((id): id is number => id != null),
-  )];
-
-  const [players, teams] = await Promise.all([
-    playerExternalIds.length > 0
-      ? prisma.player.findMany({
-          where: { source: "sportmonks", externalId: { in: playerExternalIds.map(String) } },
-          select: { id: true, externalId: true },
-        })
-      : [],
-    teamExternalIds.length > 0
-      ? prisma.team.findMany({
-          where: { externalId: { in: teamExternalIds } },
-          select: { id: true, externalId: true },
-        })
-      : [],
-  ]);
-
-  return {
-    playerMap: new Map(players.map((p) => [Number(p.externalId), p.id])),
-    teamMap: new Map(teams.map((t) => [t.externalId, t.id])),
-  };
-}
-
-/**
- * Inserts all events for a match in a single createMany call.
- * Only events with a Sportmonks externalId are inserted (prevents duplicates on re-runs).
- * Returns count of rows inserted.
- */
-async function batchInsertMatchEvents(
-  events: SportmonksEvent[],
-  matchDbId: string,
-): Promise<number> {
-  // Only process events that have an externalId (unique constraint → skipDuplicates works)
+async function batchInsertEvents(events: SportmonksEvent[], matchDbId: string): Promise<number> {
   const identifiable = events.filter((e) => e.id != null);
   if (identifiable.length === 0) return 0;
 
-  const { playerMap, teamMap } = await resolveEventActors(identifiable);
+  // Resolve player/team DB IDs in 2 queries total
+  const playerExtIds = [...new Set(identifiable.map((e) => e.player_id).filter((id): id is number => id != null))];
+  const teamExtIds   = [...new Set(identifiable.map((e) => e.participant_id).filter((id): id is number => id != null))];
+
+  const [players, teams] = await Promise.all([
+    playerExtIds.length > 0
+      ? prisma.player.findMany({ where: { source: "sportmonks", externalId: { in: playerExtIds.map(String) } }, select: { id: true, externalId: true } })
+      : [],
+    teamExtIds.length > 0
+      ? prisma.team.findMany({ where: { externalId: { in: teamExtIds } }, select: { id: true, externalId: true } })
+      : [],
+  ]);
+
+  const playerMap = new Map(players.map((p) => [Number(p.externalId), p.id]));
+  const teamMap   = new Map(teams.map((t) => [t.externalId, t.id]));
 
   const rows = identifiable.map((event) => {
-    const developerName = event.type?.developer_name;
-    const type = mapEventType(developerName);
-    const outcome = mapOutcome(developerName, event.result);
-
-    // Build meta from leftover fields
-    const { id, fixture_id, period_id, participant_id, player_id, type: _type,
+    const dev = event.type?.developer_name;
+    const { id, fixture_id, period_id, participant_id, player_id, type: _t,
       minute, extra_minute, coordinates, result, info, addition, ...rest } = event;
 
     const metaRaw: Record<string, unknown> = {};
-    if (info) metaRaw["info"] = info;
+    if (info)     metaRaw["info"] = info;
     if (addition) metaRaw["addition"] = addition;
     if (Object.keys(rest).length > 0) metaRaw["raw"] = rest;
 
     return {
-      externalId: event.id,
-      matchId: matchDbId,
-      playerId: event.player_id != null ? (playerMap.get(event.player_id) ?? null) : null,
-      teamId: event.participant_id != null ? (teamMap.get(event.participant_id) ?? null) : null,
-      type,
-      minute: event.minute ?? null,
+      externalId:  event.id,
+      matchId:     matchDbId,
+      playerId:    event.player_id != null    ? (playerMap.get(event.player_id)    ?? null) : null,
+      teamId:      event.participant_id != null ? (teamMap.get(event.participant_id) ?? null) : null,
+      type:        mapEventType(dev),
+      minute:      event.minute ?? null,
       extraMinute: event.extra_minute ?? null,
-      x: event.coordinates?.x ?? null,
-      y: event.coordinates?.y ?? null,
+      x:    event.coordinates?.x    ?? null,
+      y:    event.coordinates?.y    ?? null,
       endX: event.coordinates?.end_x ?? null,
       endY: event.coordinates?.end_y ?? null,
-      outcome,
+      outcome: mapOutcome(dev, event.result),
       ...(Object.keys(metaRaw).length > 0 ? { meta: metaRaw as Prisma.InputJsonValue } : {}),
     };
   });
 
-  const result = await prisma.matchEvent.createMany({
-    data: rows,
-    skipDuplicates: true, // skips rows where externalId already exists
-  });
-
-  return result.count;
+  const r = await prisma.matchEvent.createMany({ data: rows, skipDuplicates: true });
+  return r.count;
 }
 
 // ---------------------------------------------------------------------------
-// Public API
+// Layer 1 — Bootstrap: bulk sync, minimal data
+// ---------------------------------------------------------------------------
+
+export interface BootstrapResult {
+  fixturesFetched: number;
+  matchesUpserted: number;
+  errors: number;
+}
+
+/**
+ * Fetches all fixtures with filters=populate (no includes, 1000/page).
+ * Upserts Match rows with only externalId, starting_at, season_id.
+ * No teams, no scores, no events — use Layer 3 (enrich) for that.
+ *
+ * Run once on initial deploy, or when you need a full re-baseline.
+ */
+export async function bootstrapFixtures(maxPages = 10): Promise<BootstrapResult> {
+  console.log("[ingest] Layer 1 — Bootstrap start");
+  const fixtures = await fetchAllFixturesBulk(maxPages);
+  console.log(`[ingest] Fetched ${fixtures.length} fixtures (bulk/populate)`);
+
+  let upserted = 0;
+  let errors = 0;
+
+  for (const fixture of fixtures) {
+    try {
+      await prisma.match.upsert({
+        where: { externalId: fixture.id },
+        update: {
+          status: resolveStatus(fixture.state),
+          startingAt: fixture.starting_at ? new Date(fixture.starting_at) : null,
+        },
+        create: {
+          externalId: fixture.id,
+          status: resolveStatus(fixture.state),
+          startingAt: fixture.starting_at ? new Date(fixture.starting_at) : null,
+        },
+      });
+      upserted++;
+    } catch { errors++; }
+  }
+
+  console.log(`[ingest] Bootstrap done — upserted=${upserted} errors=${errors}`);
+  return { fixturesFetched: fixtures.length, matchesUpserted: upserted, errors };
+}
+
+// ---------------------------------------------------------------------------
+// Layer 2 — Incremental: only new fixtures since last run
+// ---------------------------------------------------------------------------
+
+export interface IncrementalResult {
+  fixturesFetched: number;
+  matchesUpserted: number;
+  lastIdSeen: number | null;
+}
+
+/**
+ * Fetches only fixtures with id > lastKnownId (filters=populate;idAfter:X).
+ * Upserts Match rows for the new records only.
+ * After each run, store the new max fixture ID in IngestionCheckpoint for next call.
+ */
+export async function incrementalFixtureSync(
+  lastKnownId: number,
+  maxPages = 10,
+): Promise<IncrementalResult> {
+  console.log(`[ingest] Layer 2 — Incremental since id=${lastKnownId}`);
+  const fixtures = await fetchFixturesAfterById(lastKnownId, maxPages);
+
+  if (fixtures.length === 0) {
+    console.log("[ingest] Incremental — no new fixtures");
+    return { fixturesFetched: 0, matchesUpserted: 0, lastIdSeen: null };
+  }
+
+  let upserted = 0;
+  let lastIdSeen = lastKnownId;
+
+  for (const fixture of fixtures) {
+    try {
+      await prisma.match.upsert({
+        where: { externalId: fixture.id },
+        update: {
+          status: resolveStatus(fixture.state),
+          startingAt: fixture.starting_at ? new Date(fixture.starting_at) : null,
+        },
+        create: {
+          externalId: fixture.id,
+          status: resolveStatus(fixture.state),
+          startingAt: fixture.starting_at ? new Date(fixture.starting_at) : null,
+        },
+      });
+      upserted++;
+      if (fixture.id > lastIdSeen) lastIdSeen = fixture.id;
+    } catch { /* non-fatal */ }
+  }
+
+  console.log(`[ingest] Incremental done — fetched=${fixtures.length} upserted=${upserted} lastId=${lastIdSeen}`);
+  return { fixturesFetched: fixtures.length, matchesUpserted: upserted, lastIdSeen };
+}
+
+// ---------------------------------------------------------------------------
+// Layer 3 — Enrich: full entity resolution + events
 // ---------------------------------------------------------------------------
 
 export interface FixtureFirstResult {
   leagueName: string;
   fixturesTotal: number;
-  fixturesNew: number;       // fixtures not seen before (sinceDate filter)
+  fixturesNew: number;
   fixturesFinished: number;
-  fixturesIngested: number;  // finished fixtures with event ingestion attempted
+  fixturesIngested: number;
   eventsTotal: number;
 }
 
 export interface IngestLeagueOptions {
-  /** Cap on finished fixtures to ingest events for (each = 1 API call). */
   maxFinishedFixtures?: number;
-  /** Pagination cap for /fixtures (pages × 25 = fixtures). */
   maxPages?: number;
-  /**
-   * Incremental mode: only process fixtures with starting_at > sinceDate.
-   * Matches are still upserted to capture score updates, but event ingestion
-   * is skipped for fixtures already processed before this date.
-   */
+  /** Skip fixtures whose starting_at ≤ this date (date-based incremental). */
   sinceDate?: Date;
 }
 
 /**
- * Main entry point.
- * Fetches fixtures for a league, upserts all derived entities,
- * then batch-inserts events for finished matches.
+ * Main enrichment entry point — backwards-compatible with seed-leagues.ts.
+ *
+ * Fetches fixtures for a league (with includes: participants, scores, state),
+ * upserts League → Country → Season → Teams → Match, then batch-inserts
+ * MatchEvents for finished matches.
+ *
+ * Internally uses fetchFixturesSmart() which auto-detects and caches the
+ * best available API strategy.
  */
 export async function ingestLeagueViaFixtures(
   leagueExternalId: number,
   opts: IngestLeagueOptions = {},
 ): Promise<FixtureFirstResult> {
   const maxFinished = opts.maxFinishedFixtures ?? 5;
-  const maxPages = opts.maxPages ?? 4;
-  const sinceDate = opts.sinceDate ?? null;
+  const maxPages    = opts.maxPages ?? 4;
+  const sinceDate   = opts.sinceDate ?? null;
 
-  // 1. Fetch fixtures
-  const fixtures = await fetchFixturesByLeague(leagueExternalId, maxPages);
+  // --- Fetch with smart strategy (probe + cache) ---
+  const fixtures = await fetchFixturesSmart({ leagueId: leagueExternalId, maxPages });
 
-  // 2. Upsert league
-  const league = await upsertLeagueFromFixture(leagueExternalId);
+  // --- Upsert league (one API call per league) ---
+  const league = await upsertLeague(leagueExternalId);
 
   const result: FixtureFirstResult = {
-    leagueName: league.name,
-    fixturesTotal: fixtures.length,
-    fixturesNew: 0,
+    leagueName:       league.name,
+    fixturesTotal:    fixtures.length,
+    fixturesNew:      0,
     fixturesFinished: 0,
     fixturesIngested: 0,
-    eventsTotal: 0,
+    eventsTotal:      0,
   };
 
-  // 3. Incremental filter — skip fixtures we've already fully processed
-  const newFixtures = sinceDate
-    ? fixtures.filter((f) => {
-        if (!f.starting_at) return true; // unknown date → always process
-        return new Date(f.starting_at) > sinceDate;
-      })
+  // --- Date-based incremental filter ---
+  const workset = sinceDate
+    ? fixtures.filter((f) => !f.starting_at || new Date(f.starting_at) > sinceDate)
     : fixtures;
 
-  result.fixturesNew = newFixtures.length;
+  result.fixturesNew = workset.length;
 
-  // 4. Upsert season + teams + match for ALL new fixtures
-  for (const fixture of newFixtures) {
+  // --- Upsert Season + Teams + Match for all fixtures in workset ---
+  for (const fixture of workset) {
     try {
-      const season = await upsertSeasonFromFixture(fixture, league.id);
+      const season = await upsertSeason(fixture, league.id);
       const { homeTeam, awayTeam } = resolveParticipants(fixture.participants);
-
       const [homeDb, awayDb] = await Promise.all([
         homeTeam ? upsertTeam(homeTeam) : null,
         awayTeam ? upsertTeam(awayTeam) : null,
       ]);
-
       await upsertMatch(fixture, season?.id ?? null, homeDb?.id ?? null, awayDb?.id ?? null);
-    } catch {
-      // non-fatal — skip broken fixture
-    }
+    } catch { /* skip broken fixture */ }
   }
 
-  // 5. Batch-insert events for finished matches (most recent first, capped)
-  const finished = newFixtures
+  // --- Enrich finished matches with events (capped, most recent first) ---
+  const finished = workset
     .filter(isFinished)
     .sort((a, b) => {
-      const at = a.starting_at ? new Date(a.starting_at).getTime() : 0;
-      const bt = b.starting_at ? new Date(b.starting_at).getTime() : 0;
-      return bt - at;
+      const ta = a.starting_at ? new Date(a.starting_at).getTime() : 0;
+      const tb = b.starting_at ? new Date(b.starting_at).getTime() : 0;
+      return tb - ta;
     })
     .slice(0, maxFinished);
 
-  result.fixturesFinished = newFixtures.filter(isFinished).length;
+  result.fixturesFinished = workset.filter(isFinished).length;
   result.fixturesIngested = finished.length;
 
   for (const fixture of finished) {
@@ -415,11 +426,8 @@ export async function ingestLeagueViaFixtures(
       if (!dbMatch) continue;
 
       const events = await fetchMatchEvents(fixture.id);
-      const inserted = await batchInsertMatchEvents(events, dbMatch.id);
-      result.eventsTotal += inserted;
-    } catch {
-      // non-fatal
-    }
+      result.eventsTotal += await batchInsertEvents(events, dbMatch.id);
+    } catch { /* non-fatal */ }
   }
 
   return result;
