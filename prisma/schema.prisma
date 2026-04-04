@@ -26,6 +26,12 @@ model Player {
   team            String?
   league          String?
   imagePath       String?  @map("image_path")
+  /**
+   * true  = we already attempted a Sportmonks image fetch for this player.
+   *         Prevents re-fetching players whose image is genuinely unavailable.
+   * false = never fetched (default) — eligible for enrichment.
+   */
+  imageFetched    Boolean  @default(false)
 
   marketValue     Float?
   contractEnd     DateTime?
@@ -58,6 +64,8 @@ model Player {
   @@index([source])
   @@unique([source, externalId])
   @@index([positions], type: Gin)
+  @@index([imageFetched])           // fast lookup for enrichment queue
+  @@index([imagePath, imageFetched]) // partial scan: WHERE imagePath IS NULL AND imageFetched = false
 }
 
 model PlayerMetrics {

@@ -1,3 +1,11 @@
+-- Player.imageFetched — tracks whether a Sportmonks image fetch has been attempted.
+-- Prevents the enrichment script from re-fetching players whose image is genuinely absent.
+-- Backfill: players that already have an imagePath set are marked as fetched.
+ALTER TABLE "Player" ADD COLUMN IF NOT EXISTS "imageFetched" BOOLEAN NOT NULL DEFAULT false;
+UPDATE "Player" SET "imageFetched" = true WHERE "image_path" IS NOT NULL;
+CREATE INDEX IF NOT EXISTS "Player_imageFetched_idx"            ON "Player"("imageFetched");
+CREATE INDEX IF NOT EXISTS "Player_imagePath_imageFetched_idx"  ON "Player"("image_path","imageFetched");
+
 -- Country
 CREATE TABLE IF NOT EXISTS "Country" (
   "id"         TEXT NOT NULL DEFAULT gen_random_uuid()::text,

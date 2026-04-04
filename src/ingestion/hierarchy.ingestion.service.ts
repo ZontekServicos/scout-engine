@@ -267,6 +267,7 @@ export async function ingestPlayersByTeam(
         age,
         teamDbId: team.id,
         imagePath: player.image_path ?? null,
+        imageFetched: true,   // fetched via team roster — mark as done
       },
       create: {
         slug,
@@ -279,6 +280,7 @@ export async function ingestPlayersByTeam(
         nationality: player.nationality?.name ?? "Unknown",
         team: team.name,
         imagePath: player.image_path ?? null,
+        imageFetched: true,   // created via team roster — mark as done
         league: null,
         attributes: {},
         archetype: {},

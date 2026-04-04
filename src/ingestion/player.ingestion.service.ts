@@ -59,6 +59,7 @@ export async function ingestPlayerFromSportmonks(sportmonksId: number): Promise<
       team: player.team?.name ?? null,
       league: player.league?.name ?? null,
       imagePath: player.image_path ?? null,
+      imageFetched: true,   // we just fetched from Sportmonks — mark as done
       age,
       teamDbId,
     },
@@ -74,6 +75,7 @@ export async function ingestPlayerFromSportmonks(sportmonksId: number): Promise<
       team: player.team?.name ?? null,
       league: player.league?.name ?? null,
       imagePath: player.image_path ?? null,
+      imageFetched: true,   // created directly from Sportmonks — mark as done
       attributes: {},
       archetype: {},
       teamDbId,

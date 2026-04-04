@@ -32,7 +32,11 @@
     "validate:api:leagues": "ts-node src/scripts/validate-api.ts --leagues",
     "detect:capabilities": "ts-node src/scripts/detect-league-capabilities.ts",
     "detect:capabilities:refresh": "ts-node src/scripts/detect-league-capabilities.ts --refresh",
-    "detect:capabilities:cached": "ts-node src/scripts/detect-league-capabilities.ts --cached"
+    "detect:capabilities:cached": "ts-node src/scripts/detect-league-capabilities.ts --cached",
+    "enrich:images": "ts-node src/scripts/enrich-player-images.ts",
+    "enrich:images:dry": "ts-node src/scripts/enrich-player-images.ts --dry-run",
+    "enrich:images:phase1": "ts-node src/scripts/enrich-player-images.ts --phase1-only",
+    "enrich:images:phase2": "ts-node src/scripts/enrich-player-images.ts --phase2-only"
   },
   "dependencies": {
     "@prisma/client": "^6.19.2",
