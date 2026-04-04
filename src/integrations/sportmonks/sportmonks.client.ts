@@ -17,6 +17,7 @@ import type {
   SportmonksLeague,
   SportmonksSeason,
   SportmonksTeam,
+  SportmonksSquadEntry,
   SportmonksFixture,
   SportmonksEvent,
 } from "./sportmonks.types";
@@ -342,14 +343,59 @@ export async function searchPlayerByName(name: string): Promise<SportmonksPlayer
   return raw.data ?? [];
 }
 
+/**
+ * Fetch players (squad) for a team in a season via the squads endpoint.
+ * Uses GET /squads/seasons/{seasonId}/teams/{teamId} which is available
+ * on all plans (no filter restrictions).
+ *
+ * Stats are embedded via include=player.statistics.details.
+ * Returns the same SportmonksPlayer shape expected by ingestPlayersByTeam().
+ */
 export async function fetchPlayersByTeam(
   teamId: number,
   seasonId: number,
 ): Promise<SportmonksPlayer[]> {
-  return smGetAll<SportmonksPlayer>("/players", {
-    filters: { team_id: teamId, season_id: seasonId },
-    include: ["nationality", "position", "detailedPosition", "statistics.details"],
-  });
+  const entries = await smGetAll<SportmonksSquadEntry>(
+    `/squads/seasons/${seasonId}/teams/${teamId}`,
+    {
+      include: [
+        "player",
+        "player.statistics.details",
+        "player.nationality",
+        "player.position",
+        "player.detailedPosition",
+      ],
+    },
+  );
+
+  // Map squad entries → SportmonksPlayer shape
+  return entries
+    .filter((e) => e.player != null)
+    .map((e) => {
+      const p = e.player!;
+      // Flatten stats from all seasons (most recent season first from API)
+      const stats = p.statistics?.flatMap((s) => s.details ?? []) ?? [];
+
+      return {
+        player: {
+          id: p.id,
+          display_name: p.display_name ?? `Player #${e.player_id}`,
+          firstname: p.firstname ?? null,
+          lastname: p.lastname ?? null,
+          date_of_birth: p.date_of_birth ?? null,
+          height: p.height ?? null,
+          weight: p.weight ?? null,
+          foot: p.foot ?? null,
+          image_path: p.image_path ?? null,
+          contract_until: p.contract_until ?? null,
+          market_value: p.market_value ?? null,
+          nationality: p.nationality ?? null,
+          position: p.position ?? null,
+          detailedPosition: p.detailedPosition ?? null,
+        },
+        stats,
+      } satisfies SportmonksPlayer;
+    });
 }
 
 // ---------------------------------------------------------------------------

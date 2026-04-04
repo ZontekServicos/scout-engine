@@ -138,6 +138,44 @@ export interface SportmonksTeam {
 }
 
 // ---------------------------------------------------------------------------
+// Squad types (GET /squads/seasons/{seasonId}/teams/{teamId})
+// ---------------------------------------------------------------------------
+
+export interface SportmonksSquadPlayerStatistic {
+  season_id?: number | null;
+  details?: SportmonksStat[] | null;
+}
+
+export interface SportmonksSquadPlayerDetails {
+  id: number;
+  display_name?: string | null;
+  firstname?: string | null;
+  lastname?: string | null;
+  date_of_birth?: string | null;
+  height?: number | null;
+  weight?: number | null;
+  foot?: "left" | "right" | "both" | null;
+  image_path?: string | null;
+  contract_until?: string | null;
+  market_value?: number | null;
+  nationality?: { name: string } | null;
+  position?: { name: string } | null;
+  detailedPosition?: { name: string } | null;
+  // stats come as nested statistics → details
+  statistics?: SportmonksSquadPlayerStatistic[] | null;
+}
+
+export interface SportmonksSquadEntry {
+  player_id: number;
+  team_id?: number | null;
+  season_id?: number | null;
+  position_id?: number | null;
+  detailed_position_id?: number | null;
+  number?: number | null;
+  player?: SportmonksSquadPlayerDetails | null;
+}
+
+// ---------------------------------------------------------------------------
 // Match (fixture) types
 // ---------------------------------------------------------------------------
 
