@@ -425,6 +425,49 @@ export async function ingestPlayersByTeam(
 }
 
 // ---------------------------------------------------------------------------
+// Direct cascade: League + known Season ID → Teams → Players
+//
+// Use this when fetchSeasonsByLeague returns 400 (filter not available on plan).
+// Pass the season ID directly (e.g. from leagues.json currentSeasonId field).
+// ---------------------------------------------------------------------------
+
+export async function ingestLeagueWithKnownSeason(
+  sportmonksLeagueId: number,
+  sportmonksSeasonId: number,
+): Promise<{ league: string; season: string; teams: number; players: number }> {
+  // 1. Upsert league
+  const league = await ingestLeague(sportmonksLeagueId);
+
+  // 2. Upsert season directly via /seasons/:id (no filter needed)
+  const season = await ingestSeason(sportmonksSeasonId);
+
+  // Link season → league if not already set
+  if (!season.leagueId) {
+    await prisma.season.update({
+      where: { id: season.id },
+      data: { leagueId: league.id },
+    });
+  }
+
+  // 3. Ingest teams for this season
+  const teams = await ingestTeamsBySeason(sportmonksSeasonId);
+
+  // 4. Ingest players for each team
+  let totalPlayers = 0;
+  for (const team of teams) {
+    const players = await ingestPlayersByTeam(team.externalId, sportmonksSeasonId);
+    totalPlayers += players.length;
+  }
+
+  return {
+    league: league.name,
+    season: season.name,
+    teams: teams.length,
+    players: totalPlayers,
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Full cascade: League → Seasons → Teams → Players
 // ---------------------------------------------------------------------------
 

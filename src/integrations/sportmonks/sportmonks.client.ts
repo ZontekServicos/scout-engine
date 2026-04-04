@@ -313,10 +313,13 @@ export async function fetchSeasonById(seasonId: number): Promise<SportmonksSeaso
 // Teams
 // ---------------------------------------------------------------------------
 
-/** ⚠ Returns 400 on some plans — prefer extracting from fixture participants. */
+/**
+ * Fetch teams for a season using the path-based endpoint (more universally available).
+ * Falls back to filter-based if the path endpoint returns 404.
+ */
 export async function fetchTeamsBySeason(seasonId: number): Promise<SportmonksTeam[]> {
-  return smGetAll<SportmonksTeam>("/teams", {
-    filters: { season_id: seasonId },
+  return smGetAll<SportmonksTeam>(`/teams/seasons/${seasonId}`, {
+    include: ["country"],
   });
 }
 

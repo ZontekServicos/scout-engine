@@ -62,7 +62,9 @@ export const SM_TYPE_ID = {
   RATING: 118,
 
   // Discipline
-  YELLOW_CARDS: 84,
+  // Note: 84/83 were placeholders — Sportmonks v3 confirmed card type_ids:
+  //   yellow card event type_id varies; use these until API validates
+  YELLOW_CARDS: 84,   // ⚠ collides with SHOTS_TOTAL — update when API confirms
   RED_CARDS: 83,
   FOULS_COMMITTED: 95,
   FOULS_DRAWN: 96,
