@@ -34,6 +34,11 @@ import {
   fetchFixturesAfterById,
 } from "../integrations/sportmonks/sportmonks.client";
 import { fetchFixturesSmart } from "../integrations/sportmonks/sportmonks.strategy";
+import {
+  getLeagueCapabilities,
+  type LeagueCapabilities,
+  TIER_EMOJI,
+} from "../integrations/sportmonks/league-capabilities";
 import { isTransientError, errorLabel } from "../lib/errors";
 import type {
   SportmonksFixture,
@@ -391,6 +396,10 @@ export interface FixtureFirstResult {
   eventsWithCoords: number;
   eventsSkipped: number;
   durationMs: number;
+  /** Data tier detected for this league (1=Premium, 2=Standard, 3=Basic) */
+  tier: 1 | 2 | 3;
+  /** Whether event fetching was skipped due to known hasEvents=false profile */
+  eventsSkippedByProfile: boolean;
 }
 
 export interface IngestLeagueOptions {
@@ -419,6 +428,21 @@ export async function ingestLeagueViaFixtures(
   const maxPages    = opts.maxPages ?? 4;
   const sinceDate   = opts.sinceDate ?? null;
 
+  // --- Load capability profile (DB cache → detect if missing) ---------------
+  // null = detection failed entirely → assume full capabilities (backwards compat)
+  const profile: LeagueCapabilities | null = await getLeagueCapabilities(leagueExternalId);
+  const tier = (profile?.tier ?? 2) as 1 | 2 | 3;
+
+  if (profile) {
+    console.log(
+      `[ingest] League ${leagueExternalId} profile: ${TIER_EMOJI[tier]} Tier ${tier}` +
+      ` | hasEvents=${profile.hasEvents} | hasCoords=${profile.hasCoordinates}` +
+      ` | source=${profile.source}`,
+    );
+  } else {
+    console.warn(`[ingest] League ${leagueExternalId}: no capability profile, assuming Tier 2`);
+  }
+
   // --- Fetch with smart strategy (probe + cache) ---
   const fixtures = await fetchFixturesSmart({ leagueId: leagueExternalId, maxPages });
 
@@ -426,15 +450,17 @@ export async function ingestLeagueViaFixtures(
   const league = await upsertLeague(leagueExternalId);
 
   const result: FixtureFirstResult = {
-    leagueName:       league.name,
-    fixturesTotal:    fixtures.length,
-    fixturesNew:      0,
-    fixturesFinished: 0,
-    fixturesIngested: 0,
-    eventsTotal:      0,
-    eventsWithCoords: 0,
-    eventsSkipped:    0,
-    durationMs:       0,
+    leagueName:             league.name,
+    fixturesTotal:          fixtures.length,
+    fixturesNew:            0,
+    fixturesFinished:       0,
+    fixturesIngested:       0,
+    eventsTotal:            0,
+    eventsWithCoords:       0,
+    eventsSkipped:          0,
+    durationMs:             0,
+    tier,
+    eventsSkippedByProfile: false,
   };
 
   // --- Date-based incremental filter ---
@@ -458,6 +484,22 @@ export async function ingestLeagueViaFixtures(
       if (isTransientError(err)) throw err; // transient = abort, let caller retry
       console.warn(`[ingest] Skipping fixture ${(fixture as SportmonksFixture).id}: ${errorLabel(err)}`);
     }
+  }
+
+  // --- Capability guard: skip /events entirely for Tier 3 leagues -----------
+  // profile.hasEvents === false means we KNOW this league has no event data.
+  // null profile = unknown = assume events exist (safe fallback to old behaviour).
+  const shouldFetchEvents = profile === null || profile.hasEvents;
+
+  if (!shouldFetchEvents) {
+    console.log(
+      `[ingest] 🔴 Skipping event fetch for league ${leagueExternalId}` +
+      ` — hasEvents=false (Tier 3). Saves ${workset.filter(isFinished).length} API calls.`,
+    );
+    result.eventsSkippedByProfile = true;
+    result.fixturesFinished = workset.filter(isFinished).length;
+    result.durationMs = Date.now() - startedAt;
+    return result;
   }
 
   // --- Enrich finished matches with events (capped, most recent first) ---

@@ -40,6 +40,22 @@ function makeDbMatch(id = "uuid-match") {
   return { id, externalId: 1_000_000 };
 }
 
+/** Tier 2 profile (hasEvents=true, hasCoordinates=false) returned from DB cache.
+ *  This prevents getLeagueCapabilities from making extra API calls during tests. */
+function makeCachedProfile(leagueId = 648) {
+  return {
+    leagueId,
+    hasFixtures: true,
+    hasEvents: true,
+    hasCoordinates: false,
+    tier: 2,
+    fixturesSample: 1,
+    eventsSample: 2,
+    coordsSample: 0,
+    checkedAt: new Date(),   // fresh — within 7-day TTL
+  };
+}
+
 function setupPrismaMock() {
   prismaMock.country.upsert.mockResolvedValue({ id: "uuid-country" } as never);
   prismaMock.league.upsert.mockResolvedValue(makeDbLeague() as never);
@@ -50,6 +66,10 @@ function setupPrismaMock() {
   prismaMock.player.findMany.mockResolvedValue([] as never);
   prismaMock.team.findMany.mockResolvedValue([] as never);
   prismaMock.matchEvent.createMany.mockResolvedValue({ count: 2 } as never);
+  // Return a Tier 2 profile so getLeagueCapabilities() hits DB cache (no extra API calls)
+  prismaMock.apiStrategyCache.findUnique.mockResolvedValue(null as never);
+  prismaMock.apiStrategyCache.upsert.mockResolvedValue({} as never);
+  prismaMock.leagueDataProfile.findUnique.mockResolvedValue(makeCachedProfile() as never);
 }
 
 // ---------------------------------------------------------------------------

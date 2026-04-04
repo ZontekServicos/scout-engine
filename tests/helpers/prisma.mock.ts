@@ -36,6 +36,7 @@ export const prismaMock = {
   playerStats:         makeModel(),
   ingestionCheckpoint: makeModel(),
   apiStrategyCache:    makeModel(),
+  leagueDataProfile:   makeModel(),
   $transaction:        jest.fn(),
   $disconnect:         jest.fn(),
 };

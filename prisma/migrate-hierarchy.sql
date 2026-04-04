@@ -143,3 +143,22 @@ CREATE TABLE IF NOT EXISTS "ApiStrategyCache" (
   "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
   CONSTRAINT "ApiStrategyCache_pkey" PRIMARY KEY ("key")
 );
+
+-- LeagueDataProfile — per-league capability cache (fixtures / events / coordinates)
+-- Drives pipeline decisions: skip /events fetch when hasEvents=false
+-- tier: 1=Premium (coords), 2=Standard (events), 3=Basic (fixtures only)
+CREATE TABLE IF NOT EXISTS "LeagueDataProfile" (
+  "leagueId"       INTEGER NOT NULL,
+  "hasFixtures"    BOOLEAN NOT NULL DEFAULT false,
+  "hasEvents"      BOOLEAN NOT NULL DEFAULT false,
+  "hasCoordinates" BOOLEAN NOT NULL DEFAULT false,
+  "tier"           INTEGER NOT NULL DEFAULT 3,
+  "fixturesSample" INTEGER NOT NULL DEFAULT 0,
+  "eventsSample"   INTEGER NOT NULL DEFAULT 0,
+  "coordsSample"   INTEGER NOT NULL DEFAULT 0,
+  "checkedAt"      TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT "LeagueDataProfile_pkey" PRIMARY KEY ("leagueId")
+);
+CREATE INDEX IF NOT EXISTS "LeagueDataProfile_tier_idx"           ON "LeagueDataProfile"("tier");
+CREATE INDEX IF NOT EXISTS "LeagueDataProfile_hasCoordinates_idx" ON "LeagueDataProfile"("hasCoordinates");
+CREATE INDEX IF NOT EXISTS "LeagueDataProfile_hasEvents_idx"      ON "LeagueDataProfile"("hasEvents");

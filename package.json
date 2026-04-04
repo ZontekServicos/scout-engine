@@ -26,7 +26,13 @@
     "seed:leagues": "cross-env NODE_ENV=development ts-node prisma/seed-leagues.ts",
     "seed:brazil:validated": "cross-env NODE_ENV=development ts-node prisma/seed-brazil-validated.ts",
     "parse:leagues": "ts-node src/scripts/parse-leagues.ts",
-    "validate:brazil": "ts-node src/scripts/validate-brazil-leagues.ts"
+    "validate:brazil": "ts-node src/scripts/validate-brazil-leagues.ts",
+    "validate:api": "ts-node src/scripts/validate-api.ts",
+    "validate:api:debug": "ts-node src/scripts/validate-api.ts --debug",
+    "validate:api:leagues": "ts-node src/scripts/validate-api.ts --leagues",
+    "detect:capabilities": "ts-node src/scripts/detect-league-capabilities.ts",
+    "detect:capabilities:refresh": "ts-node src/scripts/detect-league-capabilities.ts --refresh",
+    "detect:capabilities:cached": "ts-node src/scripts/detect-league-capabilities.ts --cached"
   },
   "dependencies": {
     "@prisma/client": "^6.19.2",

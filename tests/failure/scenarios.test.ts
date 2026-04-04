@@ -77,6 +77,14 @@ describe("Failure scenarios", () => {
     prismaMock.player.findMany.mockResolvedValue([] as never);
     prismaMock.team.findMany.mockResolvedValue([] as never);
     prismaMock.matchEvent.createMany.mockResolvedValue({ count: 0 } as never);
+    // Return Tier 2 profile so getLeagueCapabilities() hits DB cache (no extra API calls)
+    prismaMock.apiStrategyCache.findUnique.mockResolvedValue(null as never);
+    prismaMock.apiStrategyCache.upsert.mockResolvedValue({} as never);
+    prismaMock.leagueDataProfile.findUnique.mockResolvedValue({
+      leagueId: 648, hasFixtures: true, hasEvents: true, hasCoordinates: false,
+      tier: 2, fixturesSample: 1, eventsSample: 2, coordsSample: 0,
+      checkedAt: new Date(),
+    } as never);
 
     mockFetch = jest.fn() as jest.MockedFunction<typeof fetch>;
     global.fetch = mockFetch;

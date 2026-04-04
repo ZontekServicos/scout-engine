@@ -362,6 +362,37 @@ model ApiStrategyCache {
   updatedAt DateTime @updatedAt
 }
 
+/**
+ * Per-league capability profile — what data the API actually returns.
+ *
+ * Populated by detect-league-capabilities.ts (or auto-detected during ingest).
+ * Used by the pipeline to skip unnecessary API calls:
+ *   hasEvents=false  → skip /events fetching entirely
+ *   hasCoordinates=false → disable spatial analytics (heatmap etc)
+ *
+ * tier:
+ *   1 = Premium  (fixtures + events + coordinates)
+ *   2 = Standard (fixtures + events, no coordinates)
+ *   3 = Basic    (fixtures only)
+ *
+ * TTL: 7 days — re-detected automatically on next ingest run.
+ */
+model LeagueDataProfile {
+  leagueId       Int      @id             // Sportmonks league ID
+  hasFixtures    Boolean  @default(false)
+  hasEvents      Boolean  @default(false)
+  hasCoordinates Boolean  @default(false)
+  tier           Int      @default(3)     // 1 | 2 | 3
+  fixturesSample Int      @default(0)     // fixture count from detection run
+  eventsSample   Int      @default(0)     // event count from probe fixture
+  coordsSample   Int      @default(0)     // events-with-coords from probe
+  checkedAt      DateTime @updatedAt
+
+  @@index([tier])
+  @@index([hasCoordinates])
+  @@index([hasEvents])
+}
+
 // ---------------------------------------------------------------------------
 // Enums
 // ---------------------------------------------------------------------------
