@@ -43,6 +43,7 @@ const args = process.argv.slice(2);
 
 const DRY_RUN    = args.includes("--dry-run");
 const STALE_ONLY = args.includes("--stale");   // re-enrich players whose stats are > 7 days old
+const FORCE      = args.includes("--force");   // re-enrich ALL players regardless of existing stats
 
 const seasonArg =
   args.find((a) => a.startsWith("--season="))?.split("=")[1] ??
@@ -62,9 +63,10 @@ if (!seasonArg || isNaN(Number(seasonArg))) {
 
 const SEASON_ID = Number(seasonArg);
 
+const batchArgIndex = args.indexOf("--batch");
 const batchArg =
   args.find((a) => a.startsWith("--batch="))?.split("=")[1] ??
-  args[args.indexOf("--batch") + 1];
+  (batchArgIndex !== -1 ? args[batchArgIndex + 1] : undefined);
 const BATCH_SIZE = batchArg ? Number(batchArg) : 200;
 
 const CONCURRENCY = 4;   // parallel API calls (stay under rate limits)
@@ -90,7 +92,7 @@ async function main(): Promise<void> {
   console.log("╚══════════════════════════════════════════════════════╝");
   console.log(`  Season ID  : ${SEASON_ID}`);
   console.log(`  Batch      : ${BATCH_SIZE}  |  Concurrency: ${CONCURRENCY}`);
-  console.log(`  Dry run    : ${DRY_RUN}  |  Stale only: ${STALE_ONLY}`);
+  console.log(`  Dry run    : ${DRY_RUN}  |  Stale only: ${STALE_ONLY}  |  Force: ${FORCE}`);
 
   const result: EnrichResult = {
     total: 0, enriched: 0, noStats: 0, skipped: 0, errors: 0, durationMs: 0,
@@ -99,21 +101,28 @@ async function main(): Promise<void> {
   // Build where clause
   const staleThreshold = new Date(Date.now() - 7 * 24 * 60 * 60 * 1_000);
 
-  const where = {
-    source: "sportmonks",
-    externalId: { not: null },
-    ...(STALE_ONLY
-      ? {
-          OR: [
-            { overallCalculatedAt: null },
-            { overallCalculatedAt: { lt: staleThreshold } },
-          ],
-        }
-      : {
-          // Default: only players with no stats snapshot at all
-          statsSnapshots: { none: {} },
-        }),
-  };
+  const where = FORCE
+    ? // Force: ALL sportmonks players
+      { source: "sportmonks", externalId: { not: null } }
+    : STALE_ONLY
+    ? // Stale: players whose overall is null or older than 7 days
+      {
+        source: "sportmonks",
+        externalId: { not: null },
+        OR: [
+          { overallCalculatedAt: null },
+          { overallCalculatedAt: { lt: staleThreshold } },
+        ],
+      }
+    : // Default: players with NO stats snapshot that has real minutes played
+      //   (catches players imported via squads endpoint with empty stats)
+      {
+        source: "sportmonks",
+        externalId: { not: null },
+        statsSnapshots: {
+          none: { minutes: { gt: 0 } },
+        },
+      };
 
   const total = await prisma.player.count({ where });
   console.log(`\n  Jogadores elegíveis: ${total}`);

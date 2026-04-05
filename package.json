@@ -41,6 +41,7 @@
     "enrich:stats:serie-a": "ts-node src/scripts/enrich-player-stats.ts --season=26763",
     "enrich:stats:serie-b": "ts-node src/scripts/enrich-player-stats.ts --season=27198",
     "enrich:stats:dry": "ts-node src/scripts/enrich-player-stats.ts --season=26763 --dry-run",
+    "enrich:stats:force": "ts-node src/scripts/enrich-player-stats.ts --season=26763 --force",
     "seed:brazil:players": "ts-node src/scripts/seed-brazil-players.ts",
     "seed:brazil:players:dry": "ts-node src/scripts/seed-brazil-players.ts --dry-run",
     "seed:brazil:players:serie-a": "ts-node src/scripts/seed-brazil-players.ts --serie-a-only",
