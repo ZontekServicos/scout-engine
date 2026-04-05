@@ -248,6 +248,7 @@ export async function ingestTeamsBySeason(sportmonksSeasonId: number) {
 export async function ingestPlayersByTeam(
   sportmonksTeamId: number,
   sportmonksSeasonId: number,
+  leagueName?: string | null,
 ) {
   // Ensure team and season exist
   const [team, season] = await Promise.all([
@@ -285,9 +286,15 @@ export async function ingestPlayersByTeam(
       .replace(/[\u0300-\u036f]/g, "");
     const position = player.position?.name ?? player.detailedPosition?.name ?? null;
 
-    // Calculate overall from stats
+    // Only calculate overall when we have real stats (squad endpoint often returns empty)
     const normalized = normalizeStats(stats);
-    const overallResult = calculateOverall(normalized, position);
+    const hasRealStats =
+      normalized.minutesPlayed > 0 ||
+      normalized.goals         > 0 ||
+      normalized.assists       > 0 ||
+      normalized.tackles       > 0 ||
+      normalized.passesTotal   > 0;
+    const overallResult = hasRealStats ? calculateOverall(normalized, position) : null;
 
     // Derive contract end from API field
     const contractEnd = player.contract_until ? new Date(player.contract_until) : null;
@@ -298,6 +305,7 @@ export async function ingestPlayersByTeam(
         name,
         nameNormalized,
         team: team.name,
+        league: leagueName ?? null,
         age,
         teamDbId: team.id,
         imagePath: player.image_path ?? null,
@@ -307,19 +315,19 @@ export async function ingestPlayersByTeam(
         foot: player.foot ?? null,
         marketValue: player.market_value ?? null,
         contractEnd,
-        overall: overallResult.overall,
-        overallPace:        overallResult.breakdown.pace,
-        overallShooting:    overallResult.breakdown.shooting,
-        overallPassing:     overallResult.breakdown.passing,
-        overallDribbling:   overallResult.breakdown.dribbling,
-        overallDefending:   overallResult.breakdown.defending,
-        overallPhysical:    overallResult.breakdown.physical,
-        overallGkDiving:    overallResult.breakdown.gkDiving    ?? null,
-        overallGkHandling:  overallResult.breakdown.gkHandling  ?? null,
-        overallGkKicking:   overallResult.breakdown.gkKicking   ?? null,
-        overallGkReflex:    overallResult.breakdown.gkReflex    ?? null,
-        overallGkPositioning: overallResult.breakdown.gkPositioning ?? null,
-        overallCalculatedAt: new Date(),
+        overall:              overallResult?.overall              ?? null,
+        overallPace:          overallResult?.breakdown.pace       ?? null,
+        overallShooting:      overallResult?.breakdown.shooting   ?? null,
+        overallPassing:       overallResult?.breakdown.passing    ?? null,
+        overallDribbling:     overallResult?.breakdown.dribbling  ?? null,
+        overallDefending:     overallResult?.breakdown.defending  ?? null,
+        overallPhysical:      overallResult?.breakdown.physical   ?? null,
+        overallGkDiving:      overallResult?.breakdown.gkDiving       ?? null,
+        overallGkHandling:    overallResult?.breakdown.gkHandling     ?? null,
+        overallGkKicking:     overallResult?.breakdown.gkKicking      ?? null,
+        overallGkReflex:      overallResult?.breakdown.gkReflex       ?? null,
+        overallGkPositioning: overallResult?.breakdown.gkPositioning  ?? null,
+        overallCalculatedAt:  overallResult ? new Date() : null,
       },
       create: {
         slug,
@@ -331,6 +339,7 @@ export async function ingestPlayersByTeam(
         age,
         nationality: player.nationality?.name ?? "Unknown",
         team: team.name,
+        league: leagueName ?? null,
         imagePath: player.image_path ?? null,
         imageFetched: true,
         height: player.height ?? null,
@@ -338,23 +347,22 @@ export async function ingestPlayersByTeam(
         foot: player.foot ?? null,
         marketValue: player.market_value ?? null,
         contractEnd,
-        league: null,
         attributes: {},
         archetype: {},
         teamDbId: team.id,
-        overall: overallResult.overall,
-        overallPace:        overallResult.breakdown.pace,
-        overallShooting:    overallResult.breakdown.shooting,
-        overallPassing:     overallResult.breakdown.passing,
-        overallDribbling:   overallResult.breakdown.dribbling,
-        overallDefending:   overallResult.breakdown.defending,
-        overallPhysical:    overallResult.breakdown.physical,
-        overallGkDiving:    overallResult.breakdown.gkDiving    ?? null,
-        overallGkHandling:  overallResult.breakdown.gkHandling  ?? null,
-        overallGkKicking:   overallResult.breakdown.gkKicking   ?? null,
-        overallGkReflex:    overallResult.breakdown.gkReflex    ?? null,
-        overallGkPositioning: overallResult.breakdown.gkPositioning ?? null,
-        overallCalculatedAt: new Date(),
+        overall:              overallResult?.overall              ?? null,
+        overallPace:          overallResult?.breakdown.pace       ?? null,
+        overallShooting:      overallResult?.breakdown.shooting   ?? null,
+        overallPassing:       overallResult?.breakdown.passing    ?? null,
+        overallDribbling:     overallResult?.breakdown.dribbling  ?? null,
+        overallDefending:     overallResult?.breakdown.defending  ?? null,
+        overallPhysical:      overallResult?.breakdown.physical   ?? null,
+        overallGkDiving:      overallResult?.breakdown.gkDiving       ?? null,
+        overallGkHandling:    overallResult?.breakdown.gkHandling     ?? null,
+        overallGkKicking:     overallResult?.breakdown.gkKicking      ?? null,
+        overallGkReflex:      overallResult?.breakdown.gkReflex       ?? null,
+        overallGkPositioning: overallResult?.breakdown.gkPositioning  ?? null,
+        overallCalculatedAt:  overallResult ? new Date() : null,
       },
     });
 
@@ -452,10 +460,10 @@ export async function ingestLeagueWithKnownSeason(
   // 3. Ingest teams for this season
   const teams = await ingestTeamsBySeason(sportmonksSeasonId);
 
-  // 4. Ingest players for each team
+  // 4. Ingest players for each team (pass league name so it's stored on each player)
   let totalPlayers = 0;
   for (const team of teams) {
-    const players = await ingestPlayersByTeam(team.externalId, sportmonksSeasonId);
+    const players = await ingestPlayersByTeam(team.externalId, sportmonksSeasonId, league.name);
     totalPlayers += players.length;
   }
 

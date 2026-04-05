@@ -195,10 +195,24 @@ async function main(): Promise<void> {
 
             if (!hasStats) {
               result.noStats++;
-              // Still save an empty snapshot to avoid re-fetching endlessly
+              // No real stats — null out any bogus overall from squad ingestion
               await prisma.player.update({
                 where: { id: player.id },
-                data: { overallCalculatedAt: new Date() },
+                data: {
+                  overall:              null,
+                  overallPace:          null,
+                  overallShooting:      null,
+                  overallPassing:       null,
+                  overallDribbling:     null,
+                  overallDefending:     null,
+                  overallPhysical:      null,
+                  overallGkDiving:      null,
+                  overallGkHandling:    null,
+                  overallGkKicking:     null,
+                  overallGkReflex:      null,
+                  overallGkPositioning: null,
+                  overallCalculatedAt:  new Date(),
+                },
               });
               return;
             }
