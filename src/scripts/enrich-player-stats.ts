@@ -67,9 +67,10 @@ const batchArgIndex = args.indexOf("--batch");
 const batchArg =
   args.find((a) => a.startsWith("--batch="))?.split("=")[1] ??
   (batchArgIndex !== -1 ? args[batchArgIndex + 1] : undefined);
-const BATCH_SIZE = batchArg ? Number(batchArg) : 200;
+const BATCH_SIZE = batchArg ? Number(batchArg) : 100;
 
-const CONCURRENCY = 4;   // parallel API calls (stay under rate limits)
+const CONCURRENCY = 1;   // sequential — avoids 429 rate limit on Sportmonks
+const DELAY_MS    = 400; // ms between requests
 
 // ---------------------------------------------------------------------------
 // Main
@@ -102,8 +103,13 @@ async function main(): Promise<void> {
   const staleThreshold = new Date(Date.now() - 7 * 24 * 60 * 60 * 1_000);
 
   const where = FORCE
-    ? // Force: ALL sportmonks players
-      { source: "sportmonks", externalId: { not: null } }
+    ? // Force: players that have a stats snapshot for this specific season
+      //   (avoids re-processing players from other leagues on --force)
+      {
+        source: "sportmonks",
+        externalId: { not: null },
+        statsSnapshots: { some: { seasonId: { not: null } } },
+      }
     : STALE_ONLY
     ? // Stale: players whose overall is null or older than 7 days
       {
@@ -292,6 +298,7 @@ async function main(): Promise<void> {
             });
 
             result.enriched++;
+            await sleep(DELAY_MS);
 
             if (result.enriched % 20 === 0) {
               console.log(`    … ${result.enriched} enriquecidos até agora`);
