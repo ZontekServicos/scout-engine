@@ -171,13 +171,19 @@ async function main(): Promise<void> {
 
           try {
             // 1. Fetch stats from Sportmonks
+            // GET /players/{id}?include=statistics.details returns:
+            //   { id, display_name, ..., statistics: [{ season_id, details: SportmonksStat[] }] }
+            // We must flatMap the groups → flat SportmonksStat[] for normalizeStats.
             const raw = await fetchPlayerStatsBySeason(
               Number(player.externalId),
               SEASON_ID,
             );
 
-            const stats = (raw as any).stats ?? (raw as any).statistics ?? [];
-            const normalized = normalizeStats(Array.isArray(stats) ? stats : []);
+            const statisticsGroups: any[] = (raw as any).statistics ?? [];
+            const stats: any[] = Array.isArray(statisticsGroups)
+              ? statisticsGroups.flatMap((g: any) => g.details ?? [])
+              : [];
+            const normalized = normalizeStats(stats);
 
             // 2. Check if we actually got useful stats
             const hasStats =
