@@ -335,6 +335,21 @@ export async function fetchPlayerWithStats(playerId: number): Promise<Sportmonks
   return raw.data;
 }
 
+/**
+ * Fetch a player's stats filtered to a specific season.
+ * Uses filters=playerStatisticSeasons:{seasonId} per Sportmonks v3 docs.
+ */
+export async function fetchPlayerStatsBySeason(
+  playerId: number,
+  seasonId: number,
+): Promise<SportmonksPlayer> {
+  const raw = await smGet<{ data: SportmonksPlayer }>(`/players/${playerId}`, {
+    include: ["nationality", "position", "detailedPosition", "statistics.details"],
+    filters: { playerStatisticSeasons: seasonId },
+  });
+  return raw.data;
+}
+
 export async function searchPlayerByName(name: string): Promise<SportmonksPlayer[]> {
   const raw = await smGet<{ data: SportmonksPlayer[] }>(
     `/players/search/${encodeURIComponent(name)}`,
