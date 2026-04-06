@@ -103,12 +103,14 @@ async function main(): Promise<void> {
   const staleThreshold = new Date(Date.now() - 7 * 24 * 60 * 60 * 1_000);
 
   const where = FORCE
-    ? // Force: players that have a stats snapshot for this specific season
-      //   (avoids re-processing players from other leagues on --force)
+    ? // Force: only players whose team participated in the target season
+      //   (prevents nulling overalls of players from other leagues)
       {
         source: "sportmonks",
         externalId: { not: null },
-        statsSnapshots: { some: { seasonId: { not: null } } },
+        dbTeam: {
+          seasons: { some: { externalId: SEASON_ID } },
+        },
       }
     : STALE_ONLY
     ? // Stale: players whose overall is null or older than 7 days
