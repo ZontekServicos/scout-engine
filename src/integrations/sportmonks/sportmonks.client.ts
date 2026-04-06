@@ -350,6 +350,31 @@ export async function fetchPlayerStatsBySeason(
   return raw.data;
 }
 
+/**
+ * Fetch a player's stats for multiple seasons in a single API call.
+ *
+ * Sportmonks v3 supports comma-separated season IDs:
+ *   filters=playerStatisticSeasons:id1,id2,id3
+ *
+ * Response shape:
+ *   { data: { ..., statistics: [{ season_id: id1, details: [...] }, { season_id: id2, details: [...] }] } }
+ *
+ * Each element in `statistics[]` corresponds to one season. This lets us
+ * retrieve historical data for multiple seasons without extra API calls.
+ */
+export async function fetchPlayerStatsMultiSeason(
+  playerId: number,
+  seasonIds: number[],
+): Promise<SportmonksPlayer> {
+  if (seasonIds.length === 0) throw new Error("seasonIds must not be empty");
+
+  const raw = await smGet<{ data: SportmonksPlayer }>(`/players/${playerId}`, {
+    include: ["nationality", "position", "detailedPosition", "statistics.details"],
+    filters: { playerStatisticSeasons: seasonIds },
+  });
+  return raw.data;
+}
+
 export async function searchPlayerByName(name: string): Promise<SportmonksPlayer[]> {
   const raw = await smGet<{ data: SportmonksPlayer[] }>(
     `/players/search/${encodeURIComponent(name)}`,
