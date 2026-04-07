@@ -52,10 +52,11 @@ import * as path from "path";
 dotenv.config({ path: path.resolve(__dirname, "../../.env") });
 
 import pLimit from "p-limit";
+import { Prisma } from "@prisma/client";
 import { prisma } from "../lib/prisma";
 import { fetchPlayerStatsMultiSeason } from "../integrations/sportmonks/sportmonks.client";
 import { normalizeStats, type RawStats } from "../integrations/sportmonks/pipeline/normalize-stats";
-import { calculateOverall, MIN_MINUTES_RELIABLE } from "../analytics/overall.engine";
+import { calculateOverall, MIN_MINUTES_RELIABLE, type LeagueContext } from "../analytics/overall.engine";
 
 // ---------------------------------------------------------------------------
 // CLI args
@@ -101,6 +102,20 @@ const BATCH_SIZE = batchArg ? Number(batchArg) : 100;
 
 const CONCURRENCY = 1;    // sequential — avoids 429 rate limit
 const DELAY_MS    = 400;  // ms between requests
+
+// ---------------------------------------------------------------------------
+// League context — auto-detected from primary season ID
+// ---------------------------------------------------------------------------
+const SERIE_A_SEASON_IDS = new Set([26763, 25184, 23265]);
+const SERIE_B_SEASON_IDS = new Set([27198, 25185, 23291]);
+
+function detectLeagueContext(primarySeasonId: number): LeagueContext {
+  if (SERIE_A_SEASON_IDS.has(primarySeasonId)) return "SERIE_A";
+  if (SERIE_B_SEASON_IDS.has(primarySeasonId)) return "SERIE_B";
+  return "DEFAULT";
+}
+
+const LEAGUE_CONTEXT: LeagueContext = detectLeagueContext(PRIMARY_SEASON_ID);
 
 function sleep(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));
@@ -279,6 +294,7 @@ async function main(): Promise<void> {
 
   const total = await prisma.player.count({ where });
   console.log(`  Jogadores elegíveis: ${total}`);
+  console.log(`  League context     : ${LEAGUE_CONTEXT}`);
 
   if (total === 0) {
     console.log("  Nada a enriquecer.\n");
@@ -299,6 +315,7 @@ async function main(): Promise<void> {
         externalId: true,
         positions:  true,
         name:       true,
+        age:        true,
       },
       skip: offset,
       take: BATCH_SIZE,
@@ -354,6 +371,7 @@ async function main(): Promise<void> {
                 where: { id: player.id },
                 data: {
                   overall:              null,
+                  potential:            null,
                   overallPace:          null,
                   overallShooting:      null,
                   overallPassing:       null,
@@ -366,14 +384,16 @@ async function main(): Promise<void> {
                   overallGkReflex:      null,
                   overallGkPositioning: null,
                   overallCalculatedAt:  new Date(),
+                  dnaScore:             Prisma.JsonNull,
+                  dnaCalculatedAt:      new Date(),
                 },
               });
               return;
             }
 
-            // 4. Calculate overall from merged stats
+            // 4. Calculate overall from merged stats (with age + league context)
             const primaryPosition = player.positions[0] ?? null;
-            const overallResult   = calculateOverall(merged, primaryPosition);
+            const overallResult   = calculateOverall(merged, primaryPosition, player.age, LEAGUE_CONTEXT);
 
             // 5. Upsert PlayerStats snapshot (using merged values)
             await prisma.playerStats.create({
@@ -425,11 +445,12 @@ async function main(): Promise<void> {
               },
             });
 
-            // 6. Update player with overall + breakdown
+            // 6. Update player with overall + breakdown + DNA + potential
             await prisma.player.update({
               where: { id: player.id },
               data: {
                 overall:              overallResult.overall,
+                potential:            overallResult.potential,
                 overallPace:          overallResult.breakdown.pace,
                 overallShooting:      overallResult.breakdown.shooting,
                 overallPassing:       overallResult.breakdown.passing,
@@ -442,6 +463,8 @@ async function main(): Promise<void> {
                 overallGkReflex:      overallResult.breakdown.gkReflex       ?? null,
                 overallGkPositioning: overallResult.breakdown.gkPositioning  ?? null,
                 overallCalculatedAt:  new Date(),
+                dnaScore:             overallResult.dna as unknown as Prisma.InputJsonValue,
+                dnaCalculatedAt:      new Date(),
               },
             });
 

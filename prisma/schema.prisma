@@ -58,6 +58,10 @@ model Player {
   // When the overall was last recalculated from stats
   overallCalculatedAt DateTime?
 
+  // SoccerMind DNA — five-dimensional profile score (impact, intelligence, defensiveIQ, consistency, potential)
+  dnaScore            Json?
+  dnaCalculatedAt     DateTime?
+
   attributes  Json
   archetype   Json
 

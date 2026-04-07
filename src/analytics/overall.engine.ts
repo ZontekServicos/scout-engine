@@ -2,6 +2,7 @@
  * overall.engine.ts
  *
  * Position-aware overall rating calculator (1–99 scale).
+ * Includes DNA scoring: Impact · Intelligence · DefensiveIQ · Consistency · Potential
  *
  * POSITION GROUPS (14 archetypes — matches full Sportmonks taxonomy)
  * ─────────────────────────────────────────────────────────────────────
@@ -29,6 +30,23 @@
  *   4. Each position profile weights the blocks differently.
  *   5. API rating (0–10 scale) adds a 12 % bonus/penalty.
  *   6. < 450 min → soft reliability penalty; no stats → null.
+ *
+ * LEAGUE CONTEXT (volume-stat scaling)
+ * ─────────────────────────────────────────────────────────────────────
+ *   Brazilian leagues have lower per-90 counting stats than European top-5.
+ *   The leagueContext parameter scales the "avg" and "elite" anchors for
+ *   volume (per-90) benchmarks so players are evaluated fairly for their league.
+ *   Percentage-based benchmarks (pass accuracy, duel win rates, etc.) are
+ *   NOT scaled — quality metrics are universal.
+ *
+ * DNA SCORES (SoccerMind Differentiator)
+ * ─────────────────────────────────────────────────────────────────────
+ *   Five dimension profile independent of position weight:
+ *     impact       — scoring + creation threat (goals, xG, assists, xA, shots)
+ *     intelligence — technical decision quality (passes, key passes, prog. passes)
+ *     defensiveIQ  — defensive contribution (tackles, interceptions, recoveries)
+ *     consistency  — reliability proxy (rating + minutes/appearances ratio)
+ *     potential    — age-based ceiling projection (same scale as overall)
  *
  * HOW TO EXTEND
  *   - New Sportmonks position name → add to POSITION_ALIASES below.
@@ -104,13 +122,78 @@ export interface OverallBreakdown {
   gkPositioning?:  number;
 }
 
+/**
+ * Five-dimensional profile score — position-agnostic.
+ * Reveals WHAT KIND of player they are, while overall reveals HOW GOOD.
+ */
+export interface DnaScore {
+  /** Scoring + creation threat (goals, xG, assists, xA, shots on target) */
+  impact:      number;  // 0–100
+  /** Technical decision quality (passes, key passes, progressive passes, vision) */
+  intelligence: number; // 0–100
+  /** Defensive contribution (tackles, interceptions, recoveries, pressures) */
+  defensiveIQ: number;  // 0–100
+  /** Reliability proxy (Sportmonks rating + minutes/game ratio) */
+  consistency: number;  // 0–100
+  /** Age-based ceiling projection (1–99, same scale as overall) */
+  potential:   number;  // 1–99
+}
+
 export interface OverallResult {
   overall:       number;   // 1–99
   breakdown:     OverallBreakdown;
   positionGroup: PositionGroup;
   /** true when player has ≥ MIN_MINUTES_RELIABLE minutes */
   reliable: boolean;
+  /** Five-dimensional DNA profile */
+  dna: DnaScore;
+  /** Age-adjusted ceiling (mirrors dna.potential, convenience field) */
+  potential: number;  // 1–99
 }
+
+// ---------------------------------------------------------------------------
+// League context — scales volume benchmarks for the player's league
+// ---------------------------------------------------------------------------
+
+export type LeagueContext = "SERIE_A" | "SERIE_B" | "DEFAULT";
+
+/**
+ * Volume (per-90) benchmark scale factors per league.
+ * These numbers reflect how Brazilian leagues compare to European top-5:
+ *   - Série A averages ~13% lower volume stats than European reference
+ *   - Série B averages ~20% lower (weaker squads, lower tempo)
+ *
+ * Percentage-based stats (accuracy, success rates) are NOT scaled —
+ * they reflect quality independent of tempo/volume.
+ */
+const LEAGUE_VOLUME_SCALE: Record<LeagueContext, number> = {
+  SERIE_A: 0.87,
+  SERIE_B: 0.80,
+  DEFAULT: 1.00,
+};
+
+/**
+ * Per-90 bench keys that should NOT be scaled even though they're volume stats.
+ * Discipline and GK concession are universal standards.
+ */
+const NO_SCALE_BENCH_KEYS = new Set([
+  "foulsCommitted_p90",
+  "yellowCards_p90",
+  "goalsConceded_p90",
+  "rating",
+  // percentage benches (already non-volume, listed here for clarity)
+  "shotAccuracy",
+  "passAccuracy",
+  "longPassAccuracy",
+  "crossAccuracy",
+  "dribbleSuccessRate",
+  "tackleSuccessRate",
+  "aerialDuelWinRate",
+  "groundDuelWinRate",
+  "pressureSuccessRate",
+  "savePct",
+  "cleanSheetRate",
+]);
 
 // ---------------------------------------------------------------------------
 // Position groups — full Sportmonks taxonomy
@@ -336,7 +419,8 @@ export function classifyPosition(raw: string | null | undefined): PositionGroup 
 
 // ---------------------------------------------------------------------------
 // Benchmarks — [avg per 90, elite per 90] (or absolute where noted)
-// Calibrated against top-5 European league data.
+// Calibrated against top-5 European league data (DEFAULT context).
+// Brazilian leagues use LEAGUE_VOLUME_SCALE to adjust volume benchmarks.
 // ---------------------------------------------------------------------------
 
 interface Bench { avg: number; elite: number; lowerIsBetter?: boolean }
@@ -410,8 +494,20 @@ function clamp(v: number, lo: number, hi: number): number {
   return Math.max(lo, Math.min(hi, v));
 }
 
-function score(value: number, bench: Bench): number {
-  const { avg, elite, lowerIsBetter } = bench;
+/**
+ * Score a value against a benchmark on a 10–99 scale.
+ * Optional leagueScale adjusts the bench anchors for volume p90 stats.
+ */
+function score(value: number, benchKey: string, leagueScale = 1.0): number {
+  const bench = B[benchKey];
+  if (!bench) return 50;
+
+  // Apply league scale only to per-90 volume stats (not percentages, not discipline)
+  let { avg, elite, lowerIsBetter } = bench;
+  if (leagueScale !== 1.0 && !NO_SCALE_BENCH_KEYS.has(benchKey)) {
+    avg   = avg   * leagueScale;
+    elite = elite * leagueScale;
+  }
 
   if (lowerIsBetter) {
     if (value <= elite)      return 99;
@@ -442,85 +538,91 @@ function pct(num: number | null | undefined, den: number | null | undefined): nu
   return (num / den) * 100;
 }
 
+function wavg(values: number[], weights: number[]): number {
+  const total = weights.reduce((a, b) => a + b, 0);
+  if (total === 0) return 0;
+  return values.reduce((acc, v, i) => acc + v * weights[i], 0) / total;
+}
+
 // ---------------------------------------------------------------------------
 // Attribute BLOCKS (six outfield + five GK)
 // ---------------------------------------------------------------------------
 
-function calcPace(s: StatsInput, min: number): number {
-  const dist  = score(p90(s.distanceCovered, min), B.distanceCovered_p90);
-  const sprnt = score(p90(s.sprints, min),          B.sprints_p90);
+function calcPace(s: StatsInput, min: number, ls: number): number {
+  const dist  = score(p90(s.distanceCovered, min), "distanceCovered_p90", ls);
+  const sprnt = score(p90(s.sprints, min),          "sprints_p90", ls);
   return Math.round(dist * 0.40 + sprnt * 0.60);
 }
 
-function calcShooting(s: StatsInput, min: number): number {
-  const g   = score(p90(s.goals, min),           B.goals_p90);
-  const xg  = score(p90(s.xG, min),              B.xG_p90);
-  const sot = score(p90(s.shotsOnTarget, min),    B.shotsOnTarget_p90);
-  const acc = score(pct(s.shotsOnTarget, s.shots), B.shotAccuracy);
+function calcShooting(s: StatsInput, min: number, ls: number): number {
+  const g   = score(p90(s.goals, min),           "goals_p90", ls);
+  const xg  = score(p90(s.xG, min),              "xG_p90", ls);
+  const sot = score(p90(s.shotsOnTarget, min),    "shotsOnTarget_p90", ls);
+  const acc = score(pct(s.shotsOnTarget, s.shots), "shotAccuracy");
   return Math.round(g * 0.30 + xg * 0.30 + sot * 0.20 + acc * 0.20);
 }
 
-function calcPassing(s: StatsInput, min: number): number {
-  const acc  = score(s.passAccuracy ?? 0,              B.passAccuracy);
-  const key  = score(p90(s.keyPasses, min),            B.keyPasses_p90);
-  const prog = score(p90(s.progressivePasses, min),    B.progressivePasses_p90);
-  const vol  = score(p90(s.passes, min),               B.passes_p90);
-  const xa   = score(p90(s.xA, min),                   B.xA_p90);
-  const crs  = score(s.crossAccuracy ?? 0,             B.crossAccuracy);
+function calcPassing(s: StatsInput, min: number, ls: number): number {
+  const acc  = score(s.passAccuracy ?? 0,              "passAccuracy");
+  const key  = score(p90(s.keyPasses, min),            "keyPasses_p90", ls);
+  const prog = score(p90(s.progressivePasses, min),    "progressivePasses_p90", ls);
+  const vol  = score(p90(s.passes, min),               "passes_p90", ls);
+  const xa   = score(p90(s.xA, min),                   "xA_p90", ls);
+  const crs  = score(s.crossAccuracy ?? 0,             "crossAccuracy");
   return Math.round(acc * 0.25 + key * 0.20 + prog * 0.20 + vol * 0.15 + xa * 0.15 + crs * 0.05);
 }
 
-function calcDribbling(s: StatsInput, min: number): number {
-  const dribSucc = score(p90(s.dribblesSuccess, min),              B.dribblesSuccess_p90);
-  const dribRate = score(pct(s.dribblesSuccess, s.dribblesAttempted), B.dribbleSuccessRate);
-  const carries  = score(p90(s.progressiveCarries, min),           B.progressiveCarries_p90);
+function calcDribbling(s: StatsInput, min: number, ls: number): number {
+  const dribSucc = score(p90(s.dribblesSuccess, min),              "dribblesSuccess_p90", ls);
+  const dribRate = score(pct(s.dribblesSuccess, s.dribblesAttempted), "dribbleSuccessRate");
+  const carries  = score(p90(s.progressiveCarries, min),           "progressiveCarries_p90", ls);
   return Math.round(dribSucc * 0.35 + dribRate * 0.35 + carries * 0.30);
 }
 
-function calcDefending(s: StatsInput, min: number): number {
-  const tkl     = score(p90(s.tackles, min),                      B.tackles_p90);
-  const tklRate = score(pct(s.tacklesWon, s.tackles),             B.tackleSuccessRate);
-  const int_    = score(p90(s.interceptions, min),                B.interceptions_p90);
-  const clr     = score(p90(s.clearances, min),                   B.clearances_p90);
-  const blk     = score(p90(s.blocks, min),                       B.blocks_p90);
-  const recov   = score(p90(s.recoveries, min),                   B.recoveries_p90);
-  const aerial  = score(pct(s.aerialDuelsWon, s.aerialDuelsTotal), B.aerialDuelWinRate);
+function calcDefending(s: StatsInput, min: number, ls: number): number {
+  const tkl     = score(p90(s.tackles, min),                      "tackles_p90", ls);
+  const tklRate = score(pct(s.tacklesWon, s.tackles),             "tackleSuccessRate");
+  const int_    = score(p90(s.interceptions, min),                "interceptions_p90", ls);
+  const clr     = score(p90(s.clearances, min),                   "clearances_p90", ls);
+  const blk     = score(p90(s.blocks, min),                       "blocks_p90", ls);
+  const recov   = score(p90(s.recoveries, min),                   "recoveries_p90", ls);
+  const aerial  = score(pct(s.aerialDuelsWon, s.aerialDuelsTotal), "aerialDuelWinRate");
   return Math.round(
     tkl * 0.20 + tklRate * 0.15 + int_ * 0.20 + clr * 0.15 +
     blk * 0.10 + recov  * 0.10  + aerial * 0.10,
   );
 }
 
-function calcPhysical(s: StatsInput, min: number): number {
-  const dist   = score(p90(s.distanceCovered, min),               B.distanceCovered_p90);
-  const aerial = score(pct(s.aerialDuelsWon, s.aerialDuelsTotal), B.aerialDuelWinRate);
-  const ground = score(pct(s.groundDuelsWon, s.duelsTotal),       B.groundDuelWinRate);
-  const foul   = score(p90(s.foulsCommitted, min),                B.foulsCommitted_p90);
+function calcPhysical(s: StatsInput, min: number, ls: number): number {
+  const dist   = score(p90(s.distanceCovered, min),               "distanceCovered_p90", ls);
+  const aerial = score(pct(s.aerialDuelsWon, s.aerialDuelsTotal), "aerialDuelWinRate");
+  const ground = score(pct(s.groundDuelsWon, s.duelsTotal),       "groundDuelWinRate");
+  const foul   = score(p90(s.foulsCommitted, min),                "foulsCommitted_p90");
   return Math.round(dist * 0.30 + aerial * 0.30 + ground * 0.25 + foul * 0.15);
 }
 
 // GK blocks
-function calcGkDiving     (s: StatsInput, min: number): number {
-  return score(p90(s.saves, min), B.saves_p90);
+function calcGkDiving(s: StatsInput, min: number, ls: number): number {
+  return score(p90(s.saves, min), "saves_p90", ls);
 }
-function calcGkHandling   (s: StatsInput): number {
-  return score(s.savePct ?? 0, B.savePct);
+function calcGkHandling(s: StatsInput): number {
+  return score(s.savePct ?? 0, "savePct");
 }
-function calcGkKicking    (s: StatsInput, min: number): number {
+function calcGkKicking(s: StatsInput, min: number, ls: number): number {
   return Math.round(
-    score(p90(s.passes, min), B.passes_p90)    * 0.35 +
-    score(s.passAccuracy ?? 0, B.passAccuracy) * 0.65,
+    score(p90(s.passes, min), "passes_p90", ls) * 0.35 +
+    score(s.passAccuracy ?? 0, "passAccuracy") * 0.65,
   );
 }
-function calcGkReflex     (s: StatsInput, min: number): number {
+function calcGkReflex(s: StatsInput, min: number, ls: number): number {
   return Math.round(
-    score(p90(s.saves, min), B.saves_p90) * 0.50 +
-    score(s.savePct ?? 0, B.savePct)      * 0.50,
+    score(p90(s.saves, min), "saves_p90", ls) * 0.50 +
+    score(s.savePct ?? 0, "savePct")          * 0.50,
   );
 }
 function calcGkPositioning(s: StatsInput, min: number): number {
-  const cs = score(pct(s.cleanSheets, s.appearances), B.cleanSheetRate);
-  const ga = score(p90(s.goalsConceded, min),          B.goalsConceded_p90);
+  const cs = score(pct(s.cleanSheets, s.appearances), "cleanSheetRate");
+  const ga = score(p90(s.goalsConceded, min),          "goalsConceded_p90");
   return Math.round(cs * 0.55 + ga * 0.45);
 }
 
@@ -565,36 +667,153 @@ const GK_BLOCK_WEIGHTS = {
 } as const;
 
 // ---------------------------------------------------------------------------
+// DNA scoring — position-agnostic, shows WHAT TYPE of player
+// ---------------------------------------------------------------------------
+
+/**
+ * Impact — scoring and creation threat.
+ * Naturally high for forwards/wingers; low for defenders.
+ */
+function calcDnaImpact(s: StatsInput, min: number, ls: number): number {
+  return Math.round(
+    wavg(
+      [
+        score(p90(s.goals, min),          "goals_p90", ls),
+        score(p90(s.xG, min),             "xG_p90", ls),
+        score(p90(s.assists, min),        "assists_p90", ls),
+        score(p90(s.xA, min),             "xA_p90", ls),
+        score(p90(s.shotsOnTarget, min),  "shotsOnTarget_p90", ls),
+      ],
+      [0.28, 0.22, 0.22, 0.16, 0.12],
+    ),
+  );
+}
+
+/**
+ * Intelligence — technical decision quality.
+ * High for midfielders and CAMs; reflects vision + progressive play.
+ */
+function calcDnaIntelligence(s: StatsInput, min: number, ls: number): number {
+  return Math.round(
+    wavg(
+      [
+        score(s.passAccuracy ?? 0,              "passAccuracy"),
+        score(p90(s.keyPasses, min),            "keyPasses_p90", ls),
+        score(p90(s.progressivePasses, min),    "progressivePasses_p90", ls),
+        score(p90(s.passes, min),               "passes_p90", ls),
+        score(p90(s.xGBuildup, min),            "xGBuildup_p90", ls),
+      ],
+      [0.28, 0.25, 0.22, 0.14, 0.11],
+    ),
+  );
+}
+
+/**
+ * DefensiveIQ — defensive contribution and pressing intensity.
+ * High for CDMs, CBs, FBs. Low for pure forwards.
+ */
+function calcDnaDefensiveIQ(s: StatsInput, min: number, ls: number): number {
+  return Math.round(
+    wavg(
+      [
+        score(p90(s.interceptions, min),  "interceptions_p90", ls),
+        score(p90(s.tackles, min),        "tackles_p90", ls),
+        score(p90(s.recoveries, min),     "recoveries_p90", ls),
+        score(p90(s.pressures, min),      "pressures_p90", ls),
+        score(pct(s.tacklesWon, s.tackles), "tackleSuccessRate"),
+      ],
+      [0.28, 0.25, 0.22, 0.15, 0.10],
+    ),
+  );
+}
+
+/**
+ * Consistency — reliability and availability proxy.
+ * Uses Sportmonks match rating (primary) + minutes-per-game ratio.
+ * Without match-by-match data, this is the best proxy available.
+ */
+function calcDnaConsistency(s: StatsInput): number {
+  const ratingScore = s.rating && s.rating > 0
+    ? score(s.rating, "rating")
+    : 50; // neutral if no rating
+
+  // Minutes per appearance as a reliability signal (higher = less substituted)
+  const mpa = s.appearances && s.appearances > 0
+    ? (s.minutes ?? 0) / s.appearances
+    : 0;
+  // Bench: avg player plays ~72 min/game, elite plays ~85+ min/game
+  const mpaScore = mpa <= 0 ? 40
+    : mpa >= 85 ? 95
+    : mpa >= 72 ? 50 + ((mpa - 72) / (85 - 72)) * 45
+    : 10 + (mpa / 72) * 40;
+
+  // Low discipline improves consistency (fewer suspensions/warnings)
+  const disciplineScore = score(
+    s.yellowCards && s.appearances
+      ? (s.yellowCards / s.appearances) * 10
+      : 0,
+    "yellowCards_p90",
+  );
+
+  return Math.round(
+    clamp(ratingScore * 0.55 + mpaScore * 0.30 + disciplineScore * 0.15, 10, 99),
+  );
+}
+
+/**
+ * Potential — age-adjusted ceiling projection.
+ * Returns a 1–99 number representing how high this player can peak.
+ * Uses a parabolic growth model centered on age 27 (typical football prime).
+ */
+function calcDnaPotential(currentOverall: number, age: number): number {
+  let boost: number;
+
+  if      (age <= 18) boost = 22;
+  else if (age <= 20) boost = 17;
+  else if (age <= 22) boost = 11;
+  else if (age <= 24) boost = 7;
+  else if (age <= 26) boost = 3;
+  else if (age <= 28) boost = 1;
+  else if (age <= 30) boost = 0;
+  else                boost = -(age - 30) * 4; // decline
+
+  return clamp(currentOverall + boost, 1, 99);
+}
+
+// ---------------------------------------------------------------------------
 // Main export
 // ---------------------------------------------------------------------------
 
 export const MIN_MINUTES_RELIABLE = 450; // ~5 full matches
 
 export function calculateOverall(
-  stats:       StatsInput,
-  positionRaw: string | null | undefined,
+  stats:         StatsInput,
+  positionRaw:   string | null | undefined,
+  age?:          number | null,
+  leagueCtx:     LeagueContext = "DEFAULT",
 ): OverallResult {
   const positionGroup = classifyPosition(positionRaw);
   const min     = stats.minutes ?? 0;
   const reliable = min >= MIN_MINUTES_RELIABLE;
+  const ls      = LEAGUE_VOLUME_SCALE[leagueCtx];
 
-  // Compute all six outfield blocks
-  const pace      = calcPace(stats, min);
-  const shooting  = calcShooting(stats, min);
-  const passing   = calcPassing(stats, min);
-  const dribbling = calcDribbling(stats, min);
-  const defending = calcDefending(stats, min);
-  const physical  = calcPhysical(stats, min);
+  // ── Attribute blocks ──────────────────────────────────────────────────────
+  const pace      = calcPace(stats, min, ls);
+  const shooting  = calcShooting(stats, min, ls);
+  const passing   = calcPassing(stats, min, ls);
+  const dribbling = calcDribbling(stats, min, ls);
+  const defending = calcDefending(stats, min, ls);
+  const physical  = calcPhysical(stats, min, ls);
 
   const breakdown: OverallBreakdown = { pace, shooting, passing, dribbling, defending, physical };
 
   let overall: number;
 
   if (positionGroup === "GK") {
-    const gkDiving      = calcGkDiving(stats, min);
+    const gkDiving      = calcGkDiving(stats, min, ls);
     const gkHandling    = calcGkHandling(stats);
-    const gkKicking     = calcGkKicking(stats, min);
-    const gkReflex      = calcGkReflex(stats, min);
+    const gkKicking     = calcGkKicking(stats, min, ls);
+    const gkReflex      = calcGkReflex(stats, min, ls);
     const gkPositioning = calcGkPositioning(stats, min);
 
     breakdown.gkDiving      = gkDiving;
@@ -610,7 +829,6 @@ export function calculateOverall(
       gkReflex      * GK_BLOCK_WEIGHTS.gkReflex       +
       gkPositioning * GK_BLOCK_WEIGHTS.gkPositioning;
 
-    // Passing/distribution adds a small modifier for GKs
     overall = Math.round(gkScore * 0.90 + passing * 0.10);
   } else {
     const w = BLOCK_WEIGHTS[positionGroup];
@@ -632,14 +850,34 @@ export function calculateOverall(
 
   // API-provided rating blend (12 % weight — most reliable single signal)
   if (stats.rating && stats.rating > 0) {
-    const ratingScore = score(stats.rating, B.rating);
+    const ratingScore = score(stats.rating, "rating");
     overall = Math.round(overall * 0.88 + ratingScore * 0.12);
   }
 
+  overall = clamp(overall, 1, 99);
+
+  // ── DNA scores ─────────────────────────────────────────────────────────────
+  const impact       = calcDnaImpact(stats, min, ls);
+  const intelligence = calcDnaIntelligence(stats, min, ls);
+  const defensiveIQ  = calcDnaDefensiveIQ(stats, min, ls);
+  const consistency  = calcDnaConsistency(stats);
+  const playerAge    = typeof age === "number" && age > 0 ? age : 25; // safe default
+  const potential    = calcDnaPotential(overall, playerAge);
+
+  const dna: DnaScore = {
+    impact:       clamp(impact,       10, 99),
+    intelligence: clamp(intelligence, 10, 99),
+    defensiveIQ:  clamp(defensiveIQ,  10, 99),
+    consistency:  clamp(consistency,  10, 99),
+    potential,
+  };
+
   return {
-    overall:       clamp(overall, 1, 99),
+    overall,
     breakdown,
     positionGroup,
     reliable,
+    dna,
+    potential,
   };
 }
