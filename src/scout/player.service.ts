@@ -597,15 +597,17 @@ export function buildPlayerSummary(player: PlayerSummarySource) {
   const fifa = snapshotFifa ?? resolveFifa(rawAttributes, playerPosition);
   const categoryIndex = buildCategoryIndex(fifa);
   const performanceScore = calculateRankingScore(fifa, weights);
-  const persistedOverall = latestMetrics
-    ? clampFifaCore(latestMetrics.overall)
-    : hasFiniteNumber(player.overall)
-      ? clampFifaCore(player.overall)
+  // Prefer player.overall (written by the enrichment script / calculateOverall)
+  // over latestMetrics.overall (older snapshot) so DNA-based ratings are used.
+  const persistedOverall = hasFiniteNumber(player.overall)
+    ? clampFifaCore(player.overall)
+    : latestMetrics
+      ? clampFifaCore(latestMetrics.overall)
       : null;
-  const persistedPotential = latestMetrics
-    ? clampFifaCore(latestMetrics.potential)
-    : hasFiniteNumber(player.potential)
-      ? clampFifaCore(player.potential)
+  const persistedPotential = hasFiniteNumber(player.potential)
+    ? clampFifaCore(player.potential)
+    : latestMetrics
+      ? clampFifaCore(latestMetrics.potential)
       : null;
   const storedDetailedStats = resolveStoredDetailedStats(rawAttributes);
   const shouldReusePersistedProfile =
