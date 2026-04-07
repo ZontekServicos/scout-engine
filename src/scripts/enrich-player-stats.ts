@@ -72,6 +72,10 @@ const BATCH_SIZE = batchArg ? Number(batchArg) : 100;
 const CONCURRENCY = 1;   // sequential — avoids 429 rate limit on Sportmonks
 const DELAY_MS    = 400; // ms between requests
 
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 // ---------------------------------------------------------------------------
 // Main
 // ---------------------------------------------------------------------------
