@@ -17,7 +17,7 @@ import {
   fetchPlayersByTeam,
 } from "../integrations/sportmonks/sportmonks.client";
 import { normalizeStats } from "../integrations/sportmonks/pipeline/normalize-stats";
-import { calculateOverall } from "../analytics/overall.engine";
+import { calculateOverall, type LeagueContext } from "../analytics/overall.engine";
 
 // ---------------------------------------------------------------------------
 // Country
@@ -249,6 +249,7 @@ export async function ingestPlayersByTeam(
   sportmonksTeamId: number,
   sportmonksSeasonId: number,
   leagueName?: string | null,
+  leagueContext: LeagueContext = "DEFAULT",
 ) {
   // Ensure team and season exist
   const [team, season] = await Promise.all([
@@ -294,7 +295,7 @@ export async function ingestPlayersByTeam(
       normalized.assists       > 0 ||
       normalized.tackles       > 0 ||
       normalized.passesTotal   > 0;
-    const overallResult = hasRealStats ? calculateOverall(normalized, position) : null;
+    const overallResult = hasRealStats ? calculateOverall(normalized, position, age || undefined, leagueContext) : null;
 
     // Derive contract end from API field
     const contractEnd = player.contract_until ? new Date(player.contract_until) : null;
@@ -442,6 +443,7 @@ export async function ingestPlayersByTeam(
 export async function ingestLeagueWithKnownSeason(
   sportmonksLeagueId: number,
   sportmonksSeasonId: number,
+  leagueContext: LeagueContext = "DEFAULT",
 ): Promise<{ league: string; season: string; teams: number; players: number }> {
   // 1. Upsert league
   const league = await ingestLeague(sportmonksLeagueId);
@@ -463,7 +465,7 @@ export async function ingestLeagueWithKnownSeason(
   // 4. Ingest players for each team (pass league name so it's stored on each player)
   let totalPlayers = 0;
   for (const team of teams) {
-    const players = await ingestPlayersByTeam(team.externalId, sportmonksSeasonId, league.name);
+    const players = await ingestPlayersByTeam(team.externalId, sportmonksSeasonId, league.name, leagueContext);
     totalPlayers += players.length;
   }
 

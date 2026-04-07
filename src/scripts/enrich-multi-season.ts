@@ -105,14 +105,52 @@ const DELAY_MS    = 400;  // ms between requests
 
 // ---------------------------------------------------------------------------
 // League context — auto-detected from primary season ID
+//
+// Add new season IDs here when ingesting new leagues.
+// Format: Set of known season IDs for the same league across years.
 // ---------------------------------------------------------------------------
-const SERIE_A_SEASON_IDS = new Set([26763, 25184, 23265]);
-const SERIE_B_SEASON_IDS = new Set([27198, 25185, 23291]);
+
+/** Map of season ID → LeagueContext for automatic detection. */
+const SEASON_CONTEXT_MAP: Map<number, LeagueContext> = new Map([
+  // ── Brasileirão Série A ─────────────────────────────────────────────────
+  [26763, "SERIE_A"], [25184, "SERIE_A"], [23265, "SERIE_A"],
+  // ── Brasileirão Série B ─────────────────────────────────────────────────
+  [27198, "SERIE_B"], [25185, "SERIE_B"], [23291, "SERIE_B"],
+  // ── European top-5 (DEFAULT = 1.00) ────────────────────────────────────
+  // Premier League
+  [25583, "DEFAULT"], [25164, "DEFAULT"], [23614, "DEFAULT"],
+  // La Liga
+  [25659, "DEFAULT"], [25154, "DEFAULT"], [23440, "DEFAULT"],
+  // Serie A (Italy)
+  [25533, "DEFAULT"], [25138, "DEFAULT"], [23459, "DEFAULT"],
+  // Bundesliga
+  [25646, "DEFAULT"], [25160, "DEFAULT"], [23538, "DEFAULT"],
+  // Ligue 1
+  [25651, "DEFAULT"], [25162, "DEFAULT"], [23480, "DEFAULT"],
+  // ── European mid-tier (EUR_MID = 0.95) ─────────────────────────────────
+  // Eredivisie
+  [25597, "EUR_MID"], [25143, "EUR_MID"], [23467, "EUR_MID"],
+  // Liga Portugal
+  [25745, "EUR_MID"], [25185, "EUR_MID"],
+  // Scottish Premiership
+  [25598, "EUR_MID"], [25144, "EUR_MID"],
+  // ── European lower-tier (EUR_LOWER = 0.90) ──────────────────────────────
+  // Belgian Pro League
+  [25600, "EUR_LOWER"], [25145, "EUR_LOWER"],
+  // Süper Lig
+  [25682, "EUR_LOWER"], [25168, "EUR_LOWER"],
+  // ── South America top (SA_TOP = 0.85) ──────────────────────────────────
+  // Liga Argentina
+  [26808, "SA_TOP"], [25807, "SA_TOP"],
+  // ── South America mid (SA_MID = 0.78) ──────────────────────────────────
+  // Chile Primera División
+  [26873, "SA_MID"], [25852, "SA_MID"],
+  // Colombia Liga BetPlay
+  [26881, "SA_MID"], [25880, "SA_MID"],
+]);
 
 function detectLeagueContext(primarySeasonId: number): LeagueContext {
-  if (SERIE_A_SEASON_IDS.has(primarySeasonId)) return "SERIE_A";
-  if (SERIE_B_SEASON_IDS.has(primarySeasonId)) return "SERIE_B";
-  return "DEFAULT";
+  return SEASON_CONTEXT_MAP.get(primarySeasonId) ?? "DEFAULT";
 }
 
 const LEAGUE_CONTEXT: LeagueContext = detectLeagueContext(PRIMARY_SEASON_ID);

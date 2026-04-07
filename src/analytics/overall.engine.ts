@@ -155,21 +155,42 @@ export interface OverallResult {
 // League context — scales volume benchmarks for the player's league
 // ---------------------------------------------------------------------------
 
-export type LeagueContext = "SERIE_A" | "SERIE_B" | "DEFAULT";
+export type LeagueContext =
+  // ── European top-5 (reference tier) ──────────────────────────────────────
+  | "DEFAULT"       // European top-5 reference (Premier League, La Liga, Serie A, Bundesliga, Ligue 1)
+  // ── European mid-tier ────────────────────────────────────────────────────
+  | "EUR_MID"       // Eredivisie, Liga Portugal, Scottish Premiership (~5% below)
+  | "EUR_LOWER"     // Belgian Pro League, Süper Lig, other UEFA mid (~10% below)
+  // ── Brazil ───────────────────────────────────────────────────────────────
+  | "SERIE_A"       // Brasileirão Série A (~13% below European reference)
+  | "SERIE_B"       // Brasileirão Série B (~20% below)
+  // ── South America top ────────────────────────────────────────────────────
+  | "SA_TOP"        // Liga Argentina, Liga MX (~15% below European reference)
+  // ── South America mid ────────────────────────────────────────────────────
+  | "SA_MID"        // Colombia, Chile, Uruguay (~22% below)
+  // ── South America lower ──────────────────────────────────────────────────
+  | "SA_LOWER";     // Peru, Paraguay (~28% below)
 
 /**
- * Volume (per-90) benchmark scale factors per league.
- * These numbers reflect how Brazilian leagues compare to European top-5:
- *   - Série A averages ~13% lower volume stats than European reference
- *   - Série B averages ~20% lower (weaker squads, lower tempo)
+ * Volume (per-90) benchmark scale factors per league context.
  *
- * Percentage-based stats (accuracy, success rates) are NOT scaled —
- * they reflect quality independent of tempo/volume.
+ * Each factor scales the "avg" and "elite" volume-stat anchors in the engine
+ * so players are evaluated fairly relative to what is normal in THEIR league.
+ *
+ * Percentage-based stats (pass accuracy, duel win rates, etc.) are NOT scaled.
+ * Quality metrics are universal — only counting volumes differ by league.
+ *
+ * Reference data: Opta / Statsbomb per-90 league averages 2023-24.
  */
 const LEAGUE_VOLUME_SCALE: Record<LeagueContext, number> = {
-  SERIE_A: 0.87,
-  SERIE_B: 0.80,
-  DEFAULT: 1.00,
+  DEFAULT:   1.00,   // European top-5 reference
+  EUR_MID:   0.95,   // Eredivisie / Liga Portugal / Scottish Prem
+  EUR_LOWER: 0.90,   // Belgian Pro League / Süper Lig
+  SERIE_A:   0.87,   // Brasileirão Série A
+  SERIE_B:   0.80,   // Brasileirão Série B
+  SA_TOP:    0.85,   // Liga Argentina / Liga MX
+  SA_MID:    0.78,   // Colombia / Chile / Uruguay
+  SA_LOWER:  0.72,   // Peru / Paraguay
 };
 
 /**
