@@ -272,7 +272,9 @@ async function main(): Promise<void> {
     total: 0, enriched: 0, noStats: 0, skipped: 0, errors: 0, durationMs: 0,
   };
 
-  // Scope to players who belong to teams in the primary (most recent) season
+  // Scope to players who belong to teams in the primary (most recent) season.
+  // Non-force mode targets players with overall = null, which correctly catches
+  // partial runs where playerStats.create succeeded but player.update failed.
   const where = FORCE
     ? {
         source: "sportmonks",
@@ -284,11 +286,9 @@ async function main(): Promise<void> {
     : {
         source: "sportmonks",
         externalId: { not: null },
+        overall: null,          // only players whose overall is not yet set
         dbTeam: {
           seasons: { some: { externalId: PRIMARY_SEASON_ID } },
-        },
-        statsSnapshots: {
-          none: { minutes: { gt: 0 } },
         },
       };
 
@@ -395,7 +395,11 @@ async function main(): Promise<void> {
             const primaryPosition = player.positions[0] ?? null;
             const overallResult   = calculateOverall(merged, primaryPosition, player.age, LEAGUE_CONTEXT);
 
-            // 5. Upsert PlayerStats snapshot (using merged values)
+            // 5. Replace PlayerStats snapshot (delete stale + create fresh)
+            // Using delete+create instead of pure create to avoid duplicates on reruns.
+            await prisma.playerStats.deleteMany({
+              where: { playerId: player.id, source: "sportmonks_multiseason" },
+            });
             await prisma.playerStats.create({
               data: {
                 playerId:           player.id,
