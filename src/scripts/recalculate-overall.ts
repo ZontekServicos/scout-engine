@@ -40,12 +40,14 @@ const args = process.argv.slice(2);
 const DRY_RUN    = args.includes("--dry-run");
 const STALE_ONLY = args.includes("--stale");  // only players where overallCalculatedAt is null or > 7 days old
 
+const batchArgIdx = args.indexOf("--batch");
 const batchArg = args.find((a) => a.startsWith("--batch="))?.split("=")[1]
-  ?? args[args.indexOf("--batch") + 1];
-const BATCH_SIZE = batchArg ? Number(batchArg) : 1000;
+  ?? (batchArgIdx !== -1 ? args[batchArgIdx + 1] : undefined);
+const BATCH_SIZE = batchArg && Number.isFinite(Number(batchArg)) ? Number(batchArg) : 1000;
 
+const posArgIdx = args.indexOf("--position");
 const posArg = args.find((a) => a.startsWith("--position="))?.split("=")[1]
-  ?? args[args.indexOf("--position") + 1];
+  ?? (posArgIdx !== -1 ? args[posArgIdx + 1] : undefined);
 
 // ---------------------------------------------------------------------------
 // Main
