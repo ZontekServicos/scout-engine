@@ -79,6 +79,8 @@ model Player {
   teamDbId           String?
   dbTeam             Team?    @relation(fields: [teamDbId], references: [id])
 
+  videos             PlayerVideo[]
+
   @@index([nameNormalized])
   @@index([league])
   @@index([team])
@@ -415,6 +417,32 @@ model MatchEvent {
   // Composite index for spatial queries (heatmap per player/type)
   @@index([playerId, type])
   @@index([matchId, type])
+}
+
+// ---------------------------------------------------------------------------
+// Player videos & highlights
+// ---------------------------------------------------------------------------
+
+model PlayerVideo {
+  id          String   @id @default(cuid())
+  playerId    String
+  title       String
+  description String?
+  type        String   // HIGHLIGHT | MATCH | TRAINING | ANALYSIS
+  source      String   // YOUTUBE | VIMEO | UPLOAD | WYSCOUT
+  url         String
+  thumbnail   String?
+  duration    Int?     // seconds
+  season      String?
+  tags        String[]
+  addedBy     String
+  createdAt   DateTime @default(now())
+
+  player Player @relation(fields: [playerId], references: [id], onDelete: Cascade)
+
+  @@index([playerId])
+  @@index([type])
+  @@index([createdAt])
 }
 
 // ---------------------------------------------------------------------------
