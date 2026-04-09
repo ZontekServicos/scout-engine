@@ -2,7 +2,7 @@ import { prisma } from "../lib/prisma";
 import { calculateFinancialRisk } from "../scout/financial-risk.engine";
 import { calculateGrowthProjection } from "../scout/growth-projection.engine";
 import { calculateLiquidityScore } from "../scout/liquidity.engine";
-import { calculateOverallRating } from "../scout/overall.engine";
+import { calculateOverallRating } from "../scout/overall.engine"; // fallback for players with no enriched data
 import { calculateRankingScore } from "../scout/ranking.engine";
 import { POSITION_WEIGHTS } from "../scout/ranking.weights";
 import { calculateRiskScore } from "../scout/risk.engine";
@@ -38,6 +38,13 @@ export async function runAnalyticsPipeline(limit = 200): Promise<PipelineItem[]>
       positions: true,
       attributes: true,
       league: true,
+      overall: true,
+      overallPace: true,
+      overallShooting: true,
+      overallPassing: true,
+      overallDribbling: true,
+      overallDefending: true,
+      overallPhysical: true,
     },
   });
 
@@ -55,14 +62,20 @@ export async function runAnalyticsPipeline(limit = 200): Promise<PipelineItem[]>
     };
     const categoryIndex = buildCategoryIndex(attrs);
     const performanceScore = calculateRankingScore(fifa as any, weights);
-    const overall = calculateOverallRating({
-      position,
-      performanceScore,
-      categoryIndex,
-      macroOverall: Object.values(categoryIndex).reduce((acc, value) => acc + value, 0) / 6,
-      fifaAttributes: fifa,
-      rawAttributes: attrs,
-    });
+    // Prefer overall persisted by the enrichment pipeline (computed from raw Sportmonks stats
+    // via analytics/overall.engine). Fall back to the old attribute-based engine only for
+    // players that have not yet been enriched.
+    const persistedOverall = typeof player.overall === "number" && player.overall > 0 ? player.overall : null;
+    const overall = persistedOverall !== null
+      ? { overall: persistedOverall }
+      : calculateOverallRating({
+          position,
+          performanceScore,
+          categoryIndex,
+          macroOverall: Object.values(categoryIndex).reduce((acc, value) => acc + value, 0) / 6,
+          fifaAttributes: fifa,
+          rawAttributes: attrs,
+        });
     const risk = calculateRiskScore({
       age: player.age ?? 25,
       position,

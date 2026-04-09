@@ -93,14 +93,20 @@ export async function simulateTransfer(input: TransferSimulationInput) {
     antiFlop,
   });
 
-  const overall = calculateOverallRating({
-    position: playerPosition,
-    performanceScore,
-    categoryIndex,
-    macroOverall: Object.values(categoryIndex).reduce((a, b) => a + b, 0) / 6,
-    fifaAttributes: fifa,
-    rawAttributes: player.attributes,
-  });
+  // Use persisted overall (written by analytics/overall.engine via enrichment) when available.
+  const persistedOverall = typeof (player as any).overall === "number" && (player as any).overall > 0
+    ? (player as any).overall as number
+    : null;
+  const overall = persistedOverall !== null
+    ? { overall: persistedOverall }
+    : calculateOverallRating({
+        position: playerPosition,
+        performanceScore,
+        categoryIndex,
+        macroOverall: Object.values(categoryIndex).reduce((a, b) => a + b, 0) / 6,
+        fifaAttributes: fifa,
+        rawAttributes: player.attributes,
+      });
 
   const financialRisk = calculateFinancialRisk({
     structuralRisk: risk.totalRisk,
