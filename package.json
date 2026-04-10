@@ -79,7 +79,8 @@
     "enrich:global:europe:mid": "npm run enrich:multi:eredivisie && npm run enrich:multi:liga-portugal && npm run enrich:multi:scottish && npm run enrich:multi:belgian && npm run enrich:multi:superlig",
     "enrich:global:south-america": "npm run enrich:multi:argentina && npm run enrich:multi:chile && npm run enrich:multi:colombia",
     "enrich:global:all": "npm run enrich:global:europe:top5 && npm run enrich:global:europe:mid && npm run enrich:global:south-america",
-    "ingest:events:all": "ts-node src/scripts/ingest-all-events.ts"
+    "ingest:events:all": "ts-node src/scripts/ingest-all-events.ts",
+    "stats:aggregate": "ts-node src/scripts/aggregate-player-stats.ts"
   },
   "dependencies": {
     "@prisma/client": "^6.19.2",

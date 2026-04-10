@@ -342,4 +342,34 @@ router.post(
   }),
 );
 
+// ---------------------------------------------------------------------------
+// Player stats aggregation
+// ---------------------------------------------------------------------------
+
+/**
+ * POST /api/ingest/stats/aggregate
+ * Aggregates MatchEvents into PlayerStats for all players/seasons.
+ * Runs in background — responds immediately.
+ */
+router.post(
+  "/stats/aggregate",
+  asyncHandler(async (_req: Request, res: Response) => {
+    res.json(
+      successResponse({
+        message: "Agregação de stats iniciada em background",
+        tip: "Acompanhe o progresso nos logs do servidor",
+      }),
+    );
+
+    setImmediate(async () => {
+      try {
+        const { aggregatePlayerStats } = await import("../scripts/aggregate-player-stats");
+        await aggregatePlayerStats();
+      } catch (err) {
+        console.error("[ingest/stats/aggregate] Erro:", err instanceof Error ? err.message : err);
+      }
+    });
+  }),
+);
+
 export default router;
