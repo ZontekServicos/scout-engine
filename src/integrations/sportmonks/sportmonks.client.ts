@@ -511,10 +511,32 @@ export async function fetchFixturesAfterById(
 // Events — filters=fixture_id:X confirmed working
 // ---------------------------------------------------------------------------
 
+/**
+ * Fetches events for a fixture via include=events;events.type on GET /fixtures/{id}.
+ *
+ * The standalone GET /events?filters=fixture_id:X endpoint is not available on
+ * all Sportmonks plans (returns 404). Using includes on the fixture endpoint is
+ * universally available.
+ *
+ * ⚠ PLAN RESTRICTION: Spatial data (coordinates x/y) requires a premium plan
+ * that supports the "coordinates" include (code 5001 if unavailable).
+ * Events are returned without coordinates on basic plans — x/y will be null.
+ */
 export async function fetchMatchEvents(fixtureId: number): Promise<SportmonksEvent[]> {
-  return smGetAll<SportmonksEvent>("/events", {
-    filters: { fixture_id: fixtureId },
-  });
+  try {
+    const raw = await smGet<{ data: { events?: SportmonksEvent[] } }>(
+      `/fixtures/${fixtureId}`,
+      { include: ["events", "events.type"] },
+    );
+    return raw.data?.events ?? [];
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    if (msg.includes("404")) {
+      console.warn(`[sportmonks] fetchMatchEvents: fixture ${fixtureId} not found`);
+      return [];
+    }
+    throw err;
+  }
 }
 
 // ---------------------------------------------------------------------------

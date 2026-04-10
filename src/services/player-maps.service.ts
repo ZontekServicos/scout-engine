@@ -2,15 +2,11 @@
  * player-maps.service.ts
  *
  * Returns structured event data for pitch visualisation:
- *   - heatmap   → all events with valid coordinates
- *   - shots     → SHOT | GOAL
- *   - passes    → PASS
- *   - defensive → TACKLE | INTERCEPTION | CLEARANCE | SAVE | FOUL | PRESSURE
+ *   - getPlayerMapData → raw event arrays (heatmap, shots, passes, defensive)
+ *   - getHeatmapData  → aggregated 10×7 grid with intensity, dominant zones,
+ *                        action breakdown and season list
  *
  * Coordinates are normalised to 0–100 (Sportmonks already uses this scale).
- * The response shape is intentionally stable so the frontend can evolve
- * independently (Player-vs-Player, season filter, zone aggregation) without
- * a breaking change to this service — just extend MapQueryOptions.
  */
 
 import { prisma } from "../lib/prisma";
@@ -159,5 +155,166 @@ export async function getPlayerMapData(
     shots,
     passes,
     defensive,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Heatmap grid types & logic
+// ---------------------------------------------------------------------------
+
+export interface HeatmapCell {
+  col: number;        // 0-9  (x axis, 10 columns)
+  row: number;        // 0-6  (y axis, 7 rows)
+  intensity: number;  // 0-100 (normalised count)
+}
+
+export interface HeatmapData {
+  playerId: string;
+  totalEvents: number;
+  grid: HeatmapCell[];
+  dominantZones: string[];
+  actionBreakdown: {
+    goals: number;
+    shots: number;
+    tackles: number;
+    passes: number;
+    dribbles: number;
+    interceptions: number;
+    fouls: number;
+    saves: number;
+  };
+  seasons: string[];
+}
+
+// Grid dimensions
+const COLS = 10;
+const ROWS = 7;
+
+/**
+ * Maps a (col, row) cell to a human-readable zone name.
+ *
+ * Pitch orientation: x increases left→right (own goal → opponent goal),
+ * y increases bottom→top (right flank → left flank), per Sportmonks docs.
+ *
+ * Col bands : 0-2 = defensive third, 3-6 = midfield, 7-9 = attacking third
+ * Row bands : 0-1 = right flank,     2-4 = centre,   5-6 = left flank
+ */
+function zoneName(col: number, row: number): string {
+  if (col >= 7 && row >= 2 && row <= 4) return "Área adversária";
+  if (col >= 7 && row <= 1)             return "Corredor direito no ataque";
+  if (col >= 7 && row >= 5)             return "Corredor esquerdo no ataque";
+  if (col <= 2 && row >= 2 && row <= 4) return "Área própria";
+  if (col <= 2 && row <= 1)             return "Corredor direito defensivo";
+  if (col <= 2 && row >= 5)             return "Corredor esquerdo defensivo";
+  if (col >= 3 && col <= 6 && row >= 2 && row <= 4) return "Meio-campo central";
+  if (row <= 1)  return "Corredor direito";
+  if (row >= 5)  return "Corredor esquerdo";
+  return "Meio-campo";
+}
+
+/**
+ * Returns a 10×7 heatmap grid for the given player, plus dominant zones,
+ * action breakdown counts and the list of seasons with events.
+ *
+ * Events without coordinates (x/y null) are counted in actionBreakdown
+ * but excluded from the grid.
+ */
+export async function getHeatmapData(playerId: string): Promise<HeatmapData> {
+  const rows = await prisma.matchEvent.findMany({
+    where: { playerId },
+    select: {
+      type: true,
+      x: true,
+      y: true,
+      match: {
+        select: {
+          seasonId: true,
+        },
+      },
+    },
+  });
+
+  // Grid: [col][row] raw counts
+  const counts: number[][] = Array.from({ length: COLS }, () =>
+    new Array<number>(ROWS).fill(0),
+  );
+
+  // Action breakdown counters
+  let goals = 0;
+  let shots = 0;
+  let tackles = 0;
+  let passes = 0;
+  let dribbles = 0;
+  let interceptions = 0;
+  let fouls = 0;
+  let saves = 0;
+
+  // Unique season IDs
+  const seasonSet = new Set<string>();
+
+  let totalEvents = 0;
+
+  for (const row of rows) {
+    totalEvents++;
+
+    // Track seasons
+    if (row.match.seasonId) seasonSet.add(row.match.seasonId);
+
+    // Action breakdown (all events, with or without coordinates)
+    switch (row.type) {
+      case "GOAL":          goals++;         break;
+      case "SHOT":          shots++;         break;
+      case "TACKLE":        tackles++;       break;
+      case "PASS":          passes++;        break;
+      case "DRIBBLE":       dribbles++;      break;
+      case "INTERCEPTION":  interceptions++; break;
+      case "FOUL":          fouls++;         break;
+      case "SAVE":          saves++;         break;
+    }
+
+    // Grid: only events with valid coordinates
+    if (row.x === null || row.y === null) continue;
+
+    const col = Math.min(COLS - 1, Math.floor(row.x / 10));
+    const r   = Math.min(ROWS - 1, Math.floor(row.y / (100 / ROWS)));
+    counts[col][r]++;
+  }
+
+  // Flatten grid and normalise to 0-100
+  let maxCount = 0;
+  for (let c = 0; c < COLS; c++) {
+    for (let r = 0; r < ROWS; r++) {
+      if (counts[c][r] > maxCount) maxCount = counts[c][r];
+    }
+  }
+
+  const grid: HeatmapCell[] = [];
+  for (let c = 0; c < COLS; c++) {
+    for (let r = 0; r < ROWS; r++) {
+      if (counts[c][r] === 0) continue; // omit empty cells to reduce payload
+      grid.push({
+        col: c,
+        row: r,
+        intensity: maxCount > 0 ? Math.round((counts[c][r] / maxCount) * 100) : 0,
+      });
+    }
+  }
+
+  // Dominant zones: top-3 cells by count, deduplicated by zone name
+  const sorted = grid.slice().sort((a, b) => b.intensity - a.intensity);
+  const dominantZones: string[] = [];
+  for (const cell of sorted) {
+    const name = zoneName(cell.col, cell.row);
+    if (!dominantZones.includes(name)) dominantZones.push(name);
+    if (dominantZones.length === 3) break;
+  }
+
+  return {
+    playerId,
+    totalEvents,
+    grid,
+    dominantZones,
+    actionBreakdown: { goals, shots, tackles, passes, dribbles, interceptions, fouls, saves },
+    seasons: [...seasonSet],
   };
 }

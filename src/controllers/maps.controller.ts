@@ -1,6 +1,6 @@
 import { Request, Response } from "express";
 import { successResponse, errorResponse } from "../lib/apiResponse";
-import { getPlayerMapData } from "../services/player-maps.service";
+import { getPlayerMapData, getHeatmapData } from "../services/player-maps.service";
 import type { MapQueryOptions } from "../services/player-maps.service";
 
 /**
@@ -38,4 +38,21 @@ export async function getPlayerMapsController(req: Request, res: Response) {
       filters: options,
     }),
   );
+}
+
+/**
+ * GET /api/maps/heatmap/:playerId
+ *
+ * Returns an aggregated 10×7 grid heatmap with intensity values (0-100),
+ * dominant zones, action breakdown counts and the seasons list.
+ */
+export async function getHeatmapController(req: Request, res: Response) {
+  const playerId = req.params["playerId"] as string;
+
+  if (!playerId || typeof playerId !== "string" || playerId.trim() === "") {
+    return res.status(400).json(errorResponse("playerId is required"));
+  }
+
+  const data = await getHeatmapData(playerId);
+  return res.json(successResponse(data));
 }
