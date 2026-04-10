@@ -97,6 +97,27 @@ function resolveTeams(fixture: SportmonksFixture): {
 }
 
 // ---------------------------------------------------------------------------
+// Maps Sportmonks developer_name to our internal status string
+// ---------------------------------------------------------------------------
+
+function mapDeveloperNameToStatus(developerName: string | null | undefined): string | null {
+  const map: Record<string, string> = {
+    "finished":            "FT",
+    "finished-after-pens": "FT",
+    "finished-after-et":   "FT",
+    "not-started":         "NS",
+    "inplay-1st-half":     "LIVE",
+    "inplay-2nd-half":     "LIVE",
+    "inplay-halftime":     "LIVE",
+    "postponed":           "POSTP",
+    "cancelled":           "CANC",
+    "suspended":           "SUSP",
+    "abandoned":           "ABD",
+  };
+  return developerName ? (map[developerName.toLowerCase()] ?? developerName.toUpperCase()) : null;
+}
+
+// ---------------------------------------------------------------------------
 // Ingest a single match (fixture) — no events
 // ---------------------------------------------------------------------------
 
@@ -123,7 +144,10 @@ async function upsertMatch(fixture: SportmonksFixture) {
 
   const status = typeof fixture.state === "string"
     ? fixture.state.toUpperCase()
-    : (fixture.state?.short_name ?? fixture.state?.state ?? null);
+    : (fixture.state?.short_name?.toUpperCase() ??
+       fixture.state?.state?.toUpperCase() ??
+       mapDeveloperNameToStatus(fixture.state?.developer_name) ??
+       null);
 
   return prisma.match.upsert({
     where: { externalId: fixture.id },

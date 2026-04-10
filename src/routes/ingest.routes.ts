@@ -312,4 +312,34 @@ router.post(
   }),
 );
 
+// ---------------------------------------------------------------------------
+// Bulk events — all finished matches across all leagues
+// ---------------------------------------------------------------------------
+
+/**
+ * POST /api/ingest/events/all
+ * Ingests events for every past match that has none yet.
+ * Runs in background — responds immediately.
+ */
+router.post(
+  "/events/all",
+  asyncHandler(async (_req: Request, res: Response) => {
+    res.json(
+      successResponse({
+        message: "Ingestão de eventos iniciada em background",
+        tip: "Acompanhe o progresso nos logs do servidor",
+      }),
+    );
+
+    setImmediate(async () => {
+      try {
+        const { ingestAllMatchEvents } = await import("../scripts/ingest-all-events");
+        await ingestAllMatchEvents();
+      } catch (err) {
+        console.error("[ingest/events/all] Erro:", err instanceof Error ? err.message : err);
+      }
+    });
+  }),
+);
+
 export default router;
