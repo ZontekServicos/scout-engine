@@ -522,37 +522,76 @@ export async function fetchMatchEvents(fixtureId: number): Promise<SportmonksEve
 // ---------------------------------------------------------------------------
 
 /**
- * Bulk highlights — filters=populate disables includes, raises per_page to 1000.
- * Use for initial bootstrap. Returns lightweight highlight records.
- */
-export async function fetchHighlightsBulk(maxPages = 20): Promise<SportmonksHighlight[]> {
-  return smGetAll<SportmonksHighlight>(
-    "/highlights",
-    { filters: { populate: true }, perPage: 1000 },
-    maxPages,
-  );
-}
-
-/**
- * Incremental highlights — filters=populate;idAfter:LAST_ID.
- * Fetches only highlights with id > lastKnownId.
- */
-export async function fetchHighlightsAfterById(
-  lastKnownId: number,
-  maxPages = 5,
-): Promise<SportmonksHighlight[]> {
-  return smGetAll<SportmonksHighlight>(
-    "/highlights",
-    { filters: { populate: true, idAfter: lastKnownId }, perPage: 1000 },
-    maxPages,
-  );
-}
-
-/**
- * Highlights for a single fixture.
- * Use when ingesting a specific match and want its associated highlights.
+ * Highlights for a single fixture via include=highlights on GET /fixtures/{id}.
+ *
+ * ⚠ PLAN RESTRICTION: requires a Sportmonks plan that includes the "highlights"
+ * relation. Returns an empty array if the plan does not have access (HTTP 403,
+ * code 5002) instead of throwing, so callers can degrade gracefully.
+ *
+ * Correct endpoint: GET /v3/football/fixtures/{id}?include=highlights
+ *
+ * Note: GET /fixtures/highlights is NOT a real endpoint — the router parses
+ *       "highlights" as a numeric fixture ID and returns 422.
  */
 export async function fetchFixtureHighlights(fixtureId: number): Promise<SportmonksHighlight[]> {
-  const raw = await smGet<{ data: SportmonksHighlight[] }>(`/fixtures/${fixtureId}/highlights`);
-  return raw.data ?? [];
+  try {
+    const raw = await smGet<{ data: { highlights?: SportmonksHighlight[] } }>(
+      `/fixtures/${fixtureId}`,
+      { include: ["highlights"] },
+    );
+    return raw.data?.highlights ?? [];
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    if (msg.includes("403") || msg.includes("5002")) {
+      // Plan does not include highlights — degrade gracefully
+      return [];
+    }
+    throw err;
+  }
+}
+
+/**
+ * Fetch highlights for multiple fixtures by iterating over each one.
+ * Results from all fixtures are merged into a single array.
+ *
+ * ⚠ PLAN RESTRICTION: returns empty arrays per fixture when plan lacks access.
+ */
+export async function fetchHighlightsBatch(
+  fixtureIds: number[],
+  delayMs = 300,
+): Promise<SportmonksHighlight[]> {
+  const results: SportmonksHighlight[] = [];
+  for (const id of fixtureIds) {
+    const highlights = await fetchFixtureHighlights(id);
+    results.push(...highlights);
+    if (delayMs > 0) await sleep(delayMs);
+  }
+  return results;
+}
+
+/**
+ * @deprecated Alias kept so existing imports compile.
+ * fetchHighlightsBulk used a non-existent /highlights endpoint.
+ * Use the fixture-based pipeline instead (highlights.ingestion.ts).
+ */
+export async function fetchHighlightsBulk(_maxPages = 20): Promise<SportmonksHighlight[]> {
+  console.warn(
+    "[sportmonks] fetchHighlightsBulk: /highlights endpoint does not exist on this plan. " +
+    "Use the fixture-based ingestion pipeline instead.",
+  );
+  return [];
+}
+
+/**
+ * @deprecated Alias kept so existing imports compile.
+ */
+export async function fetchHighlightsAfterById(
+  _lastKnownId: number,
+  _maxPages = 5,
+): Promise<SportmonksHighlight[]> {
+  console.warn(
+    "[sportmonks] fetchHighlightsAfterById: /highlights endpoint does not exist on this plan. " +
+    "Use the fixture-based ingestion pipeline instead.",
+  );
+  return [];
 }

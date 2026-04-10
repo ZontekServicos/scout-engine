@@ -2,24 +2,27 @@
  * highlights.ingestion.ts
  *
  * Pipeline that fetches Sportmonks highlights and persists them as PlayerVideo
- * records, linked to a player via the fixture → match events chain.
+ * records, linked to a player via the match → match events chain.
  *
- * Association logic:
- *   Sportmonks highlight → fixture_id
- *   → prisma.match.findUnique({ externalId: fixture_id })   (Int → UUID lookup)
- *   → prisma.matchEvent.findFirst({ matchId: match.id, playerId: { not: null } })
- *   → player found → create PlayerVideo
+ * Strategy (fixture-based):
+ *   1. Fetch all Match records from the DB that have an externalId.
+ *   2. For each fixture, call GET /fixtures/{id}?include=highlights.
+ *   3. For each highlight URL, resolve the player via MatchEvent and create
+ *      a PlayerVideo if the URL was not already ingested.
  *
- * If no match or no player is found for a highlight, it is silently skipped.
+ * ⚠ PLAN RESTRICTION: The Sportmonks "highlights" include requires a plan
+ *   that grants access to it (HTTP 403, code 5002 if unavailable).
+ *   fetchFixtureHighlights degrades gracefully — returns [] on 403 — so the
+ *   pipeline will complete without crashing but ingest 0 highlights until the
+ *   plan is upgraded.
  *
- * Checkpoint: uses ApiStrategyCache (key: "highlights_checkpoint") to persist
- * the last ingested Sportmonks highlight ID across deploys.
+ * Deduplication: checked via PlayerVideo.url before each create.
+ * Rate limiting: 300 ms delay between fixture batches of 10.
  */
 
 import { prisma } from "../lib/prisma";
 import {
-  fetchHighlightsBulk,
-  fetchHighlightsAfterById,
+  fetchFixtureHighlights,
 } from "../integrations/sportmonks/sportmonks.client";
 import type { SportmonksHighlight } from "../integrations/sportmonks/sportmonks.types";
 
@@ -27,9 +30,9 @@ import type { SportmonksHighlight } from "../integrations/sportmonks/sportmonks.
 // Constants
 // ---------------------------------------------------------------------------
 
-const CHECKPOINT_KEY = "highlights_checkpoint";
 const ADDED_BY = "Sistema SoccerMind";
-const DELAY_BETWEEN_PAGES_MS = 500;
+const BATCH_SIZE = 10;
+const DELAY_BETWEEN_BATCHES_MS = 300;
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -54,112 +57,60 @@ function extractYoutubeThumbnail(url: string): string | null {
     : null;
 }
 
-function buildVideoTitle(highlight: SportmonksHighlight): string {
+function buildTitle(highlight: SportmonksHighlight, fixtureId: number): string {
   if (highlight.scoreboard) return `Highlight — ${highlight.scoreboard}`;
   if (highlight.fixture?.name) return `Highlight — ${highlight.fixture.name}`;
-  return `Highlight #${highlight.id}`;
+  return `Highlight — Fixture ${fixtureId}`;
 }
 
 // ---------------------------------------------------------------------------
-// Checkpoint helpers (ApiStrategyCache)
+// Process one fixture's highlights
 // ---------------------------------------------------------------------------
 
-async function readCheckpoint(): Promise<number> {
-  try {
-    const row = await prisma.apiStrategyCache.findUnique({
-      where: { key: CHECKPOINT_KEY },
-    });
-    if (!row) return 0;
-    const data = row.data as { lastId?: number };
-    return typeof data.lastId === "number" ? data.lastId : 0;
-  } catch {
-    return 0;
-  }
-}
-
-async function writeCheckpoint(lastId: number): Promise<void> {
-  const FAR_FUTURE = new Date("2099-12-31T00:00:00Z");
-  await prisma.apiStrategyCache.upsert({
-    where: { key: CHECKPOINT_KEY },
-    create: { key: CHECKPOINT_KEY, data: { lastId }, expiresAt: FAR_FUTURE },
-    update: { data: { lastId }, expiresAt: FAR_FUTURE },
-  });
-}
-
-// ---------------------------------------------------------------------------
-// Core: process one batch of highlights
-// ---------------------------------------------------------------------------
-
-interface IngestBatchResult {
-  processed: number;
+interface FixtureResult {
   ingested: number;
   skipped: number;
-  maxId: number;
 }
 
-async function processBatch(
-  highlights: SportmonksHighlight[],
-): Promise<IngestBatchResult> {
+async function processFixtureHighlights(
+  matchId: string,
+  externalId: number,
+  processedUrls: Set<string>,
+): Promise<FixtureResult> {
+  const highlights = await fetchFixtureHighlights(externalId);
+
   let ingested = 0;
   let skipped = 0;
-  let maxId = 0;
 
   for (const highlight of highlights) {
-    if (highlight.id > maxId) maxId = highlight.id;
-
-    // Must have a video URL
-    if (!highlight.location?.trim()) {
+    const url = highlight.location?.trim() ?? "";
+    if (!url || processedUrls.has(url)) {
       skipped++;
       continue;
     }
 
-    // Deduplication: skip if URL already stored
-    const existing = await prisma.playerVideo.findFirst({
-      where: { url: highlight.location },
-      select: { id: true },
-    });
-    if (existing) {
-      skipped++;
-      continue;
-    }
-
-    // Resolve player via fixture → match → event chain
-    if (!highlight.fixture_id) {
-      skipped++;
-      continue;
-    }
-
-    const match = await prisma.match.findUnique({
-      where: { externalId: highlight.fixture_id },
-      select: { id: true },
-    });
-    if (!match) {
-      skipped++;
-      continue;
-    }
-
+    // Resolve player via MatchEvent
     const event = await prisma.matchEvent.findFirst({
-      where: { matchId: match.id, playerId: { not: null } },
+      where: { matchId, playerId: { not: null } },
       select: { playerId: true },
     });
+
     if (!event?.playerId) {
       skipped++;
       continue;
     }
 
-    // Build record
-    const source = detectSource(highlight.location);
-    const thumbnail =
-      source === "YOUTUBE" ? extractYoutubeThumbnail(highlight.location) : null;
+    const source = detectSource(url);
+    const thumbnail = source === "YOUTUBE" ? extractYoutubeThumbnail(url) : null;
 
     await prisma.playerVideo.create({
       data: {
         playerId: event.playerId,
-        title: buildVideoTitle(highlight),
+        title: buildTitle(highlight, externalId),
         description: highlight.fixture?.name ?? null,
         type: "HIGHLIGHT",
         source,
-        url: highlight.location,
+        url,
         thumbnail,
         duration: null,
         season: highlight.fixture?.season_id
@@ -170,14 +121,15 @@ async function processBatch(
       },
     });
 
+    processedUrls.add(url);
     ingested++;
   }
 
-  return { processed: highlights.length, ingested, skipped, maxId };
+  return { ingested, skipped };
 }
 
 // ---------------------------------------------------------------------------
-// Public: bulk ingestion (first-time bootstrap)
+// Public API
 // ---------------------------------------------------------------------------
 
 export interface HighlightsIngestionSummary {
@@ -185,39 +137,78 @@ export interface HighlightsIngestionSummary {
   totalFetched: number;
   totalIngested: number;
   totalSkipped: number;
+  planRestricted?: boolean;
 }
 
+/**
+ * Bulk ingestion: iterates over all Match records in the DB and fetches
+ * highlights for each fixture from Sportmonks.
+ *
+ * Safe to call multiple times — already-ingested URLs are skipped.
+ * Degrades gracefully if the Sportmonks plan does not include highlights.
+ */
 export async function runHighlightsBulkIngestion(): Promise<HighlightsIngestionSummary> {
-  console.log("[highlights] Starting bulk ingestion...");
+  console.log("[highlights] Starting fixture-based bulk ingestion...");
 
-  // fetchHighlightsBulk already paginates via smGetAll — returns all pages merged
-  const allHighlights = await fetchHighlightsBulk(50);
-  console.log(`[highlights] Fetched ${allHighlights.length} highlights from API`);
+  // Load all already-ingested URLs for deduplication
+  const existing = await prisma.playerVideo.findMany({
+    where: { tags: { has: "sportmonks" } },
+    select: { url: true },
+  });
+  const processedUrls = new Set(existing.map((v) => v.url));
 
-  // Process in slices to log progress without hammering the DB
-  const SLICE = 200;
+  // All matches with a Sportmonks externalId
+  const matches = await prisma.match.findMany({
+    select: { id: true, externalId: true },
+    orderBy: { externalId: "desc" },
+  });
+
+  const validMatches = matches.filter((m) => m.externalId !== null) as Array<{
+    id: string;
+    externalId: number;
+  }>;
+
+  console.log(`[highlights] Total fixtures to process: ${validMatches.length}`);
+
   let totalIngested = 0;
   let totalSkipped = 0;
-  let maxId = 0;
+  let planRestricted = false;
 
-  for (let offset = 0; offset < allHighlights.length; offset += SLICE) {
-    const slice = allHighlights.slice(offset, offset + SLICE);
-    const result = await processBatch(slice);
+  for (let i = 0; i < validMatches.length; i += BATCH_SIZE) {
+    const batch = validMatches.slice(i, i + BATCH_SIZE);
 
-    totalIngested += result.ingested;
-    totalSkipped += result.skipped;
-    if (result.maxId > maxId) maxId = result.maxId;
+    for (const match of batch) {
+      const result = await processFixtureHighlights(
+        match.id,
+        match.externalId,
+        processedUrls,
+      );
+      totalIngested += result.ingested;
+      totalSkipped += result.skipped;
+    }
+
+    const batchNum = Math.floor(i / BATCH_SIZE) + 1;
+    const totalBatches = Math.ceil(validMatches.length / BATCH_SIZE);
 
     console.log(
-      `[highlights] Progress: ${offset + slice.length}/${allHighlights.length} ` +
-      `— ingested ${result.ingested}, skipped ${result.skipped}`,
+      `[highlights] Batch ${batchNum}/${totalBatches} done — ` +
+      `ingested so far: ${totalIngested}`,
     );
 
-    // Throttle between slices to avoid DB overload
-    if (offset + SLICE < allHighlights.length) await sleep(DELAY_BETWEEN_PAGES_MS);
+    if (i + BATCH_SIZE < validMatches.length) {
+      await sleep(DELAY_BETWEEN_BATCHES_MS);
+    }
   }
 
-  if (maxId > 0) await writeCheckpoint(maxId);
+  // If nothing was ingested but there were matches to process, flag plan restriction
+  if (totalIngested === 0 && validMatches.length > 0) {
+    planRestricted = true;
+    console.warn(
+      "[highlights] 0 highlights ingested. " +
+      "This likely means the Sportmonks plan does not include the 'highlights' relation. " +
+      "Upgrade the plan to access highlight data.",
+    );
+  }
 
   console.log(
     `[highlights] Bulk done. Ingested: ${totalIngested}, Skipped: ${totalSkipped}`,
@@ -225,45 +216,84 @@ export async function runHighlightsBulkIngestion(): Promise<HighlightsIngestionS
 
   return {
     mode: "bulk",
-    totalFetched: allHighlights.length,
+    totalFetched: validMatches.length,
     totalIngested,
     totalSkipped,
+    planRestricted,
   };
 }
 
-// ---------------------------------------------------------------------------
-// Public: incremental sync (periodic runs)
-// ---------------------------------------------------------------------------
+/**
+ * Incremental sync: same as bulk but only processes the N most recent fixtures
+ * (by externalId descending). Useful for periodic runs to pick up highlights
+ * from recently ingested matches.
+ *
+ * Default: last 100 fixtures.
+ */
+export async function runHighlightsIncrementalSync(
+  limit = 100,
+): Promise<HighlightsIngestionSummary> {
+  console.log(`[highlights] Incremental sync — last ${limit} fixtures`);
 
-export async function runHighlightsIncrementalSync(): Promise<HighlightsIngestionSummary> {
-  const lastId = await readCheckpoint();
+  // Load all already-ingested URLs for deduplication
+  const existing = await prisma.playerVideo.findMany({
+    where: { tags: { has: "sportmonks" } },
+    select: { url: true },
+  });
+  const processedUrls = new Set(existing.map((v) => v.url));
 
-  if (lastId === 0) {
-    console.log("[highlights] No checkpoint found — falling back to bulk ingestion");
-    return runHighlightsBulkIngestion();
+  const matches = await prisma.match.findMany({
+    take: limit,
+    select: { id: true, externalId: true },
+    orderBy: { externalId: "desc" },
+  });
+
+  const validMatches = matches.filter((m) => m.externalId !== null) as Array<{
+    id: string;
+    externalId: number;
+  }>;
+
+  console.log(`[highlights] Processing ${validMatches.length} recent fixtures`);
+
+  let totalIngested = 0;
+  let totalSkipped = 0;
+  let planRestricted = false;
+
+  for (let i = 0; i < validMatches.length; i += BATCH_SIZE) {
+    const batch = validMatches.slice(i, i + BATCH_SIZE);
+
+    for (const match of batch) {
+      const result = await processFixtureHighlights(
+        match.id,
+        match.externalId,
+        processedUrls,
+      );
+      totalIngested += result.ingested;
+      totalSkipped += result.skipped;
+    }
+
+    if (i + BATCH_SIZE < validMatches.length) {
+      await sleep(DELAY_BETWEEN_BATCHES_MS);
+    }
   }
 
-  console.log(`[highlights] Incremental sync since ID ${lastId}`);
-
-  const newHighlights = await fetchHighlightsAfterById(lastId, 10);
-  console.log(`[highlights] Fetched ${newHighlights.length} new highlights`);
-
-  if (newHighlights.length === 0) {
-    return { mode: "incremental", totalFetched: 0, totalIngested: 0, totalSkipped: 0 };
+  if (totalIngested === 0 && validMatches.length > 0) {
+    planRestricted = true;
+    console.warn(
+      "[highlights] 0 highlights ingested. " +
+      "Sportmonks plan may not include the 'highlights' relation.",
+    );
   }
-
-  const result = await processBatch(newHighlights);
-
-  if (result.maxId > lastId) await writeCheckpoint(result.maxId);
 
   console.log(
-    `[highlights] Incremental done. Ingested: ${result.ingested}, Skipped: ${result.skipped}`,
+    `[highlights] Incremental done. Ingested: ${totalIngested}, Skipped: ${totalSkipped}`,
   );
 
   return {
     mode: "incremental",
-    totalFetched: newHighlights.length,
-    totalIngested: result.ingested,
-    totalSkipped: result.skipped,
+    totalFetched: validMatches.length,
+    totalIngested,
+    totalSkipped,
+    planRestricted,
   };
 }

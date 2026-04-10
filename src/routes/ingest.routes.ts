@@ -254,10 +254,13 @@ router.post(
     return res.json(
       successResponse({
         mode: summary.mode,
-        totalFetched: summary.totalFetched,
+        totalFixtures: summary.totalFetched,
         totalIngested: summary.totalIngested,
         totalSkipped: summary.totalSkipped,
-        message: `${summary.totalIngested} highlights ingeridos, ${summary.totalSkipped} ignorados`,
+        planRestricted: summary.planRestricted ?? false,
+        message: summary.planRestricted
+          ? "Plano Sportmonks não inclui highlights. Atualize o plano para acessar highlights."
+          : `${summary.totalIngested} highlights ingeridos, ${summary.totalSkipped} ignorados`,
       }),
     );
   }),
@@ -265,20 +268,24 @@ router.post(
 
 /**
  * POST /api/ingest/highlights/sync
- * Incremental sync: fetches only highlights with id > last checkpoint.
- * Falls back to bulk if no checkpoint exists.
+ * Incremental sync: processes the N most recent fixtures (default: 100).
+ * Body: { limit?: number }
  */
 router.post(
   "/highlights/sync",
-  asyncHandler(async (_req: Request, res: Response) => {
-    const summary = await runHighlightsIncrementalSync();
+  asyncHandler(async (req: Request, res: Response) => {
+    const limit = typeof req.body?.limit === "number" ? req.body.limit : 100;
+    const summary = await runHighlightsIncrementalSync(limit);
     return res.json(
       successResponse({
         mode: summary.mode,
-        totalFetched: summary.totalFetched,
+        totalFixtures: summary.totalFetched,
         totalIngested: summary.totalIngested,
         totalSkipped: summary.totalSkipped,
-        message: `${summary.totalIngested} highlights sincronizados`,
+        planRestricted: summary.planRestricted ?? false,
+        message: summary.planRestricted
+          ? "Plano Sportmonks não inclui highlights."
+          : `${summary.totalIngested} highlights sincronizados`,
       }),
     );
   }),
