@@ -20,6 +20,7 @@ import type {
   SportmonksSquadEntry,
   SportmonksFixture,
   SportmonksEvent,
+  SportmonksHighlight,
 } from "./sportmonks.types";
 
 // ---------------------------------------------------------------------------
@@ -514,4 +515,44 @@ export async function fetchMatchEvents(fixtureId: number): Promise<SportmonksEve
   return smGetAll<SportmonksEvent>("/events", {
     filters: { fixture_id: fixtureId },
   });
+}
+
+// ---------------------------------------------------------------------------
+// Highlights
+// ---------------------------------------------------------------------------
+
+/**
+ * Bulk highlights — filters=populate disables includes, raises per_page to 1000.
+ * Use for initial bootstrap. Returns lightweight highlight records.
+ */
+export async function fetchHighlightsBulk(maxPages = 20): Promise<SportmonksHighlight[]> {
+  return smGetAll<SportmonksHighlight>(
+    "/highlights",
+    { filters: { populate: true }, perPage: 1000 },
+    maxPages,
+  );
+}
+
+/**
+ * Incremental highlights — filters=populate;idAfter:LAST_ID.
+ * Fetches only highlights with id > lastKnownId.
+ */
+export async function fetchHighlightsAfterById(
+  lastKnownId: number,
+  maxPages = 5,
+): Promise<SportmonksHighlight[]> {
+  return smGetAll<SportmonksHighlight>(
+    "/highlights",
+    { filters: { populate: true, idAfter: lastKnownId }, perPage: 1000 },
+    maxPages,
+  );
+}
+
+/**
+ * Highlights for a single fixture.
+ * Use when ingesting a specific match and want its associated highlights.
+ */
+export async function fetchFixtureHighlights(fixtureId: number): Promise<SportmonksHighlight[]> {
+  const raw = await smGet<{ data: SportmonksHighlight[] }>(`/fixtures/${fixtureId}/highlights`);
+  return raw.data ?? [];
 }

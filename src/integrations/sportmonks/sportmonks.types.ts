@@ -260,3 +260,24 @@ export interface SportmonksEvent {
   // Raw remaining fields for `meta` Json
   [key: string]: unknown;
 }
+
+// ---------------------------------------------------------------------------
+// Highlights (GET /highlights, GET /fixtures/{id}/highlights)
+// ---------------------------------------------------------------------------
+
+export interface SportmonksHighlight {
+  id: number;
+  fixture_id: number;
+  quality: string | null;
+  scoreboard: string | null;
+  /** URL of the video/embed */
+  location: string;
+  created_at: string;
+  updated_at: string;
+  // populated via include or filters=populate
+  fixture?: {
+    id: number;
+    name?: string | null;
+    season_id?: number | null;
+  } | null;
+}

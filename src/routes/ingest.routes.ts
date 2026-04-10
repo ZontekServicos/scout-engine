@@ -5,6 +5,10 @@ import { successResponse } from "../lib/apiResponse";
 // Ingestion services
 import { ingestPlayerFromSportmonks } from "../ingestion/player.ingestion.service";
 import {
+  runHighlightsBulkIngestion,
+  runHighlightsIncrementalSync,
+} from "../ingestion/highlights.ingestion";
+import {
   ingestCountry,
   ingestLeague,
   ingestLeaguesByCountry,
@@ -230,6 +234,53 @@ router.post(
 
     const matches = await ingestMatchesBySeason(id);
     return res.json(successResponse({ total: matches.length }));
+  }),
+);
+
+// ---------------------------------------------------------------------------
+// Highlights
+// ---------------------------------------------------------------------------
+
+/**
+ * POST /api/ingest/highlights/bulk
+ * First-time bootstrap: fetches all Sportmonks highlights (paginated) and
+ * saves them as PlayerVideo records linked via fixture → match events.
+ * Safe to call multiple times — already-ingested URLs are skipped.
+ */
+router.post(
+  "/highlights/bulk",
+  asyncHandler(async (_req: Request, res: Response) => {
+    const summary = await runHighlightsBulkIngestion();
+    return res.json(
+      successResponse({
+        mode: summary.mode,
+        totalFetched: summary.totalFetched,
+        totalIngested: summary.totalIngested,
+        totalSkipped: summary.totalSkipped,
+        message: `${summary.totalIngested} highlights ingeridos, ${summary.totalSkipped} ignorados`,
+      }),
+    );
+  }),
+);
+
+/**
+ * POST /api/ingest/highlights/sync
+ * Incremental sync: fetches only highlights with id > last checkpoint.
+ * Falls back to bulk if no checkpoint exists.
+ */
+router.post(
+  "/highlights/sync",
+  asyncHandler(async (_req: Request, res: Response) => {
+    const summary = await runHighlightsIncrementalSync();
+    return res.json(
+      successResponse({
+        mode: summary.mode,
+        totalFetched: summary.totalFetched,
+        totalIngested: summary.totalIngested,
+        totalSkipped: summary.totalSkipped,
+        message: `${summary.totalIngested} highlights sincronizados`,
+      }),
+    );
   }),
 );
 
