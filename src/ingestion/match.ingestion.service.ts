@@ -14,6 +14,7 @@ import { prisma } from "../lib/prisma";
 import { Prisma } from "@prisma/client";
 import {
   fetchFixturesBySeason,
+  fetchFixturesBySeasonInclude,
   fetchMatchById,
   fetchMatchEvents,
 } from "../integrations/sportmonks/sportmonks.client";
@@ -153,14 +154,25 @@ async function upsertMatch(fixture: SportmonksFixture) {
 // ---------------------------------------------------------------------------
 
 export async function ingestMatchesBySeason(sportmonksSeasonId: number) {
-  const rawFixtures = await fetchFixturesBySeason(sportmonksSeasonId);
-  const results = [];
+  let rawFixtures: Awaited<ReturnType<typeof fetchFixturesBySeason>>;
+  try {
+    rawFixtures = await fetchFixturesBySeason(sportmonksSeasonId);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    if (msg.includes("400")) {
+      // Plan does not support season_id filter on /fixtures — use include fallback
+      console.warn("[ingestMatchesBySeason] season_id filter returned 400, falling back to /seasons/:id?include=fixtures");
+      rawFixtures = await fetchFixturesBySeasonInclude(sportmonksSeasonId);
+    } else {
+      throw err;
+    }
+  }
 
+  const results = [];
   for (const fixture of rawFixtures) {
     const match = await upsertMatch(fixture);
     results.push(match);
   }
-
   return results;
 }
 

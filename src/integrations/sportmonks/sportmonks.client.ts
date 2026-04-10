@@ -469,6 +469,23 @@ export async function fetchFixturesBySeason(
   );
 }
 
+/**
+ * Fetch fixtures via GET /seasons/{id}?include=fixtures
+ *
+ * This is the universal fallback when the season_id filter on /fixtures
+ * returns 400 (plan restriction). Returns all fixtures for the season
+ * embedded in the season object — no pagination needed.
+ */
+export async function fetchFixturesBySeasonInclude(
+  seasonId: number,
+): Promise<SportmonksFixture[]> {
+  const raw = await smGet<{ data: { fixtures?: SportmonksFixture[] } }>(
+    `/seasons/${seasonId}`,
+    { include: ["fixtures"] },
+  );
+  return raw.data?.fixtures ?? [];
+}
+
 export async function fetchMatchById(fixtureId: number): Promise<SportmonksFixture> {
   const raw = await smGet<{ data: SportmonksFixture }>(`/fixtures/${fixtureId}`, {
     include: [...FIXTURE_INCLUDE],
