@@ -82,7 +82,10 @@
     "ingest:events:all": "ts-node src/scripts/ingest-all-events.ts",
     "stats:aggregate": "ts-node src/scripts/aggregate-player-stats.ts",
     "debug:type-ids": "ts-node src/scripts/dump-player-type-ids.ts",
-    "debug:type-ids:salah": "ts-node src/scripts/dump-player-type-ids.ts --player=14722 --season=25583"
+    "debug:type-ids:salah": "ts-node src/scripts/dump-player-type-ids.ts --player=14722 --season=25583",
+    "overall:recalc:v2": "ts-node src/scripts/recalculate-overall-v2.ts",
+    "overall:recalc:v2:dry": "ts-node src/scripts/recalculate-overall-v2.ts --dry-run",
+    "check:leagues": "ts-node src/scripts/check-league-enrichment.ts"
   },
   "dependencies": {
     "@prisma/client": "^6.19.2",
