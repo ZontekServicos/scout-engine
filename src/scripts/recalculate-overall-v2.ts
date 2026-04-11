@@ -39,7 +39,7 @@ async function main() {
 
   // Conta jogadores com pelo menos uma entrada de PlayerStats
   const total = await prisma.player.count({
-    where: { playerStats: { some: {} } },
+    where: { statsSnapshots: { some: {} } },
   });
   console.log(`  Jogadores com PlayerStats: ${total}\n`);
 
@@ -51,7 +51,7 @@ async function main() {
 
   while (offset < total) {
     const players = await prisma.player.findMany({
-      where: { playerStats: { some: {} } },
+      where: { statsSnapshots: { some: {} } },
       select: {
         id:               true,
         positions:        true,
