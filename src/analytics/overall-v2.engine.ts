@@ -68,6 +68,7 @@ export interface OverallV2PlayerInput {
   positions:       string[];
   age:             number;
   league?:         string | null;
+  overall?:          number | null;  // v1 overall — used as MacroSkillScore base when available
   overallPace?:      number | null;
   overallShooting?:  number | null;
   overallPassing?:   number | null;
@@ -183,7 +184,10 @@ function calcDna(
 
   return {
     impact:       clamp(impactBase * 0.70 + impactPerf * 0.30 * leagueScale, 0, 100),
-    intelligence: clamp(macros.passing * 0.55 + macros.dribbling * 0.30 + (stats?.passAccuracy ?? 50) * 0.15, 0, 100),
+    intelligence: clamp(
+      macros.passing * 0.60 +
+      clamp((sanitizePassAccuracy(stats?.passAccuracy, (stats as any)?.passes) ?? 60) * 0.40, 0, 40),
+      0, 100),
     defensiveIQ:  clamp(
       macros.defending * 0.55 + macros.physical * 0.20 +
       clamp(((stats?.tackles ?? 0) + (stats?.interceptions ?? 0)) / Math.max(minutes, 1) * 90 * 3, 0, 30),
@@ -197,6 +201,27 @@ function calcDna(
 // Main export
 // ---------------------------------------------------------------------------
 
+/**
+ * Sanitizes passAccuracy: the Sportmonks enrich pipeline sometimes stores
+ * the raw count of accurate passes instead of a percentage.
+ * If the value looks like a raw count (< 10 while passes_total > 20), discard it.
+ * Returns a value in 0–100 range or null.
+ */
+function sanitizePassAccuracy(
+  passAccuracy: number | null | undefined,
+  passes: number | null | undefined,
+): number | null {
+  if (passAccuracy == null) return null;
+  // If it's clearly a percentage (10–100), trust it
+  if (passAccuracy >= 10 && passAccuracy <= 100) return passAccuracy;
+  // If raw count and passes exist: compute ratio
+  if (passAccuracy < 10 && passes != null && passes > 0) {
+    const pct = (passAccuracy / passes) * 100;
+    if (pct >= 40 && pct <= 100) return pct;  // sanity check
+  }
+  return null;  // discard unreliable value
+}
+
 export function calculateOverallV2(
   player: OverallV2PlayerInput,
   stats:  OverallV2StatsInput | null,
@@ -206,8 +231,22 @@ export function calculateOverallV2(
   const leagueScale = LEAGUE_VOLUME_SCALE[leagueCtx];
 
   // Pilar 1 — MacroSkill (50%)
+  // Use v1 overall as the MacroSkillScore when available — it already incorporates
+  // all available stats with position-specific weights from the full v1 engine.
+  // Fall back to the block composite only when v1 overall is absent.
+  // Rationale: overallPace and overallDribbling are stuck at 10 for all players
+  // because the Sportmonks plan does not provide distanceCovered/sprints/dribbles.
+  // The v1 overall, despite this, captures the available signals better.
   const macros     = extractMacroSkills(player);
-  const macroScore = calculateMacroSkillScore(macros, position);
+  const macroScore = player.overall != null && player.overall > 0
+    ? player.overall                                  // v1 already position-weighted
+    : calculateMacroSkillScore(macros, position);     // fallback when no v1
+
+  // Sanitize passAccuracy before feeding to performance engine
+  const cleanPassAccuracy = sanitizePassAccuracy(
+    stats?.passAccuracy,
+    (stats as any)?.passes,
+  );
 
   // Pilar 2 — Performance (25%)
   const perfScore = stats
@@ -216,7 +255,7 @@ export function calculateOverallV2(
         assists:       stats.assists       ?? 0,
         xG:            stats.xG            ?? 0,
         xA:            stats.xA            ?? 0,
-        passAccuracy:  stats.passAccuracy  ?? 0,
+        passAccuracy:  cleanPassAccuracy   ?? 0,
         tackles:       stats.tackles       ?? 0,
         interceptions: stats.interceptions ?? 0,
         rating:        stats.rating        ?? 0,

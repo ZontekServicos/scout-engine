@@ -143,6 +143,7 @@ export async function getTruePerformanceController(req: Request, res: Response) 
       positions: true,
       age: true,
       league: true,
+      overall:          true,
       overallPace:      true,
       overallShooting:  true,
       overallPassing:   true,
@@ -162,7 +163,7 @@ export async function getTruePerformanceController(req: Request, res: Response) 
     orderBy: { createdAt: "desc" },
     select: {
       goals: true, assists: true, xG: true, xA: true,
-      passAccuracy: true, tackles: true, interceptions: true,
+      passAccuracy: true, passes: true, tackles: true, interceptions: true,
       rating: true, minutes: true, appearances: true,
     },
   });

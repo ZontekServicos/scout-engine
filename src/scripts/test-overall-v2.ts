@@ -2,51 +2,53 @@ import { prisma } from "../lib/prisma";
 import { calculateOverallV2 } from "../analytics/overall-v2.engine";
 
 async function main() {
-  // Find a player with both overallPace populated and PlayerStats
-  const player = await prisma.player.findFirst({
-    where: {
-      overallPace: { not: null },
-      statsSnapshots: { some: {} },
-    },
+  // 5 players with best v1 overall that also have stats
+  const players = await prisma.player.findMany({
+    where: { overall: { not: null }, statsSnapshots: { some: {} } },
+    orderBy: { overall: "desc" },
+    take: 5,
     select: {
-      id: true, name: true, positions: true, age: true, league: true,
+      id: true, name: true, positions: true, age: true, league: true, overall: true,
       overallPace: true, overallShooting: true, overallPassing: true,
       overallDribbling: true, overallDefending: true, overallPhysical: true,
-      overall: true,
     },
   });
 
-  if (!player) {
-    console.log("Nenhum jogador com macro blocks E PlayerStats encontrado.");
-    process.exit(0);
+  console.log("| Jogador                     | Pos  | Liga                      | v1 | v2 | Tier       | Macro | Perf | Cons | Ctx |");
+  console.log("|-----------------------------+------+---------------------------+----+----+------------+-------+------+------+-----|");
+
+  for (const player of players) {
+    const stats = await prisma.playerStats.findFirst({
+      where: { playerId: player.id },
+      orderBy: { createdAt: "desc" },
+      select: {
+        goals: true, assists: true, xG: true, xA: true,
+        passAccuracy: true, passes: true, tackles: true, interceptions: true,
+        rating: true, minutes: true, appearances: true,
+      },
+    });
+
+    const r = calculateOverallV2(player as any, stats);
+    const pos = player.positions[0]?.substring(0, 4) ?? "N/A";
+    const liga = (player.league ?? "N/A").substring(0, 25);
+    const name = player.name.substring(0, 28).padEnd(28);
+    console.log(`| ${name} | ${pos.padEnd(4)} | ${liga.padEnd(25)} | ${String(player.overall).padStart(2)} | ${String(r.overall).padStart(2)} | ${r.tier.padEnd(10)} | ${r.macroSkillScore.toString().padStart(5)} | ${r.performanceScore.toString().padStart(4)} | ${r.consistencyScore.toString().padStart(4)} | ${r.contextScore.toString().padStart(3)} |`);
   }
 
-  const stats = await prisma.playerStats.findFirst({
-    where: { playerId: player.id },
-    orderBy: { createdAt: "desc" },
+  // Also test 2 players WITHOUT stats (fallback)
+  const noStats = await prisma.player.findFirst({
+    where: { overall: { not: null }, statsSnapshots: { none: {} } },
+    orderBy: { overall: "desc" },
     select: {
-      goals: true, assists: true, xG: true, xA: true,
-      passAccuracy: true, tackles: true, interceptions: true,
-      rating: true, minutes: true, appearances: true,
+      id: true, name: true, positions: true, age: true, league: true, overall: true,
+      overallPace: true, overallShooting: true, overallPassing: true,
+      overallDribbling: true, overallDefending: true, overallPhysical: true,
     },
   });
-
-  const result = calculateOverallV2(player, stats);
-
-  console.log(`\nJogador: ${player.name}`);
-  console.log(`Liga: ${player.league ?? "N/A"}  |  Posição: ${result.position}`);
-  console.log(`Overall v1 (banco): ${player.overall ?? "N/A"}`);
-  console.log(`Overall v2:         ${result.overall}  [${result.tier}]`);
-  console.log(`Confiável: ${result.reliable}`);
-  console.log(`\nPilares:`);
-  console.log(`  MacroSkill   ${result.macroSkillScore}  × 0.50 = ${result.breakdown.macro}`);
-  console.log(`  Performance  ${result.performanceScore}  × 0.25 = ${result.breakdown.performance}`);
-  console.log(`  Consistency  ${result.consistencyScore}  × 0.15 = ${result.breakdown.consistency}`);
-  console.log(`  Context      ${result.contextScore}  × 0.10 = ${result.breakdown.context}`);
-  console.log(`\nMacroSkills: PAC=${result.macroSkills.pace} SHO=${result.macroSkills.shooting} PAS=${result.macroSkills.passing} DRI=${result.macroSkills.dribbling} DEF=${result.macroSkills.defending} PHY=${result.macroSkills.physical}`);
-  console.log(`\nDNA:`);
-  console.log(`  Impact=${result.dna.impact}  Intelligence=${result.dna.intelligence}  DefensiveIQ=${result.dna.defensiveIQ}  Consistency=${result.dna.consistency}  Potential=${result.dna.potential}`);
-  console.log(`\nLeague: ${result.leagueContext} (scale=${result.leagueScale})`);
+  if (noStats) {
+    const r = calculateOverallV2(noStats as any, null);
+    console.log(`\nSem stats: ${noStats.name} → v1=${noStats.overall} v2=${r.overall} [${r.tier}] (fallback perf=${r.performanceScore})`);
+  }
 
   process.exit(0);
 }
