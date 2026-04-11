@@ -6,6 +6,7 @@ import {
   getPlayerProfileController,
   getPlayerProjectionController,
   getPlayerSimilarController,
+  getTruePerformanceController,
   listPlayerNotesController,
   listPlayersController,
   searchPlayersController,
@@ -27,5 +28,7 @@ router.get("/player/:id/similar", asyncHandler(getPlayerSimilarController));
 router.get("/player/:id/notes", asyncHandler(listPlayerNotesController));
 
 router.post("/player/:id/notes", asyncHandler(createPlayerNoteController));
+
+router.get("/player/:id/true-performance", asyncHandler(getTruePerformanceController));
 
 export default router;

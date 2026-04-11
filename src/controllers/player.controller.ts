@@ -4,6 +4,8 @@ import { withCache } from "../lib/cache";
 import { generatePlayerReportAnalysis } from "../scout/player-report.service";
 import { getPlayerProfile, getPlayerProjection, getSimilarPlayers, listPlayers } from "../scout/player.service";
 import { addScoutNote, getScoutNotes } from "../scout/scout-notes.store";
+import { prisma } from "../lib/prisma";
+import { calculateOverallV2 } from "../analytics/overall-v2.engine";
 
 function getParam(value: string | string[] | undefined): string {
   if (Array.isArray(value)) return value[0] ?? "";
@@ -129,4 +131,43 @@ export async function createPlayerReportController(req: Request, res: Response) 
   });
 
   return res.status(201).json(successResponse(data));
+}
+
+export async function getTruePerformanceController(req: Request, res: Response) {
+  const playerId = getParam(req.params.id);
+
+  const player = await prisma.player.findUnique({
+    where: { id: playerId },
+    select: {
+      id: true,
+      positions: true,
+      age: true,
+      league: true,
+      overallPace:      true,
+      overallShooting:  true,
+      overallPassing:   true,
+      overallDribbling: true,
+      overallDefending: true,
+      overallPhysical:  true,
+    },
+  });
+
+  if (!player) {
+    return res.status(404).json({ success: false, data: null, error: "Player not found" });
+  }
+
+  // Most recent PlayerStats record for this player
+  const stats = await prisma.playerStats.findFirst({
+    where: { playerId },
+    orderBy: { createdAt: "desc" },
+    select: {
+      goals: true, assists: true, xG: true, xA: true,
+      passAccuracy: true, tackles: true, interceptions: true,
+      rating: true, minutes: true, appearances: true,
+    },
+  });
+
+  const result = calculateOverallV2(player, stats);
+
+  return res.json(successResponse(result));
 }

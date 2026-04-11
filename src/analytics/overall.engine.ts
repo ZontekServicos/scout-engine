@@ -182,7 +182,7 @@ export type LeagueContext =
  *
  * Reference data: Opta / Statsbomb per-90 league averages 2023-24.
  */
-const LEAGUE_VOLUME_SCALE: Record<LeagueContext, number> = {
+export const LEAGUE_VOLUME_SCALE: Record<LeagueContext, number> = {
   DEFAULT:   1.00,   // European top-5 reference
   EUR_MID:   0.95,   // Eredivisie / Liga Portugal / Scottish Prem
   EUR_LOWER: 0.90,   // Belgian Pro League / Süper Lig
