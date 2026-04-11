@@ -22,8 +22,9 @@ export const SM_TYPE_ID = {
   CROSS_ACCURACY: 91,
 
   // Shooting
-  SHOTS_TOTAL: 84,
-  SHOTS_ON_TARGET: 85,
+  // Confirmed via API dump: type_id 41 = shots on target, 42 = shots total
+  SHOTS_TOTAL: 42,
+  SHOTS_ON_TARGET: 41,
   SHOTS_BLOCKED: 92,
   XG: 130,
   XA: 131,
@@ -54,7 +55,8 @@ export const SM_TYPE_ID = {
   GROUND_DUELS_WON: 160,
 
   // Physical
-  MINUTES_PLAYED: 119,
+  // Confirmed via API dump: type_id 116 = minutes played (119 was never in API responses)
+  MINUTES_PLAYED: 116,
   APPEARANCES: 321,
   DISTANCE_COVERED: 200,
   SPRINTS: 201,
@@ -62,9 +64,9 @@ export const SM_TYPE_ID = {
   RATING: 118,
 
   // Discipline
-  // Note: 84/83 were placeholders — Sportmonks v3 confirmed card type_ids:
-  //   yellow card event type_id varies; use these until API validates
-  YELLOW_CARDS: 84,   // ⚠ collides with SHOTS_TOTAL — update when API confirms
+  // Confirmed via API dump: type_id 84 = yellow cards (no longer collides with shots)
+  // SHOTS_TOTAL was wrongly set to 84 — corrected to 42 above.
+  YELLOW_CARDS: 84,
   RED_CARDS: 83,
   FOULS_COMMITTED: 95,
   FOULS_DRAWN: 96,
