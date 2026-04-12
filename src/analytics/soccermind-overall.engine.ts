@@ -400,6 +400,34 @@ function scoreBlock(
 // Tier
 // ─────────────────────────────────────────────────────────────────────────────
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Potential — baseado em overall + margem de crescimento por idade
+//
+//   potential = clamp(overall + growth + variation, overall, 90)
+//
+//   Idade   Crescimento base
+//   ≤ 21    +12  (janela de desenvolvimento máxima)
+//   ≤ 24    +8   (ainda crescendo)
+//   ≤ 27    +4   (pico próximo)
+//   ≤ 30    +1   (estabilizando)
+//   > 30     0   (sem crescimento esperado)
+//
+//   variation: ±2 aleatório — evita valores idênticos para toda uma geração.
+//   Seed implícito: não persiste entre runs, mas é aceitável para scouting.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export function calculatePotential(overall: number, age: number): number {
+  let growth = 0;
+  if      (age <= 21) growth = 12;
+  else if (age <= 24) growth = 8;
+  else if (age <= 27) growth = 4;
+  else if (age <= 30) growth = 1;
+
+  const variation = Math.floor(Math.random() * 5) - 2;  // -2 a +2
+
+  return Math.min(90, Math.max(overall, overall + growth + variation));
+}
+
 export function smTier(overall: number): SmTier {
   if (overall >= 82) return "ELITE";
   if (overall >= 76) return "MUITO_BOM";

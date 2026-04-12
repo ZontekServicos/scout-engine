@@ -29,6 +29,7 @@ dotenv.config({ path: path.resolve(__dirname, "../../.env") });
 import { prisma } from "../lib/prisma";
 import {
   calculateSoccerMindOverall,
+  calculatePotential,
   resolvePositionGroup,
   sortedSamples,
   type MetricSamples,
@@ -183,6 +184,7 @@ async function scoreAllPlayers(pop: PopulationStats): Promise<void> {
         id:        true,
         positions: true,
         league:    true,
+        age:       true,
       },
       orderBy: { id: "asc" },
       skip:  offset,
@@ -214,11 +216,14 @@ async function scoreAllPlayers(pop: PopulationStats): Promise<void> {
           pop,
         );
 
+        const potential = calculatePotential(result.overall, player.age);
+
         if (!DRY_RUN) {
           await prisma.player.update({
             where: { id: player.id },
             data: {
               overall:             result.overall,
+              potential,
               overallCalculatedAt: new Date(),
             },
           });
@@ -287,7 +292,37 @@ async function scoreAllPlayers(pop: PopulationStats): Promise<void> {
       FROM "Player" WHERE overall IS NOT NULL AND overall > 0
     `);
     const s = stats[0];
-    console.log(`\n  Max: ${s.max}  |  Min: ${s.min}  |  Média: ${s.media}`);
+    console.log(`\n  Overall  — Max: ${s.max}  |  Min: ${s.min}  |  Média: ${s.media}`);
+
+    // Validação do potential por faixa de idade
+    const potStats = await prisma.$queryRawUnsafe<any[]>(`
+      SELECT
+        CASE
+          WHEN age <= 21 THEN '≤21 jovem'
+          WHEN age <= 24 THEN '22–24'
+          WHEN age <= 27 THEN '25–27'
+          WHEN age <= 30 THEN '28–30'
+          ELSE                '31+'
+        END as faixa,
+        COUNT(*)::int as players,
+        ROUND(AVG(overall::numeric), 1)   as avg_overall,
+        ROUND(AVG(potential::numeric), 1) as avg_potential,
+        ROUND(AVG((potential - overall)::numeric), 1) as avg_gap
+      FROM "Player"
+      WHERE overall IS NOT NULL AND potential IS NOT NULL AND overall > 0
+      GROUP BY 1
+      ORDER BY MIN(age)
+    `);
+    console.log("\n  POTENTIAL por faixa de idade:");
+    console.log("  " + "-".repeat(60));
+    console.log("  Faixa".padEnd(12) + "Players".padEnd(10) + "Avg OV".padEnd(10) + "Avg POT".padEnd(10) + "Gap");
+    for (const r of potStats) {
+      console.log(
+        `  ${String(r.faixa).padEnd(11)} ${String(r.players).padStart(6)}    ` +
+        `${String(r.avg_overall).padStart(5)}     ${String(r.avg_potential).padStart(5)}    +${r.avg_gap}`
+      );
+    }
+    console.log("  " + "-".repeat(60));
   }
 
   console.log(sep + "\n");
