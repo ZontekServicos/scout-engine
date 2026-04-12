@@ -124,6 +124,19 @@ async function buildPopulationStats(): Promise<PopulationStats> {
   }
   console.log("  [Fase 1] Amostra por grupo:", JSON.stringify(totalByGroup));
 
+  // ── Validação de distribuição ──────────────────────────────────────────
+  const grandTotal = Object.values(totalByGroup).reduce((a, b) => a + b, 0);
+  if (grandTotal > 0) {
+    const midPct = ((totalByGroup["MID"] ?? 0) / grandTotal * 100).toFixed(1);
+    if ((totalByGroup["MID"] ?? 0) / grandTotal > 0.90) {
+      console.warn(
+        `  ⚠  AVISO: ${midPct}% da população está em MID — provável problema de mapeamento de posição!`,
+      );
+    } else {
+      console.log(`  [Fase 1] Distribuição OK — MID representa ${midPct}% da população.`);
+    }
+  }
+
   // Sort all arrays ascending for binary-search percentile lookup
   const pop: PopulationStats = {} as PopulationStats;
   for (const [grp, samples] of Object.entries(groups) as [PositionGroup, MetricSamples][]) {

@@ -107,24 +107,82 @@ const POWER_EXPONENT: Record<PositionGroup, number> = {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Position groups
+//
+// O banco armazena nomes completos do Sportmonks (ex: "Centre Back", "Left Wing").
+// O mapper cobre:
+//   1. Nomes completos Sportmonks (fonte real do banco)
+//   2. Abreviações curtas FIFA/legacy (GK, CB, ST…) — compatibilidade futura
 // ─────────────────────────────────────────────────────────────────────────────
 
 export type PositionGroup = "GK" | "DEF" | "MID" | "ATT";
 
-const RAW_TO_GROUP: Record<string, PositionGroup> = {
-  GK:  "GK",
-  SW:  "DEF", CB: "DEF", FB: "DEF", WB: "DEF",
-  CDM: "MID", CM: "MID", MEZ: "MID", WM: "MID",
-  CAM: "MID", W: "MID",
-  SS:  "ATT", CF: "ATT", ST: "ATT",
+/** Lookup por nome normalizado (uppercase, sem espaços duplos). */
+const POSITION_TO_GROUP: Record<string, PositionGroup> = {
+  // ── Goalkeepers ──────────────────────────────────────────────────────────
+  "GOALKEEPER": "GK",
+  "GK":         "GK",
+
+  // ── Defenders ────────────────────────────────────────────────────────────
+  "DEFENDER":          "DEF",
+  "CENTRE BACK":       "DEF",
+  "CENTER BACK":       "DEF",
+  "CENTRE-BACK":       "DEF",
+  "RIGHT BACK":        "DEF",
+  "LEFT BACK":         "DEF",
+  "RIGHT WING BACK":   "DEF",
+  "LEFT WING BACK":    "DEF",
+  "SWEEPER":           "DEF",
+  // abreviações
+  "CB": "DEF", "SW": "DEF", "FB": "DEF", "WB": "DEF",
+  "LB": "DEF", "RB": "DEF", "LWB": "DEF", "RWB": "DEF",
+
+  // ── Midfielders ──────────────────────────────────────────────────────────
+  "MIDFIELDER":           "MID",
+  "CENTRAL MIDFIELD":     "MID",
+  "DEFENSIVE MIDFIELD":   "MID",
+  "ATTACKING MIDFIELD":   "MID",
+  "CENTRAL MIDFIELDER":   "MID",
+  "DEFENSIVE MIDFIELDER": "MID",
+  "ATTACKING MIDFIELDER": "MID",
+  "LEFT MIDFIELD":        "MID",
+  "RIGHT MIDFIELD":       "MID",
+  // abreviações
+  "CM": "MID", "CDM": "MID", "CAM": "MID",
+  "DM": "MID", "AM":  "MID",
+  "LM": "MID", "RM":  "MID",
+  "MEZ": "MID", "WM": "MID",
+
+  // ── Wingers (ATT — impacto ofensivo) ─────────────────────────────────────
+  "LEFT WING":    "ATT",
+  "RIGHT WING":   "ATT",
+  "LEFT WINGER":  "ATT",
+  "RIGHT WINGER": "ATT",
+  "WINGER":       "ATT",
+  // abreviações
+  "LW": "ATT", "RW": "ATT", "W": "ATT",
+
+  // ── Attackers ────────────────────────────────────────────────────────────
+  "ATTACKER":        "ATT",
+  "CENTRE FORWARD":  "ATT",
+  "CENTER FORWARD":  "ATT",
+  "CENTRE-FORWARD":  "ATT",
+  "STRIKER":         "ATT",
+  "SECOND STRIKER":  "ATT",
+  // abreviações
+  "ST": "ATT", "CF": "ATT", "SS": "ATT",
 };
 
+/**
+ * Mapeia o array de posições de um jogador para um dos 4 grupos posicionais.
+ * Usa a primeira posição reconhecida (posição principal).
+ */
 export function resolvePositionGroup(rawPositions: string[]): PositionGroup {
   for (const p of rawPositions) {
-    const upper = p.toUpperCase().trim();
-    if (RAW_TO_GROUP[upper]) return RAW_TO_GROUP[upper];
+    const key = p.toUpperCase().trim().replace(/\s+/g, " ");
+    const group = POSITION_TO_GROUP[key];
+    if (group) return group;
   }
-  return "MID";
+  return "MID";  // fallback seguro
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
