@@ -1,29 +1,28 @@
 /**
- * soccermind-overall.engine.ts
+ * soccermind-overall.engine.ts  —  v3
  *
- * SoccerMind Overall — Rating proprietário baseado em dados reais do Sportmonks.
+ * SoccerMind Overall — Rating proprietário, baseado em dados reais.
  *
  * ─── FILOSOFIA ──────────────────────────────────────────────────────────────
  *
- *   Não replica o FIFA. Não usa benchmarks fixos.
- *   Cada métrica é normalizada como PERCENTIL dentro da população
- *   do mesmo grupo posicional (GK / DEF / MID / ATT).
- *
- *   Resultado: distribuição saudável e uniforme por construção —
- *   sempre haverá jogadores em todos os tiers.
+ *   • Não replica o FIFA. Não usa benchmarks fixos.
+ *   • Cada métrica vira percentil dentro do grupo posicional (GK/DEF/MID/ATT).
+ *   • Curva de poder (^1.3) cria distribuição realista: poucos elites, maioria
+ *     na faixa intermediária — não uma distribuição uniforme artificial.
+ *   • Liga afeta o overall via fator multiplicativo no composite, não como
+ *     bônus fixo — evita hardcoding.
  *
  * ─── RANGE ──────────────────────────────────────────────────────────────────
  *
- *   40 (pior) → 85 (melhor)
- *   Propositalmente comprimido: não existe "99 perfeito".
- *   Um jogador com 80+ é genuinamente excepcional.
+ *   40 (mínimo) → 85 (teto)
+ *   Propositalmente comprimido: 80+ é genuinamente excepcional.
  *
  * ─── 4 BLOCOS ───────────────────────────────────────────────────────────────
  *
- *   FINALIZAÇÃO  — goals/90, xG/90, shotsOnTarget/90, conversion_rate
- *   CRIAÇÃO      — assists/90, xA/90, keyPasses/90, passAccuracy
- *   PRESSÃO      — tackles/90, interceptions/90, aerialDuelsWon/90
- *   PRESENÇA     — rating (Sportmonks), availability, minutes_regularity
+ *   FINALIZAÇÃO  — gols/90, xG/90, chutes no gol/90, taxa de conversão
+ *   CRIAÇÃO      — assistências/90, xA/90, passes-chave/90, precisão de passe
+ *   PRESSÃO      — duelos defensivos (pesos internos variam por posição)
+ *   PRESENÇA     — rating Sportmonks, disponibilidade, regularidade de minutos
  *
  * ─── PESOS POR GRUPO ────────────────────────────────────────────────────────
  *
@@ -33,30 +32,46 @@
  *   PRESSÃO   0.15  0.50  0.25  0.05
  *   PRESENÇA  0.80  0.30  0.15  0.15
  *
- * ─── NORMALIZAÇÃO ───────────────────────────────────────────────────────────
+ * ─── CURVA DE PODER DINÂMICA ────────────────────────────────────────────────
  *
- *   Cada métrica é convertida em percentil 0–100 dentro do grupo posicional
- *   usando os dados populacionais passados como parâmetro (PopulationStats).
+ *   overall = 40 + (composite/100)^exp × 45
  *
- *   Isso garante:
- *     • Distribuição uniforme por definição
- *     • Comparação justa entre posições
- *     • Sem inflação ou deflação por liga
+ *   Expoente varia por grupo posicional — atacantes são mais seletivos:
+ *     ATT  1.35  (elite mais raro — exige volume + eficiência)
+ *     DEF  1.30
+ *     MID  1.25
+ *     GK   1.20  (menos métricas disponíveis → menos penalização)
  *
- *   Um pequeno ajuste contextual (±2.5pt) é aplicado ao final para
- *   reconhecer diferenças de nível entre ligas.
+ *   composite 100 → overall 85   (teto absoluto, qualquer posição)
+ *   composite  80 → ATT 73 / MID 74 / GK 75
+ *   composite  60 → ATT 62 / MID 63 / GK 65
+ *   composite  40 → ATT 51 / MID 52 / GK 54
+ *
+ * ─── FATOR DE LIGA ──────────────────────────────────────────────────────────
+ *
+ *   Aplicado ao composite antes da curva de poder:
+ *     adjustedComposite = composite × leagueFactor
+ *
+ *   Liga            Factor
+ *   Premier League  1.05
+ *   Top-5 Europa    1.03
+ *   Europa Mid      1.00
+ *   Europa Lower    0.97
+ *   Brasileirão A   0.95
+ *   SA Top          0.93
+ *   SA Mid / Série B 0.90
  *
  * ─── TIERS ──────────────────────────────────────────────────────────────────
  *
- *   82–85  ELITE          top ~7%
- *   76–81  MUITO BOM      top 7–20%
- *   68–75  BOM            top 20–38%
- *   58–67  MEDIANO        top 38–60%
+ *   82–85  ELITE          top ~5%
+ *   76–81  MUITO_BOM      top 5–15%
+ *   68–75  BOM            top 15–35%
+ *   58–67  MEDIANO        top 35–60%
  *   40–57  REGULAR        bottom 40%
  */
 
 import { clamp } from "./engine.utils";
-import { LeagueContext, LEAGUE_VOLUME_SCALE } from "./overall.engine";
+import { LeagueContext } from "./overall.engine";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Constants
@@ -66,8 +81,29 @@ export const SM_SCORE_FLOOR   = 40;
 export const SM_SCORE_CEILING = 85;
 const SM_SCORE_RANGE = SM_SCORE_CEILING - SM_SCORE_FLOOR; // 45
 
-/** Minimum minutes to be included in population stats calculation. */
 export const SM_MIN_MINUTES = 450;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Curva de poder dinâmica — expoente por grupo posicional
+//
+//   ATT 1.35: atacante elite precisa de volume E eficiência (mais seletivo)
+//   DEF 1.30: padrão
+//   MID 1.25: criadores têm métricas mais distribuídas
+//   GK  1.20: menos métricas disponíveis → menor penalização pela curva
+// ─────────────────────────────────────────────────────────────────────────────
+
+// Fator global de calibração da curva.
+// Multiplica todos os expoentes — ajusta a seletividade do modelo inteiro
+// sem alterar a fórmula. Aumentar → mais seletivo (menos elites).
+// Padrão 1.02 aplica pressão mínima e facilita recalibração futura.
+const GLOBAL_CURVE = 1.02;
+
+const POWER_EXPONENT: Record<PositionGroup, number> = {
+  ATT: 1.35,
+  DEF: 1.30,
+  MID: 1.25,
+  GK:  1.20,
+};
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Position groups
@@ -79,7 +115,7 @@ const RAW_TO_GROUP: Record<string, PositionGroup> = {
   GK:  "GK",
   SW:  "DEF", CB: "DEF", FB: "DEF", WB: "DEF",
   CDM: "MID", CM: "MID", MEZ: "MID", WM: "MID",
-  CAM: "MID", W:  "MID",
+  CAM: "MID", W: "MID",
   SS:  "ATT", CF: "ATT", ST: "ATT",
 };
 
@@ -88,18 +124,51 @@ export function resolvePositionGroup(rawPositions: string[]): PositionGroup {
     const upper = p.toUpperCase().trim();
     if (RAW_TO_GROUP[upper]) return RAW_TO_GROUP[upper];
   }
-  return "MID"; // safe default
+  return "MID";
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Block weights (must sum to 1.0 per group)
+// Bloco PRESSÃO — pesos internos variam por posição
+//
+//   DEF: tackles dominam  (marcação, bloqueios, disputas aéreas)
+//   MID: interceptions dominam  (leitura de jogo, recuperação de bola)
+//   ATT: interceptions como proxy de pressing  (pressão alta)
+//   GK:  disputas aéreas dominam  (saídas de área)
+//
+// [tackles90, interceptions90, aerialDuelsWon90]
+// ─────────────────────────────────────────────────────────────────────────────
+
+const PRESSURE_INTERNAL_WEIGHTS: Record<PositionGroup, [number, number, number]> = {
+  GK:  [0.10, 0.15, 0.75],
+  DEF: [0.40, 0.35, 0.25],
+  MID: [0.30, 0.45, 0.25],
+  ATT: [0.15, 0.55, 0.30],
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Bloco PRESENÇA — pesos fixos (independente de posição)
+//
+//   rating     : rating médio Sportmonks por jogo (0–10 → normalizado 0–100)
+//                já incorpora gols, assistências, duelos, erros
+//   availability: aparições / 34 — regularidade na temporada
+//   min_reg    : minutos médios por aparição / 90 — titular vs reserva
+//
+// Reduzimos o peso do rating para 0.50 (antes 0.55) pois ele já captura
+// tudo — inflar demais penaliza jogadores com menos jogos por lesão.
+// ─────────────────────────────────────────────────────────────────────────────
+
+const W_PRESENCE = { rating: 0.50, availability: 0.30, minuteRegularity: 0.20 };
+
+// Pesos dos outros blocos (fixos por bloco, não por posição)
+const W_SCORING  = { goals90: 0.35, xG90: 0.25, shotsOnTarget90: 0.20, conversionRate: 0.20 };
+const W_CREATION = { assists90: 0.25, xA90: 0.20, keyPasses90: 0.20, passAccuracy: 0.35 };
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Pesos dos blocos por grupo posicional (somam 1.0)
 // ─────────────────────────────────────────────────────────────────────────────
 
 interface BlockWeights {
-  scoring:  number;  // Finalização
-  creation: number;  // Criação
-  pressure: number;  // Pressão defensiva
-  presence: number;  // Presença / impacto geral
+  scoring: number; creation: number; pressure: number; presence: number;
 }
 
 const BLOCK_WEIGHTS: Record<PositionGroup, BlockWeights> = {
@@ -110,83 +179,84 @@ const BLOCK_WEIGHTS: Record<PositionGroup, BlockWeights> = {
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Metric weights within each block
+// Fator de liga — multiplicativo no composite (antes da curva de poder)
+//
+// Filosofia: mesmo percentil, liga melhor → overall ligeiramente maior.
+// Fator aplicado ao composite (0–100): adjustedComposite = composite × factor
 // ─────────────────────────────────────────────────────────────────────────────
 
-// FINALIZAÇÃO: como o jogador gera/finaliza oportunidades
-const W_SCORING = {
-  goals90:          0.35,
-  xG90:             0.25,
-  shotsOnTarget90:  0.20,
-  conversionRate:   0.20,
+const LEAGUE_FACTOR: Record<string, number> = {
+  "premier league":             1.05,
+  "la liga":                    1.03,
+  "serie a":                    1.03,
+  "bundesliga":                 1.03,
+  "ligue 1":                    1.03,
+  "champions league":           1.05,
+  "uefa champions league":      1.05,
+  "eredivisie":                 1.00,
+  "liga portugal":              1.00,
+  "scottish premiership":       1.00,
+  "belgian pro league":         0.97,
+  "super lig":                  0.97,
+  "brasileirao serie a":        0.95,
+  "serie a brazil":             0.95,
+  "liga profesional de futbol": 0.93,
+  "liga argentina":             0.93,
+  "liga mx":                    0.93,
+  "serie b":                    0.90,
 };
 
-// CRIAÇÃO: como o jogador habilita outros ou conduz o jogo
-const W_CREATION = {
-  assists90:    0.25,
-  xA90:         0.20,
-  keyPasses90:  0.20,
-  passAccuracy: 0.35,
-};
-
-// PRESSÃO: contribuição defensiva direta
-const W_PRESSURE = {
-  tackles90:        0.40,
-  interceptions90:  0.35,
-  aerialDuelsWon90: 0.25,
-};
-
-// PRESENÇA: sinal composto de qualidade e disponibilidade
-const W_PRESENCE = {
-  rating:          0.55,  // Sportmonks match rating (0–10)
-  availability:    0.30,  // appearances / 34 × 100
-  minuteRegularity:0.15,  // avg minutes per appearance / 90 × 100
-};
+function getLeagueFactor(league: string | null | undefined): number {
+  if (!league) return 1.00;
+  const key = league.toLowerCase().trim()
+    .normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  return LEAGUE_FACTOR[key] ?? 1.00;
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Population distributions (passed in, pre-computed from the full DB)
+// Population distributions (pré-computadas, passadas como parâmetro)
 // ─────────────────────────────────────────────────────────────────────────────
 
 export interface MetricSamples {
-  goals90:           number[];
-  xG90:              number[];
-  shotsOnTarget90:   number[];
-  conversionRate:    number[];
-  assists90:         number[];
-  xA90:              number[];
-  keyPasses90:       number[];
-  passAccuracy:      number[];
-  tackles90:         number[];
-  interceptions90:   number[];
-  aerialDuelsWon90:  number[];
-  rating:            number[];
-  availability:      number[];
-  minuteRegularity:  number[];
+  goals90:          number[];
+  xG90:             number[];
+  shotsOnTarget90:  number[];
+  conversionRate:   number[];
+  assists90:        number[];
+  xA90:             number[];
+  keyPasses90:      number[];
+  passAccuracy:     number[];
+  tackles90:        number[];
+  interceptions90:  number[];
+  aerialDuelsWon90: number[];
+  rating:           number[];
+  availability:     number[];
+  minuteRegularity: number[];
 }
 
 export type PopulationStats = Record<PositionGroup, MetricSamples>;
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Input / Output types
+// Input / Output
 // ─────────────────────────────────────────────────────────────────────────────
 
 export interface SmOverallInput {
-  positions:    string[];
-  league?:      string | null;
-  goals?:       number | null;
-  assists?:     number | null;
-  xG?:          number | null;
-  xA?:          number | null;
-  keyPasses?:   number | null;
-  passAccuracy?:number | null;
-  tackles?:     number | null;
-  interceptions?:number | null;
-  shots?:       number | null;
-  shotsOnTarget?:number | null;
+  positions:      string[];
+  league?:        string | null;
+  goals?:         number | null;
+  assists?:       number | null;
+  xG?:            number | null;
+  xA?:            number | null;
+  keyPasses?:     number | null;
+  passAccuracy?:  number | null;
+  tackles?:       number | null;
+  interceptions?: number | null;
+  shots?:         number | null;
+  shotsOnTarget?: number | null;
   aerialDuelsWon?:number | null;
-  rating?:      number | null;
-  minutes?:     number | null;
-  appearances?: number | null;
+  rating?:        number | null;
+  minutes?:       number | null;
+  appearances?:   number | null;
 }
 
 export interface SmOverallResult {
@@ -194,8 +264,12 @@ export interface SmOverallResult {
   tier:          SmTier;
   reliable:      boolean;
   positionGroup: PositionGroup;
+  leagueFactor:  number;
+  minutesWeight:     number;   // penalização/bônus por volume de minutos
+  powerExponent:     number;   // expoente da curva aplicado
+  consistencyBonus:  number;   // +0 ou +3 composite por alta disponibilidade
   blocks: {
-    scoring:  number;  // 0–100 percentile-weighted
+    scoring:  number;
     creation: number;
     pressure: number;
     presence: number;
@@ -221,12 +295,12 @@ export interface SmOverallResult {
 export type SmTier = "ELITE" | "MUITO_BOM" | "BOM" | "MEDIANO" | "REGULAR";
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Percentile lookup — binary search on pre-sorted sample array
+// Percentil — busca binária em array pré-ordenado
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * Returns the percentile (0–100) of `value` within a pre-sorted population.
- * Uses lower-bound search: what fraction of the population is ≤ value?
+ * Retorna o percentil (0–100) de `value` dentro de uma população ordenada.
+ * "Que fração da população tem valor ≤ value?"
  */
 export function percentileOf(value: number, sortedPop: number[]): number {
   if (sortedPop.length === 0) return 50;
@@ -240,62 +314,32 @@ export function percentileOf(value: number, sortedPop: number[]): number {
   return clamp(Math.round((lo / sortedPop.length) * 100), 0, 100);
 }
 
-/** Sorts an array of numbers ascending in-place and returns it. */
 export function sortedSamples(values: number[]): number[] {
   return values.slice().sort((a, b) => a - b);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// League context bonus (±2.5 points max)
+// Score de bloco — média ponderada de percentis
 // ─────────────────────────────────────────────────────────────────────────────
 
-const LEAGUE_BONUS: Partial<Record<LeagueContext, number>> = {
-  DEFAULT:   2.5,   // top-5 Europe
-  EUR_MID:   1.5,
-  EUR_LOWER: 0.5,
-  SERIE_A:  -0.5,
-  SA_TOP:   -1.5,
-  SA_MID:   -2.5,
-  SERIE_B:  -2.5,
-};
-
-function resolveLeagueContextFromName(league: string | null | undefined): LeagueContext {
-  if (!league) return "DEFAULT";
-  const key = league.toLowerCase().trim()
-    .normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-  const MAP: Record<string, LeagueContext> = {
-    "premier league":             "DEFAULT",
-    "la liga":                    "DEFAULT",
-    "serie a":                    "DEFAULT",
-    "bundesliga":                 "DEFAULT",
-    "ligue 1":                    "DEFAULT",
-    "champions league":           "DEFAULT",
-    "uefa champions league":      "DEFAULT",
-    "eredivisie":                 "EUR_MID",
-    "liga portugal":              "EUR_MID",
-    "scottish premiership":       "EUR_MID",
-    "belgian pro league":         "EUR_LOWER",
-    "super lig":                  "EUR_LOWER",
-    "brasileirao serie a":        "SERIE_A",
-    "serie a brazil":             "SERIE_A",
-    "liga profesional de futbol": "SA_TOP",
-    "liga argentina":             "SA_TOP",
-    "liga mx":                    "SA_TOP",
-  };
-  return MAP[key] ?? "DEFAULT";
+function scoreBlock(
+  values:    number[],
+  weights:   number[],
+  sortedPops:(number[] | undefined)[],
+): number {
+  let total = 0;
+  let wSum  = 0;
+  for (let i = 0; i < values.length; i++) {
+    const pop = sortedPops[i];
+    if (!pop || pop.length < 5) continue; // ignora métricas sem população
+    total += percentileOf(values[i], pop) * weights[i];
+    wSum  += weights[i];
+  }
+  return wSum > 0 ? total / wSum : 50;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Per-90 helper
-// ─────────────────────────────────────────────────────────────────────────────
-
-function per90(stat: number | null | undefined, minutes: number): number {
-  if (!stat || minutes < 1) return 0;
-  return (stat / minutes) * 90;
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Tier resolver
+// Tier
 // ─────────────────────────────────────────────────────────────────────────────
 
 export function smTier(overall: number): SmTier {
@@ -307,73 +351,49 @@ export function smTier(overall: number): SmTier {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Block scorers — weighted average of metric percentiles
+// Main
 // ─────────────────────────────────────────────────────────────────────────────
 
-function scoreBlock(
-  metricValues:   number[],
-  metricWeights:  number[],
-  sortedPops:     (number[] | undefined)[],
-): number {
-  let total   = 0;
-  let wSum    = 0;
-  for (let i = 0; i < metricValues.length; i++) {
-    const pop = sortedPops[i];
-    if (!pop || pop.length < 3) continue; // skip if no population data
-    const w = metricWeights[i];
-    total += percentileOf(metricValues[i], pop) * w;
-    wSum  += w;
-  }
-  return wSum > 0 ? total / wSum : 50;
+function p90(stat: number | null | undefined, mins: number): number {
+  if (!stat || mins < 1) return 0;
+  return (stat / mins) * 90;
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Main export
-// ─────────────────────────────────────────────────────────────────────────────
-
-/**
- * Calculates the SoccerMind Overall for a single player.
- *
- * @param input  - player data + stats
- * @param pop    - pre-computed population distributions (from computePopulationStats)
- */
 export function calculateSoccerMindOverall(
   input: SmOverallInput,
   pop:   PopulationStats,
 ): SmOverallResult {
-  const group    = resolvePositionGroup(input.positions);
-  const mins     = input.minutes ?? 0;
-  const reliable = mins >= SM_MIN_MINUTES;
-  const apps     = input.appearances ?? 0;
-  const dist     = pop[group];
+  const group = resolvePositionGroup(input.positions);
+  const mins  = input.minutes     ?? 0;
+  const apps  = input.appearances ?? 0;
+  const dist  = pop[group];
 
-  // ── Compute raw metrics ────────────────────────────────────────────────────
+  // ── Métricas brutas → per-90 ──────────────────────────────────────────────
 
-  const goals90          = per90(input.goals,          mins);
-  const assists90        = per90(input.assists,        mins);
-  const xG90             = per90(input.xG,             mins);
-  const xA90             = per90(input.xA,             mins);
-  const keyPasses90      = per90(input.keyPasses,      mins);
-  const shotsOnTarget90  = per90(input.shotsOnTarget,  mins);
-  const tackles90        = per90(input.tackles,        mins);
-  const interceptions90  = per90(input.interceptions,  mins);
-  const aerialDuelsWon90 = per90(input.aerialDuelsWon, mins);
+  const goals90          = p90(input.goals,          mins);
+  const assists90        = p90(input.assists,        mins);
+  const xG90             = p90(input.xG,             mins);
+  const xA90             = p90(input.xA,             mins);
+  const keyPasses90      = p90(input.keyPasses,      mins);
+  const shotsOnTarget90  = p90(input.shotsOnTarget,  mins);
+  const tackles90        = p90(input.tackles,        mins);
+  const interceptions90  = p90(input.interceptions,  mins);
+  const aerialDuelsWon90 = p90(input.aerialDuelsWon, mins);
 
-  const shots           = input.shots ?? 0;
-  const goals           = input.goals ?? 0;
-  const conversionRate  = shots > 0 ? clamp((goals / shots) * 100, 0, 100) : 0;
+  const shots          = input.shots ?? 0;
+  const goals          = input.goals ?? 0;
+  const conversionRate = shots > 0 ? clamp((goals / shots) * 100, 0, 100) : 0;
+  const passAccuracy   = clamp(input.passAccuracy ?? 0, 0, 100);
 
-  const passAccuracy    = clamp(input.passAccuracy ?? 0, 0, 100);
+  // rating Sportmonks: 0–10 → normalizado 0–100 para percentil
+  const ratingRaw  = clamp(input.rating ?? 0, 0, 10);
+  const ratingNorm = ratingRaw * 10;
 
-  const rating          = clamp(input.rating ?? 0, 0, 10);
-  // Normalize rating to 0–100 for consistency
-  const ratingNorm      = rating * 10;
-
-  const availability    = clamp((apps / 34) * 100, 0, 100);
-  const avgMinPerApp    = apps > 0 ? mins / apps : 0;
+  const availability     = clamp((apps / 34) * 100, 0, 100);
+  const avgMinPerApp     = apps > 0 ? mins / apps : 0;
   const minuteRegularity = clamp((avgMinPerApp / 90) * 100, 0, 100);
 
-  // ── Score each block via percentiles ──────────────────────────────────────
+  // ── Blocos → média ponderada de percentis ────────────────────────────────
 
   const scoringScore = scoreBlock(
     [goals90, xG90, shotsOnTarget90, conversionRate],
@@ -387,9 +407,11 @@ export function calculateSoccerMindOverall(
     [dist.assists90, dist.xA90, dist.keyPasses90, dist.passAccuracy],
   );
 
+  // Bloco PRESSÃO usa pesos internos por posição
+  const [wp_tac, wp_int, wp_aer] = PRESSURE_INTERNAL_WEIGHTS[group];
   const pressureScore = scoreBlock(
     [tackles90, interceptions90, aerialDuelsWon90],
-    [W_PRESSURE.tackles90, W_PRESSURE.interceptions90, W_PRESSURE.aerialDuelsWon90],
+    [wp_tac,    wp_int,         wp_aer],
     [dist.tackles90, dist.interceptions90, dist.aerialDuelsWon90],
   );
 
@@ -399,7 +421,7 @@ export function calculateSoccerMindOverall(
     [dist.rating, dist.availability, dist.minuteRegularity],
   );
 
-  // ── Weighted composite ────────────────────────────────────────────────────
+  // ── Composite 0–100 (ponderado por posição) ───────────────────────────────
 
   const w = BLOCK_WEIGHTS[group];
   const composite =
@@ -408,22 +430,73 @@ export function calculateSoccerMindOverall(
     pressureScore * w.pressure +
     presenceScore * w.presence;
 
-  // ── Map to 40–85 range ────────────────────────────────────────────────────
+  // ── [3] Edge case: composite mínimo de 10 ────────────────────────────────
+  //   Evita colapso total quando todos os blocos retornam perto de zero
+  //   (ex: jogador sem stats em liga fraca com 0 minutos).
 
-  const leagueCtx   = resolveLeagueContextFromName(input.league);
-  const leagueBonus = LEAGUE_BONUS[leagueCtx] ?? 0;
+  const safeComposite = Math.max(10, composite);
 
-  const overall = clamp(
-    Math.round(SM_SCORE_FLOOR + (composite / 100) * SM_SCORE_RANGE + leagueBonus),
-    SM_SCORE_FLOOR,
-    SM_SCORE_CEILING,
+  // ── [4] Consistency boost — contínuo, não binário ────────────────────────
+  //   Base 2pt quando availability > 80% e mins > 1500.
+  //   Cresce proporcionalmente: cada 10pp acima de 80% adiciona +0.5pt.
+  //   Ex: availability=100% → bonus = 2 + (1.0-0.8)×5 = 3.0
+  //       availability= 85% → bonus = 2 + (0.85-0.8)×5 = 2.25
+  //       availability= 80% → bonus = 2.0
+  //       availability< 80% → 0
+
+  const availFraction   = availability / 100;  // 0–1
+  const consistencyBonus =
+    availFraction > 0.8 && mins > 1500
+      ? 2 + (availFraction - 0.8) * 5
+      : 0;
+
+  const boostedComposite = Math.min(100, safeComposite + consistencyBonus);
+
+  // ── [2] Fator de liga — multiplicativo, com clamp explícito ──────────────
+  //   Garante que Premier League factor 1.05 não ultrapasse 100.
+
+  const leagueFactor   = getLeagueFactor(input.league);
+  const leagueAdjusted = clamp(boostedComposite * leagueFactor, 0, 100);
+
+  // ── [2] Minutes weight — pow(0.6) em vez de sqrt(0.5) ───────────────────
+  //   Expoente 0.6 sobe mais rápido que sqrt para min<150 (menos punitivo)
+  //   mas ainda penaliza amostras pequenas. Cap 1.05 recompensa titulares.
+  //
+  //   Comparação sqrt(0.5) vs pow(0.6) para mins < 450:
+  //     90  min → sqrt: 0.45  |  pow: 0.53  (+18% menos punitivo)
+  //    150  min → sqrt: 0.58  |  pow: 0.64
+  //    300  min → sqrt: 0.82  |  pow: 0.85
+  //    450  min → 1.00  (referência — ambos iguais)
+  //   3500  min → 1.05  (titular absoluto — bônus leve)
+
+  const minutesWeight = clamp(Math.pow(clamp(mins / SM_MIN_MINUTES, 0, Infinity), 0.6), 0.0, 1.05);
+  const weightedComposite = clamp(leagueAdjusted * minutesWeight, 0, 100);
+
+  // ── Curva de poder dinâmica → range 40–85 ────────────────────────────────
+  //   overall = 40 + (weightedComposite/100)^exp × 45
+  //   Expoente varia por posição (ATT mais seletivo, GK menos).
+
+  // Expoente final = posição × GLOBAL_CURVE
+  // GLOBAL_CURVE permite recalibrar seletividade global sem tocar nos valores por posição.
+  const exp        = POWER_EXPONENT[group] * GLOBAL_CURVE;
+  const rawOverall = Math.round(
+    SM_SCORE_FLOOR + Math.pow(weightedComposite / 100, exp) * SM_SCORE_RANGE,
   );
+
+  // ── [1] Floor de 42 — nenhum jogador cadastrado fica abaixo disso ────────
+  //   Protege UX: evita overalls que parecem "inútil" na interface.
+
+  const overall = clamp(Math.max(42, rawOverall), SM_SCORE_FLOOR, SM_SCORE_CEILING);
 
   return {
     overall,
     tier:          smTier(overall),
-    reliable,
+    reliable:      mins >= SM_MIN_MINUTES,
     positionGroup: group,
+    leagueFactor,
+    minutesWeight:    +minutesWeight.toFixed(3),
+    powerExponent:    exp,
+    consistencyBonus,
     blocks: {
       scoring:  Math.round(scoringScore),
       creation: Math.round(creationScore),
@@ -442,7 +515,7 @@ export function calculateSoccerMindOverall(
       shotsOnTarget90:  +shotsOnTarget90.toFixed(2),
       conversionRate:   +conversionRate.toFixed(1),
       aerialDuelsWon90: +aerialDuelsWon90.toFixed(2),
-      rating:           +rating.toFixed(2),
+      rating:           +ratingRaw.toFixed(2),
       availability:     +availability.toFixed(1),
       minuteRegularity: +minuteRegularity.toFixed(1),
     },
