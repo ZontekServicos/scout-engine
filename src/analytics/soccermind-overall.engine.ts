@@ -428,6 +428,101 @@ export function calculatePotential(overall: number, age: number): number {
   return Math.min(90, Math.max(overall, overall + growth + variation));
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Market Value — valor de mercado proprietário SoccerMind
+//
+//   marketValue = baseValue × ageFactor × potentialFactor × leagueFactor × positionFactor
+//
+//   baseValue      = overall^2.2 × 1200       (curva exponencial — elites valem muito mais)
+//   ageFactor      = 1.4 (≤21) … 0.55 (>33)  (depreciação por idade)
+//   potentialFactor= 1 + (gap/20)              (upside = prêmio de transferência)
+//   leagueFactor   = 1.20 (PL) … 0.75 (SérieB)(liquidez e visibilidade da liga)
+//   positionFactor = 1.25 (ATT) … 0.85 (GK)  (demanda de mercado por posição)
+//
+//   Resultado arredondado para múltiplo de €1.000 — sem centavos.
+//   Nunca negativo (clamp mínimo de 0).
+// ─────────────────────────────────────────────────────────────────────────────
+
+const MV_AGE_FACTOR: Array<[number, number]> = [
+  [21, 1.40],
+  [24, 1.20],
+  [27, 1.00],
+  [30, 0.85],
+  [33, 0.70],
+  [Infinity, 0.55],
+];
+
+const MV_POSITION_FACTOR: Record<PositionGroup, number> = {
+  ATT: 1.25,
+  MID: 1.10,
+  DEF: 1.00,
+  GK:  0.85,
+};
+
+const MV_LEAGUE_FACTOR: Record<string, number> = {
+  "premier league":             1.20,
+  "la liga":                    1.10,
+  "serie a":                    1.10,
+  "bundesliga":                 1.10,
+  "ligue 1":                    1.10,
+  "champions league":           1.20,
+  "uefa champions league":      1.20,
+  "eredivisie":                 1.00,
+  "liga portugal":              1.00,
+  "scottish premiership":       0.95,
+  "belgian pro league":         0.95,
+  "super lig":                  0.95,
+  "brasileirao serie a":        0.90,
+  "serie a brazil":             0.90,
+  "liga profesional de futbol": 0.85,
+  "liga argentina":             0.85,
+  "liga mx":                    0.85,
+  "serie b":                    0.75,
+};
+
+function getMvLeagueFactor(league: string | null | undefined): number {
+  if (!league) return 1.00;
+  const key = league.toLowerCase().trim()
+    .normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  return MV_LEAGUE_FACTOR[key] ?? 1.00;
+}
+
+export interface MarketValueInput {
+  overall:       number;
+  potential:     number;
+  age:           number;
+  positionGroup: PositionGroup;
+  league?:       string | null;
+}
+
+/**
+ * Calcula o valor de mercado estimado em euros.
+ * Arredondado para múltiplo de €1.000.
+ */
+export function calculateMarketValue(input: MarketValueInput): number {
+  const { overall, potential, age, positionGroup, league } = input;
+
+  // Base: curva exponencial — diferencia fortemente elites de medianos
+  const baseValue = Math.pow(overall, 2.2) * 1200;
+
+  // Fator de idade
+  const ageFactor = MV_AGE_FACTOR.find(([maxAge]) => age <= maxAge)?.[1] ?? 0.55;
+
+  // Prêmio de upside: gap positivo entre potential e overall
+  // Máximo gap útil = 20 pts → potentialFactor máximo = 2.0
+  const gap             = Math.max(0, potential - overall);
+  const potentialFactor = 1 + (gap / 20);
+
+  // Liga e posição
+  const leagueFactor   = getMvLeagueFactor(league);
+  const positionFactor = MV_POSITION_FACTOR[positionGroup];
+
+  const raw = baseValue * ageFactor * potentialFactor * leagueFactor * positionFactor;
+
+  // Arredondado para €1.000 — sem centavos; nunca negativo
+  return Math.max(0, Math.round(raw / 1000) * 1000);
+}
+
 export function smTier(overall: number): SmTier {
   if (overall >= 82) return "ELITE";
   if (overall >= 76) return "MUITO_BOM";

@@ -30,6 +30,7 @@ import { prisma } from "../lib/prisma";
 import {
   calculateSoccerMindOverall,
   calculatePotential,
+  calculateMarketValue,
   resolvePositionGroup,
   sortedSamples,
   type MetricSamples,
@@ -39,9 +40,10 @@ import {
 } from "../analytics/soccermind-overall.engine";
 
 const args = process.argv.slice(2);
-const DRY_RUN    = args.includes("--dry-run");
-const batchArg   = args.find(a => a.startsWith("--batch="))?.split("=")[1];
-const BATCH_SIZE = batchArg ? Number(batchArg) : 500;
+const DRY_RUN     = args.includes("--dry-run");
+const FORCE_VALUE = args.includes("--force-value");  // sobrescreve marketValue existente
+const batchArg    = args.find(a => a.startsWith("--batch="))?.split("=")[1];
+const BATCH_SIZE  = batchArg ? Number(batchArg) : 500;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Helpers
@@ -181,10 +183,11 @@ async function scoreAllPlayers(pop: PopulationStats): Promise<void> {
     const players = await prisma.player.findMany({
       where: { statsSnapshots: { some: {} } },
       select: {
-        id:        true,
-        positions: true,
-        league:    true,
-        age:       true,
+        id:          true,
+        positions:   true,
+        league:      true,
+        age:         true,
+        marketValue: true,   // para respeitar valores manuais existentes
       },
       orderBy: { id: "asc" },
       skip:  offset,
@@ -218,12 +221,26 @@ async function scoreAllPlayers(pop: PopulationStats): Promise<void> {
 
         const potential = calculatePotential(result.overall, player.age);
 
+        // Calcula market value — respeita valor manual pré-existente
+        // a menos que --force-value seja passado explicitamente
+        const shouldCalcValue = FORCE_VALUE || player.marketValue == null;
+        const marketValue = shouldCalcValue
+          ? calculateMarketValue({
+              overall:       result.overall,
+              potential,
+              age:           player.age,
+              positionGroup: result.positionGroup,
+              league:        player.league,
+            })
+          : player.marketValue;
+
         if (!DRY_RUN) {
           await prisma.player.update({
             where: { id: player.id },
             data: {
               overall:             result.overall,
               potential,
+              marketValue,
               overallCalculatedAt: new Date(),
             },
           });
@@ -323,6 +340,34 @@ async function scoreAllPlayers(pop: PopulationStats): Promise<void> {
       );
     }
     console.log("  " + "-".repeat(60));
+
+    // Validação de market value por faixa de overall
+    const mvStats = await prisma.$queryRawUnsafe<any[]>(`
+      SELECT
+        CASE
+          WHEN overall >= 80 THEN '80+  ELITE'
+          WHEN overall >= 70 THEN '70–79 BOM'
+          WHEN overall >= 60 THEN '60–69 MÉDIO'
+          ELSE                    '<60  REGULAR'
+        END as faixa,
+        COUNT(*)::int as players,
+        ROUND(AVG("marketValue") / 1000000.0, 1) as avg_m_eur,
+        ROUND(MAX("marketValue") / 1000000.0, 1) as max_m_eur
+      FROM "Player"
+      WHERE overall IS NOT NULL AND "marketValue" IS NOT NULL AND overall > 0
+      GROUP BY 1
+      ORDER BY MAX(overall) DESC
+    `);
+    console.log("\n  MARKET VALUE por faixa de overall:");
+    console.log("  " + "-".repeat(55));
+    console.log("  Faixa".padEnd(16) + "Players".padEnd(10) + "Avg (M€)".padEnd(12) + "Max (M€)");
+    for (const r of mvStats) {
+      console.log(
+        `  ${String(r.faixa).padEnd(15)} ${String(r.players).padStart(6)}    ` +
+        `€${String(r.avg_m_eur).padStart(6)}M      €${r.max_m_eur}M`
+      );
+    }
+    console.log("  " + "-".repeat(55));
   }
 
   console.log(sep + "\n");
@@ -338,7 +383,8 @@ async function main() {
   console.log("╚══════════════════════════════════════════════════════════╝");
   console.log(`  Range    : 40–85`);
   console.log(`  Grupos   : GK / DEF / MID / ATT`);
-  console.log(`  Dry run  : ${DRY_RUN}`);
+  console.log(`  Dry run      : ${DRY_RUN}`);
+  console.log(`  Force value  : ${FORCE_VALUE}  (sobrescreve marketValue existente)`);
   console.log(`  Batch    : ${BATCH_SIZE}`);
   console.log("");
 

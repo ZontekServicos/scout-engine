@@ -87,7 +87,8 @@
     "overall:recalc:v2:dry": "ts-node src/scripts/recalculate-overall-v2.ts --dry-run",
     "check:leagues": "ts-node src/scripts/check-league-enrichment.ts",
     "sm:overall": "ts-node src/scripts/compute-soccermind-overall.ts",
-    "sm:overall:dry": "ts-node src/scripts/compute-soccermind-overall.ts --dry-run"
+    "sm:overall:dry": "ts-node src/scripts/compute-soccermind-overall.ts --dry-run",
+    "sm:overall:force-value": "ts-node src/scripts/compute-soccermind-overall.ts --force-value"
   },
   "dependencies": {
     "@prisma/client": "^6.19.2",
