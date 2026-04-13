@@ -88,7 +88,10 @@
     "check:leagues": "ts-node src/scripts/check-league-enrichment.ts",
     "sm:overall": "ts-node src/scripts/compute-soccermind-overall.ts",
     "sm:overall:dry": "ts-node src/scripts/compute-soccermind-overall.ts --dry-run",
-    "sm:overall:force-value": "ts-node src/scripts/compute-soccermind-overall.ts --force-value"
+    "sm:overall:force-value": "ts-node src/scripts/compute-soccermind-overall.ts --force-value",
+    "sm:market": "ts-node src/scripts/recalculate-market-value.ts",
+    "sm:market:dry": "ts-node src/scripts/recalculate-market-value.ts --dry-run",
+    "sm:market:force": "ts-node src/scripts/recalculate-market-value.ts --force"
   },
   "dependencies": {
     "@prisma/client": "^6.19.2",
