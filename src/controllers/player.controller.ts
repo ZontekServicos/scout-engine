@@ -6,6 +6,7 @@ import { getPlayerProfile, getPlayerProjection, getSimilarPlayers, listPlayers }
 import { addScoutNote, getScoutNotes } from "../scout/scout-notes.store";
 import { prisma } from "../lib/prisma";
 import { calculateOverallV2 } from "../analytics/overall-v2.engine";
+import { searchPlayers } from "../modules/player/player.search.service";
 
 function getParam(value: string | string[] | undefined): string {
   if (Array.isArray(value)) return value[0] ?? "";
@@ -85,9 +86,24 @@ export async function listPlayersController(req: Request, res: Response) {
 }
 
 export async function searchPlayersController(req: Request, res: Response) {
-  const result = await listPlayers(buildListPlayersParams(req));
+  const results = await searchPlayers({
+    search:          getStringQuery(req, "search", "q"),
+    name:            getStringQuery(req, "name"),
+    team:            getStringQuery(req, "team"),
+    position:        getStringQuery(req, "position"),
+    ageMin:          getNumericQuery(req, "ageMin"),
+    ageMax:          getNumericQuery(req, "ageMax"),
+    overallMin:      getNumericQuery(req, "overallMin"),
+    overallMax:      getNumericQuery(req, "overallMax"),
+    potentialMin:    getNumericQuery(req, "potentialMin"),
+    marketValueMax:  getNumericQuery(req, "marketValueMax"),
+    league:          getStringQuery(req, "league"),
+    nationality:     getStringQuery(req, "nationality"),
+    limit:           getNumericQuery(req, "limit"),
+  });
+
   return res.json(
-    successResponse(result.items, { ...result.pagination, filters: result.filters, filterOptions: result.filterOptions }),
+    successResponse(results, { total: results.length }),
   );
 }
 
