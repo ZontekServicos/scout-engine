@@ -7,6 +7,7 @@ import { addScoutNote, getScoutNotes } from "../scout/scout-notes.store";
 import { prisma } from "../lib/prisma";
 import { calculateOverallV2 } from "../analytics/overall-v2.engine";
 import { searchPlayers } from "../modules/player/player.search.service";
+import { getHeatmapData, getPlayerMapData, type MapEvent } from "../services/player-maps.service";
 
 function getParam(value: string | string[] | undefined): string {
   if (Array.isArray(value)) return value[0] ?? "";
@@ -187,4 +188,43 @@ export async function getTruePerformanceController(req: Request, res: Response) 
   const result = calculateOverallV2(player, stats);
 
   return res.json(successResponse(result));
+}
+
+// ---------------------------------------------------------------------------
+// Normalise a MapEvent outcome to lowercase for the frontend
+// ---------------------------------------------------------------------------
+
+function toFrontendEvent(e: MapEvent) {
+  return {
+    x:       e.x,
+    y:       e.y,
+    endX:    e.endX,
+    endY:    e.endY,
+    outcome: e.outcome?.toLowerCase() ?? null,
+  };
+}
+
+/**
+ * GET /players/:id/events
+ *
+ * Returns structured spatial data for the three pitch maps:
+ *   heatmap — aggregated 10×7 grid (canvas Wyscout)
+ *   passes  — pass routes with success/fail outcome
+ *   shots   — shot positions with goal/saved/other outcome
+ */
+export async function getPlayerEventsController(req: Request, res: Response) {
+  const playerId = getParam(req.params.id);
+
+  const [heatmap, mapData] = await Promise.all([
+    getHeatmapData(playerId),
+    getPlayerMapData(playerId),
+  ]);
+
+  return res.json(
+    successResponse({
+      heatmap,
+      passes: mapData.passes.map(toFrontendEvent),
+      shots:  mapData.shots.map(toFrontendEvent),
+    }),
+  );
 }

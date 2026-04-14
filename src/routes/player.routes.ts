@@ -3,6 +3,7 @@ import { asyncHandler } from "../lib/asyncHandler";
 import {
   createPlayerNoteController,
   createPlayerReportController,
+  getPlayerEventsController,
   getPlayerProfileController,
   getPlayerProjectionController,
   getPlayerSimilarController,
@@ -30,5 +31,7 @@ router.get("/player/:id/notes", asyncHandler(listPlayerNotesController));
 router.post("/player/:id/notes", asyncHandler(createPlayerNoteController));
 
 router.get("/player/:id/true-performance", asyncHandler(getTruePerformanceController));
+
+router.get("/players/:id/events", asyncHandler(getPlayerEventsController));
 
 export default router;
