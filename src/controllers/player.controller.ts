@@ -8,6 +8,8 @@ import { prisma } from "../lib/prisma";
 import { calculateOverallV2 } from "../analytics/overall-v2.engine";
 import { searchPlayers } from "../modules/player/player.search.service";
 import { getHeatmapData, getPlayerMapData, type MapEvent } from "../services/player-maps.service";
+import { generatePlayerEvents } from "../services/synthetic-events.service";
+import { resolvePositionGroup } from "../analytics/soccermind-overall.engine";
 
 function getParam(value: string | string[] | undefined): string {
   if (Array.isArray(value)) return value[0] ?? "";
@@ -211,20 +213,76 @@ function toFrontendEvent(e: MapEvent) {
  *   heatmap — aggregated 10×7 grid (canvas Wyscout)
  *   passes  — pass routes with success/fail outcome
  *   shots   — shot positions with goal/saved/other outcome
+ *
+ * Fallback: when no MatchEvent rows exist for this player (e.g. Sportmonks
+ * plan without per-match event feed), generates synthetic events derived from
+ * the player's real PlayerStats — making maps data-driven, never empty.
  */
 export async function getPlayerEventsController(req: Request, res: Response) {
   const playerId = getParam(req.params.id);
 
-  const [heatmap, mapData] = await Promise.all([
+  // Fetch real event data and player stats in parallel
+  const [heatmap, mapData, player] = await Promise.all([
     getHeatmapData(playerId),
     getPlayerMapData(playerId),
+    prisma.player.findUnique({
+      where:  { id: playerId },
+      select: { positions: true },
+    }),
   ]);
+
+  // ── Real data path ───────────────────────────────────────────────────────
+  if (heatmap.totalEvents > 0) {
+    return res.json(
+      successResponse({
+        heatmap,
+        passes:    mapData.passes.map(toFrontendEvent),
+        shots:     mapData.shots.map(toFrontendEvent),
+        synthetic: false,
+      }),
+    );
+  }
+
+  // ── Synthetic fallback ───────────────────────────────────────────────────
+  // Pull the most recent PlayerStats to drive generation
+  const stats = await prisma.playerStats.findFirst({
+    where:   { playerId },
+    orderBy: { createdAt: "desc" },
+    select: {
+      goals: true, shots: true, shotsOnTarget: true,
+      passes: true, keyPasses: true, crosses: true,
+      tackles: true, interceptions: true,
+      dribblesSuccess: true,
+      saves: true, foulsCommitted: true,
+    },
+  });
+
+  const positionGroup = resolvePositionGroup(player?.positions ?? []);
+
+  const synthetic = generatePlayerEvents(
+    playerId,
+    {
+      goals:          stats?.goals,
+      shots:          stats?.shots,
+      shotsOnTarget:  stats?.shotsOnTarget,
+      passes:         stats?.passes,
+      keyPasses:      stats?.keyPasses,
+      crosses:        stats?.crosses,
+      tackles:        stats?.tackles,
+      interceptions:  stats?.interceptions,
+      dribbles:       stats?.dribblesSuccess,
+      saves:          stats?.saves,
+      foulsCommitted: stats?.foulsCommitted,
+    },
+    positionGroup,
+  );
 
   return res.json(
     successResponse({
-      heatmap,
-      passes: mapData.passes.map(toFrontendEvent),
-      shots:  mapData.shots.map(toFrontendEvent),
+      heatmap:   synthetic.heatmap,
+      passes:    synthetic.passes,
+      shots:     synthetic.shots,
+      synthetic: true,   // flag for debugging
     }),
   );
 }
