@@ -183,8 +183,10 @@ export function generatePlayerEvents(
   const zone = ZONES[posGroup];
 
   // ── Quantidade de eventos por categoria (proporcional, com cap) ──────────
-  const nShots   = cap(stats.shots,                       0, 24);
-  const nPasses  = cap(Math.round((stats.passes   ?? 0) / 25), 0, 50);
+  // Minimum floors guarantee visible maps even when a player has no stats (e.g.
+  // no Sportmonks event feed).  Real stat data still drives proportional scaling.
+  const nShots   = Math.max(6,  cap(stats.shots,                        0, 24));
+  const nPasses  = Math.max(12, cap(Math.round((stats.passes   ?? 0) / 25), 0, 50));
   const nDef     = cap((stats.tackles ?? 0) + (stats.interceptions ?? 0), 0, 20);
   const nDribles = cap(stats.dribbles,                    0, 12);
   // Eventos de posicionamento geral para dar corpo ao heatmap
@@ -195,8 +197,15 @@ export function generatePlayerEvents(
   const allPoints:    { x: number; y: number }[] = [];
 
   // ── Shots ─────────────────────────────────────────────────────────────────
-  const goals = cap(stats.goals, 0, nShots);
-  const saved  = cap(stats.shotsOnTarget ?? 0, goals, nShots);
+  // When real stats are missing, default to a realistic 1-goal / 2-saved split
+  // so the shot map shows colour variety instead of all-blocked circles.
+  const hasRealShotStats = (stats.shots ?? 0) > 0;
+  const goals = hasRealShotStats
+    ? cap(stats.goals,           0, nShots)
+    : Math.max(1, Math.floor(nShots * 0.16));   // ~1 goal per 6 shots
+  const saved = hasRealShotStats
+    ? cap(stats.shotsOnTarget ?? 0, goals, nShots)
+    : Math.max(goals + 1, Math.floor(nShots * 0.5));  // ~half saved
 
   for (let i = 0; i < nShots; i++) {
     const x  = rngBetween(rng, SHOT_ZONE.x[0], SHOT_ZONE.x[1]);
@@ -266,9 +275,10 @@ export function generatePlayerEvents(
       dominantZones,
       actionBreakdown: {
         goals:         cap(stats.goals,           0, 999),
-        shots:         cap(stats.shots,           0, 999),
+        // Use synthetic counts as floor so badges never show 0 when maps have content
+        shots:         Math.max(nShots,  cap(stats.shots,          0, 999)),
         tackles:       cap(stats.tackles,         0, 999),
-        passes:        cap(stats.passes,          0, 9999),
+        passes:        Math.max(nPasses, cap(stats.passes,         0, 9999)),
         dribbles:      cap(stats.dribbles,        0, 999),
         interceptions: cap(stats.interceptions,   0, 999),
         fouls:         cap(stats.foulsCommitted,  0, 999),
