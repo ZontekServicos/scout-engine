@@ -176,8 +176,8 @@ async function main(): Promise<void> {
           ELSE                    '<60  REGULAR'
         END as faixa,
         COUNT(*)::int                                    as players,
-        ROUND(AVG("marketValue") / 1000000.0, 1)::text  as avg_m_eur,
-        ROUND(MAX("marketValue") / 1000000.0, 1)::text  as max_m_eur
+        ROUND((AVG("marketValue") / 1000000.0)::numeric, 1)::text  as avg_m_eur,
+        ROUND((MAX("marketValue") / 1000000.0)::numeric, 1)::text  as max_m_eur
       FROM "Player"
       WHERE overall IS NOT NULL AND "marketValue" IS NOT NULL AND overall > 0
       GROUP BY 1

@@ -6,7 +6,7 @@ async function main() {
       COUNT(CASE WHEN overall > 0 THEN 1 END) as com_overall,
       COUNT(CASE WHEN overall >= 80 THEN 1 END) as elite,
       MAX(overall) as max_overall,
-      ROUND(AVG(overall::float), 1) as media_overall
+      ROUND(AVG(overall::numeric), 1) as media_overall
     FROM "Player"
     WHERE overall IS NOT NULL
   `);
