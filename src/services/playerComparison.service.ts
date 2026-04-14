@@ -367,21 +367,21 @@ async function findPlayerByNameOrThrow(name: string): Promise<{ id: string }> {
   return fallback;
 }
 
+/**
+ * Calcula a comparação entre dois jogadores — NÃO persiste no banco.
+ * Para salvar, chame POST /analysis/comparison explicitamente (botão "Salvar análise").
+ */
 export async function comparePlayers(playerAId: string, playerBId: string): Promise<PlayerComparisonResult> {
   const [playerAProfile, playerBProfile] = await Promise.all([
     buildPlayerIntelligenceProfile(playerAId),
     buildPlayerIntelligenceProfile(playerBId),
   ]);
 
-  const result: PlayerComparisonResult = {
+  return {
     playerAProfile,
     playerBProfile,
     comparison: buildComparison(playerAProfile, playerBProfile),
   };
-
-  await persistComparisonAnalysis(result);
-
-  return result;
 }
 
 export async function comparePlayersByName(playerAName: string, playerBName: string): Promise<PlayerComparisonResult> {

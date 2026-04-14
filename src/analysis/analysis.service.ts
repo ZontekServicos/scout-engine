@@ -790,6 +790,23 @@ export async function createReportAnalysis(input: CreateReportAnalysisInput) {
   return mapAnalysisToViewModel(analysis);
 }
 
+// ---------------------------------------------------------------------------
+// Semantic aliases — clear generate / save separation
+//
+//   generateComparisonAnalysis  → delegates to compareByIds (engine only, no DB write)
+//   generateReportAnalysis      → delegates to getPlayerProfile (engine only, no DB write)
+//   saveComparisonAnalysis      → persists to DB (explicit user action)
+//   saveReportAnalysis          → persists to DB (explicit user action)
+//
+// The original createXxxAnalysis names are kept as aliases so existing callers
+// (controller, frontend) continue to work without changes.
+// ---------------------------------------------------------------------------
+
+export { compareByIds as generateComparisonAnalysis };
+
+export const saveComparisonAnalysis = createComparisonAnalysis;
+export const saveReportAnalysis     = createReportAnalysis;
+
 export async function deleteAnalysis(id: string) {
   await normalizeLegacyAnalysisTypes();
   await assertAnalysisRuntimeReady();
