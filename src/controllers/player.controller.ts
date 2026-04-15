@@ -233,9 +233,16 @@ export async function getPlayerEventsController(req: Request, res: Response) {
 
   // ── Real data path ───────────────────────────────────────────────────────
   if (heatmap.totalEvents > 0) {
+    // Derive raw points from the real event coordinates so the canvas renderer
+    // has individual (x,y) positions to work with instead of the aggregated grid.
+    const heatmapPoints = [
+      ...mapData.passes.map(e => ({ x: e.x, y: e.y })),
+      ...mapData.shots.map(e => ({ x: e.x, y: e.y })),
+    ];
     return res.json(
       successResponse({
         heatmap,
+        heatmapPoints,
         passes:    mapData.passes.map(toFrontendEvent),
         shots:     mapData.shots.map(toFrontendEvent),
         synthetic: false,
@@ -279,10 +286,11 @@ export async function getPlayerEventsController(req: Request, res: Response) {
 
   return res.json(
     successResponse({
-      heatmap:   synthetic.heatmap,
-      passes:    synthetic.passes,
-      shots:     synthetic.shots,
-      synthetic: true,   // flag for debugging
+      heatmap:       synthetic.heatmap,
+      heatmapPoints: synthetic.rawPoints,
+      passes:        synthetic.passes,
+      shots:         synthetic.shots,
+      synthetic:     true,
     }),
   );
 }

@@ -36,6 +36,8 @@ export interface SyntheticPlayerEvents {
     };
     seasons:         string[];
   };
+  /** Raw spatial points (0–100 coords) used by the canvas heatmap renderer. */
+  rawPoints: { x: number; y: number }[];
   passes: MapEventFE[];
   shots:  MapEventFE[];
 }
@@ -286,6 +288,7 @@ export function generatePlayerEvents(
       },
       seasons: [],
     },
+    rawPoints: allPoints,
     passes: passEvents,
     shots:  shotEvents,
   };
