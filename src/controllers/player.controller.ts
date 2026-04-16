@@ -10,6 +10,8 @@ import { searchPlayers } from "../modules/player/player.search.service";
 import { getHeatmapData, getPlayerMapData, type MapEvent } from "../services/player-maps.service";
 import { generatePlayerEvents } from "../services/synthetic-events.service";
 import { resolvePositionGroup } from "../analytics/soccermind-overall.engine";
+import { findHiddenGems } from "../services/hidden-gems.service";
+import { generatePlayerBio } from "../services/player-bio.service";
 
 function getParam(value: string | string[] | undefined): string {
   if (Array.isArray(value)) return value[0] ?? "";
@@ -89,6 +91,13 @@ export async function listPlayersController(req: Request, res: Response) {
 }
 
 export async function searchPlayersController(req: Request, res: Response) {
+  const sortByRaw = getStringQuery(req, "sortBy");
+  const validSort = ["overall", "valueScore", "potential", "age"] as const;
+  type SortBy = typeof validSort[number];
+  const sortBy: SortBy | undefined = validSort.includes(sortByRaw as SortBy)
+    ? (sortByRaw as SortBy)
+    : undefined;
+
   const results = await searchPlayers({
     search:          getStringQuery(req, "search", "q"),
     name:            getStringQuery(req, "name"),
@@ -99,9 +108,12 @@ export async function searchPlayersController(req: Request, res: Response) {
     overallMin:      getNumericQuery(req, "overallMin"),
     overallMax:      getNumericQuery(req, "overallMax"),
     potentialMin:    getNumericQuery(req, "potentialMin"),
+    marketValueMin:  getNumericQuery(req, "marketValueMin"),
     marketValueMax:  getNumericQuery(req, "marketValueMax"),
     league:          getStringQuery(req, "league"),
     nationality:     getStringQuery(req, "nationality"),
+    dnaMin:          getNumericQuery(req, "dnaMin"),
+    sortBy,
     limit:           getNumericQuery(req, "limit"),
   });
 
@@ -293,4 +305,25 @@ export async function getPlayerEventsController(req: Request, res: Response) {
       synthetic:     true,
     }),
   );
+}
+
+// ---------------------------------------------------------------------------
+// GET /players/hidden-gems
+// ---------------------------------------------------------------------------
+
+export async function getHiddenGemsController(req: Request, res: Response) {
+  const limit = asNumber(req.query.limit) ?? 20;
+  const gems  = await findHiddenGems(Math.min(limit, 50));
+  return res.json(successResponse(gems, { total: gems.length }));
+}
+
+// ---------------------------------------------------------------------------
+// GET /player/:id/bio
+// ---------------------------------------------------------------------------
+
+export async function getPlayerBioController(req: Request, res: Response) {
+  const playerId = getParam(req.params.id);
+  const cacheKey = `player:bio:${playerId}`;
+  const data     = await withCache(cacheKey, 300, () => generatePlayerBio(playerId));
+  return res.json(successResponse(data));
 }

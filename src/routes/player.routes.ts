@@ -3,6 +3,8 @@ import { asyncHandler } from "../lib/asyncHandler";
 import {
   createPlayerNoteController,
   createPlayerReportController,
+  getHiddenGemsController,
+  getPlayerBioController,
   getPlayerEventsController,
   getPlayerProfileController,
   getPlayerProjectionController,
@@ -15,8 +17,9 @@ import {
 
 const router = Router();
 
-router.get("/players", asyncHandler(listPlayersController));
-router.get("/players/search", asyncHandler(searchPlayersController));
+router.get("/players",             asyncHandler(listPlayersController));
+router.get("/players/search",      asyncHandler(searchPlayersController));
+router.get("/players/hidden-gems", asyncHandler(getHiddenGemsController));
 
 router.get("/player/:id", asyncHandler(getPlayerProfileController));
 
@@ -31,6 +34,7 @@ router.get("/player/:id/notes", asyncHandler(listPlayerNotesController));
 router.post("/player/:id/notes", asyncHandler(createPlayerNoteController));
 
 router.get("/player/:id/true-performance", asyncHandler(getTruePerformanceController));
+router.get("/player/:id/bio",              asyncHandler(getPlayerBioController));
 
 router.get("/players/:id/events", asyncHandler(getPlayerEventsController));
 

@@ -1020,27 +1020,80 @@ export async function getPlayerProjection(id: string) {
   return buildProjectionFromProfile(profile);
 }
 
+// ---------------------------------------------------------------------------
+// DNA similarity helpers
+// ---------------------------------------------------------------------------
+
+const DNA_KEYS = ["impact", "intelligence", "defensiveIQ", "consistency", "potential"] as const;
+
+function extractDnaVector(dnaScore: unknown): number[] | null {
+  if (!dnaScore || typeof dnaScore !== "object" || Array.isArray(dnaScore)) return null;
+  const record = dnaScore as Record<string, unknown>;
+  const vec = DNA_KEYS.map((k) => {
+    const v = record[k];
+    return typeof v === "number" && Number.isFinite(v) ? v : null;
+  });
+  if (vec.some((v) => v === null)) return null;
+  return vec as number[];
+}
+
+function dnaDist(a: number[], b: number[]): number {
+  let sum = 0;
+  for (let i = 0; i < a.length; i++) sum += (a[i] - b[i]) ** 2;
+  return Math.sqrt(sum);
+}
+
+// ---------------------------------------------------------------------------
+
 export async function getSimilarPlayers(id: string) {
-  const base = await prisma.player.findUnique({ where: { id } });
+  const base = await prisma.player.findUnique({
+    where:  { id },
+    select: { id: true, positions: true, overall: true, dnaScore: true },
+  });
   if (!base) throw new Error("Player not found");
 
+  const baseVec = extractDnaVector(base.dnaScore);
+
+  // Fetch a broader candidate pool (50) so we can rank by DNA distance
   const peers = await findPlayersWithSnapshots({
     where: {
       positions: { has: resolvePlayerPosition(base as any) },
       NOT: { id: base.id },
     },
-    take: 6,
+    take: 50,
   });
 
-  return peers
-    .map((player) => buildPlayerSummary(player as PlayerSummarySource).player)
-    .sort((left, right) => {
-      const overallDiff = (right.overall ?? -1) - (left.overall ?? -1);
-      if (overallDiff !== 0) {
-        return overallDiff;
-      }
-      return left.name.localeCompare(right.name);
-    });
+  type PeerWithSummary = {
+    player: ReturnType<typeof buildPlayerSummary>["player"];
+    dnaScore: unknown;
+  };
+
+  const enriched: PeerWithSummary[] = peers.map((p) => ({
+    player:   buildPlayerSummary(p as PlayerSummarySource).player,
+    dnaScore: (p as any).dnaScore ?? null,
+  }));
+
+  // If base player has a DNA vector, rank by euclidean distance in DNA space.
+  // Otherwise fall back to overall diff (previous behaviour).
+  if (baseVec) {
+    return enriched
+      .map((e) => {
+        const peerVec = extractDnaVector(e.dnaScore);
+        const dist    = peerVec ? dnaDist(baseVec, peerVec) : Infinity;
+        return { ...e, dist };
+      })
+      .sort((a, b) => a.dist - b.dist)
+      .slice(0, 6)
+      .map((e) => e.player);
+  }
+
+  return enriched
+    .sort((a, b) => {
+      const diff = (b.player.overall ?? -1) - (a.player.overall ?? -1);
+      return diff !== 0 ? diff : a.player.name.localeCompare(b.player.name);
+    })
+    .slice(0, 6)
+    .map((e) => e.player);
 }
 
 function normalizeString(value?: string | null) {
