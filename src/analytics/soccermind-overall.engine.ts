@@ -244,6 +244,7 @@ const BLOCK_WEIGHTS: Record<PositionGroup, BlockWeights> = {
 // ─────────────────────────────────────────────────────────────────────────────
 
 const LEAGUE_FACTOR: Record<string, number> = {
+  // ── Europe top-5 ─────────────────────────────────────────────────────────
   "premier league":             1.05,
   "la liga":                    1.03,
   "serie a":                    1.03,
@@ -251,17 +252,55 @@ const LEAGUE_FACTOR: Record<string, number> = {
   "ligue 1":                    1.03,
   "champions league":           1.05,
   "uefa champions league":      1.05,
+  // ── Europe mid ───────────────────────────────────────────────────────────
   "eredivisie":                 1.00,
   "liga portugal":              1.00,
   "scottish premiership":       1.00,
+  // ── Europe lower ─────────────────────────────────────────────────────────
   "belgian pro league":         0.97,
   "super lig":                  0.97,
+  "supe lig":                   0.97,   // variant sem acento
+  // ── Europe extra ─────────────────────────────────────────────────────────
+  "osterreichische fussball-bundesliga": 0.96,
+  "admiral bundesliga":         0.96,
+  "bundesliga austria":         0.96,
+  "superliga":                  0.96,   // Danish Superliga
+  "danish superliga":           0.96,
+  "allsvenskan":                0.95,
+  "swedish allsvenskan":        0.95,
+  "hnl":                        0.94,
+  "supersport hnl":             0.94,
+  "croatian hnl":               0.94,
+  "fortuna liga":               0.94,
+  "czech first league":         0.94,
+  // ── Brazil ───────────────────────────────────────────────────────────────
   "brasileirao serie a":        0.95,
   "serie a brazil":             0.95,
+  "serie b":                    0.90,
+  // ── South America ────────────────────────────────────────────────────────
   "liga profesional de futbol": 0.93,
   "liga argentina":             0.93,
   "liga mx":                    0.93,
-  "serie b":                    0.90,
+  "mls":                        0.93,
+  "major league soccer":        0.93,
+  "liga betplay":               0.90,
+  "primera division colombia":  0.90,
+  "primera division chile":     0.90,
+  "campeonato chileno":         0.90,
+  "primera division uruguay":   0.90,
+  "campeonato uruguayo":        0.90,
+  "liga 1 peru":                0.88,
+  "primera division peru":      0.88,
+  // ── Africa ───────────────────────────────────────────────────────────────
+  "dstv premiership":           0.87,
+  "south africa psl":           0.87,
+  "premier soccer league":      0.87,
+  "egyptian premier league":    0.87,
+  "egypt premier league":       0.87,
+  "botola pro":                 0.86,
+  "morocco botola":             0.86,
+  "nigeria premier football league": 0.84,
+  "npfl":                       0.84,
 };
 
 function getLeagueFactor(league: string | null | undefined): number {
@@ -460,6 +499,7 @@ const MV_POSITION_FACTOR: Record<PositionGroup, number> = {
 };
 
 const MV_LEAGUE_FACTOR: Record<string, number> = {
+  // ── Europe top-5 ─────────────────────────────────────────────────────────
   "premier league":             1.20,
   "la liga":                    1.10,
   "serie a":                    1.10,
@@ -467,17 +507,55 @@ const MV_LEAGUE_FACTOR: Record<string, number> = {
   "ligue 1":                    1.10,
   "champions league":           1.20,
   "uefa champions league":      1.20,
+  // ── Europe mid ───────────────────────────────────────────────────────────
   "eredivisie":                 1.00,
   "liga portugal":              1.00,
   "scottish premiership":       0.95,
+  // ── Europe lower ─────────────────────────────────────────────────────────
   "belgian pro league":         0.95,
   "super lig":                  0.95,
+  "supe lig":                   0.95,
+  // ── Europe extra ─────────────────────────────────────────────────────────
+  "osterreichische fussball-bundesliga": 0.90,
+  "admiral bundesliga":         0.90,
+  "bundesliga austria":         0.90,
+  "superliga":                  0.90,
+  "danish superliga":           0.90,
+  "allsvenskan":                0.88,
+  "swedish allsvenskan":        0.88,
+  "hnl":                        0.85,
+  "supersport hnl":             0.85,
+  "croatian hnl":               0.85,
+  "fortuna liga":               0.85,
+  "czech first league":         0.85,
+  // ── Brazil ───────────────────────────────────────────────────────────────
   "brasileirao serie a":        0.90,
   "serie a brazil":             0.90,
+  "serie b":                    0.75,
+  // ── South America ────────────────────────────────────────────────────────
   "liga profesional de futbol": 0.85,
   "liga argentina":             0.85,
   "liga mx":                    0.85,
-  "serie b":                    0.75,
+  "mls":                        0.85,
+  "major league soccer":        0.85,
+  "liga betplay":               0.78,
+  "primera division colombia":  0.78,
+  "primera division chile":     0.76,
+  "campeonato chileno":         0.76,
+  "primera division uruguay":   0.76,
+  "campeonato uruguayo":        0.76,
+  "liga 1 peru":                0.72,
+  "primera division peru":      0.72,
+  // ── Africa ───────────────────────────────────────────────────────────────
+  "dstv premiership":           0.70,
+  "south africa psl":           0.70,
+  "premier soccer league":      0.70,
+  "egyptian premier league":    0.70,
+  "egypt premier league":       0.70,
+  "botola pro":                 0.68,
+  "morocco botola":             0.68,
+  "nigeria premier football league": 0.60,
+  "npfl":                       0.60,
 };
 
 function getMvLeagueFactor(league: string | null | undefined): number {

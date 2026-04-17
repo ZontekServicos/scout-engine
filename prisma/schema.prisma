@@ -34,12 +34,17 @@ model Player {
   imageFetched    Boolean  @default(false)
 
   // Physical profile — sourced from Sportmonks player endpoint
-  height          Int?     // cm
-  weight          Int?     // kg
-  foot            String?  // "left" | "right" | "both"
+  height              Int?     // cm
+  weight              Int?     // kg
+  foot                String?  // "left" | "right" | "both"
+  secondaryPosition   String?  // secondary/backup position name (Sportmonks or mock)
 
   marketValue     Float?
   contractEnd     DateTime?
+  // Mock-enriched contract details: { club, from, until, salary, buyoutClause }
+  contractMock    Json?
+  // Mock club history: [{ club, country, season, appearances, goals, assists }]
+  clubHistory     Json?
 
   overall         Int?
   potential       Int?
@@ -77,9 +82,14 @@ model Player {
 
   // Sportmonks team link (separate from denormalized `team` string above)
   teamDbId           String?
-  dbTeam             Team?    @relation(fields: [teamDbId], references: [id])
+  dbTeam             Team?    @relation("PlayerCurrentTeam", fields: [teamDbId], references: [id])
+
+  // Current league FK — updated after each ingestion based on most recent season
+  currentLeagueId    String?
+  currentLeague      League?  @relation("PlayerCurrentLeague", fields: [currentLeagueId], references: [id])
 
   videos             PlayerVideo[]
+  playerSeasons      PlayerSeason[]
 
   @@index([nameNormalized])
   @@index([league])
@@ -208,7 +218,9 @@ model League {
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 
-  seasons    Season[]
+  seasons        Season[]
+  playerSeasons  PlayerSeason[]
+  currentPlayers Player[]       @relation("PlayerCurrentLeague")
 
   @@index([name])
   @@index([countryId])
@@ -225,9 +237,10 @@ model Season {
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 
-  teams        Team[]        @relation("SeasonTeams")
-  matches      Match[]
-  playerStats  PlayerStats[]
+  teams         Team[]         @relation("SeasonTeams")
+  matches       Match[]
+  playerStats   PlayerStats[]
+  playerSeasons PlayerSeason[]
 
   @@index([leagueId])
   @@index([isCurrent])
@@ -245,11 +258,12 @@ model Team {
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 
-  players     Player[]
-  seasons     Season[]    @relation("SeasonTeams")
-  homeMatches Match[]     @relation("HomeMatches")
-  awayMatches Match[]     @relation("AwayMatches")
-  matchEvents MatchEvent[] @relation("TeamMatchEvents")
+  players        Player[]       @relation("PlayerCurrentTeam")
+  seasons        Season[]       @relation("SeasonTeams")
+  homeMatches    Match[]        @relation("HomeMatches")
+  awayMatches    Match[]        @relation("AwayMatches")
+  matchEvents    MatchEvent[]   @relation("TeamMatchEvents")
+  playerSeasons  PlayerSeason[]
 
   @@index([name])
 }
@@ -503,6 +517,74 @@ model LeagueDataProfile {
   @@index([tier])
   @@index([hasCoordinates])
   @@index([hasEvents])
+}
+
+// ---------------------------------------------------------------------------
+// PlayerSeason — one row per player per season
+//
+// Structured historical record combining:
+//   • team + league context for that season (FK + denormalized labels)
+//   • computed metrics (overall, potential, DNA) as of season end
+//   • key performance stats (goals, assists, minutes, appearances, rating)
+//
+// Upsert key: (playerId, seasonId) — idempotent re-runs safe.
+// Never deleted during re-ingestion — history is preserved.
+// ---------------------------------------------------------------------------
+
+model PlayerSeason {
+  id           String   @id @default(uuid())
+
+  playerId     String
+  player       Player   @relation(fields: [playerId], references: [id], onDelete: Cascade)
+
+  seasonId     String
+  dbSeason     Season   @relation(fields: [seasonId], references: [id])
+
+  // Club context for this season
+  teamId       String?
+  dbTeam       Team?    @relation(fields: [teamId], references: [id])
+
+  // League context for this season
+  leagueId     String?
+  dbLeague     League?  @relation(fields: [leagueId], references: [id])
+
+  // Denormalized labels — fast access without joins
+  teamName      String?
+  leagueName    String?
+  seasonLabel   String?  // e.g. "2024/2025"
+  seasonYear    Int?     // e.g. 2024
+
+  // League context code used for overall calculation (EUR_MID, SA_TOP, etc.)
+  leagueContext String?
+
+  // Computed metrics for this season
+  overall     Int?
+  potential   Int?
+  dnaScore    Json?
+
+  // Key stats for timeline display and progression analysis
+  goals        Int?
+  assists      Int?
+  minutes      Int?
+  appearances  Int?
+  rating       Float?
+  marketValue  Float?
+
+  // Source of data: sportmonks | sportmonks_multiseason | manual | mock
+  source       String   @default("sportmonks")
+
+  calculatedAt DateTime?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  // One row per (player, season) — upsert target
+  @@unique([playerId, seasonId])
+  @@index([playerId])
+  @@index([seasonId])
+  @@index([teamId])
+  @@index([leagueId])
+  @@index([seasonYear])
+  @@index([overall(sort: Desc)])
 }
 
 // ---------------------------------------------------------------------------

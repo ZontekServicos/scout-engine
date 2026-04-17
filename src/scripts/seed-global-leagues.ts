@@ -55,10 +55,12 @@ interface GlobalLeague {
  * All season IDs are the currentSeasonId from leagues.json (2025-26 season).
  * Multi-season enrichment IDs are added to enrich-multi-season.ts separately.
  *
- * NOTE: Liga MX (Mexico), Liga 1 Peru, Primera División Uruguay and
- * División Profesional Paraguay are not present in the leagues.json snapshot.
- * They may be available under different league IDs on the Sportmonks plan —
- * add them here once their IDs are confirmed via discover-seasons.ts.
+ * IDs marked "TO CONFIRM" were not present in the original leagues.json snapshot.
+ * Use `npm run discover:seasons` to find the correct IDs for your Sportmonks plan,
+ * then update the seasonId here.
+ *
+ * Africa leagues default to mock mode — set USE_MOCK_AFRICA=true to generate
+ * intelligent mock players instead of querying the API.
  */
 const GLOBAL_LEAGUES: GlobalLeague[] = [
   // ── European top-5 (volume reference = 1.00) ──────────────────────────────
@@ -147,12 +149,70 @@ const GLOBAL_LEAGUES: GlobalLeague[] = [
     group: "europe_mid",
   },
 
+  // ── European extra-tier (volume ~12% below reference) ─────────────────────
+  {
+    name: "Admiral Bundesliga",   // Austrian top division
+    country: "Austria",
+    leagueId: 44,
+    seasonId: 25910,              // TO CONFIRM via discover-seasons
+    leagueContext: "EUR_EXTRA",
+    group: "europe_extra",
+  },
+  {
+    name: "Superliga",            // Danish Superliga
+    country: "Denmark",
+    leagueId: 271,
+    seasonId: 25801,              // TO CONFIRM via discover-seasons
+    leagueContext: "EUR_EXTRA",
+    group: "europe_extra",
+  },
+  {
+    name: "Allsvenskan",          // Swedish top division
+    country: "Sweden",
+    leagueId: 375,
+    seasonId: 26100,              // TO CONFIRM via discover-seasons
+    leagueContext: "EUR_EXTRA",
+    group: "europe_extra",
+  },
+  {
+    name: "SuperSport HNL",       // Croatian top division
+    country: "Croatia",
+    leagueId: 119,
+    seasonId: 25830,              // TO CONFIRM via discover-seasons
+    leagueContext: "EUR_EXTRA",
+    group: "europe_extra",
+  },
+  {
+    name: "Fortuna Liga",         // Czech First League
+    country: "Czech Republic",
+    leagueId: 134,
+    seasonId: 25835,              // TO CONFIRM via discover-seasons
+    leagueContext: "EUR_EXTRA",
+    group: "europe_extra",
+  },
+
   // ── South America top (volume ~15% below reference) ───────────────────────
   {
     name: "Liga Profesional de Fútbol",
     country: "Argentina",
     leagueId: 636,
     seasonId: 26808,
+    leagueContext: "SA_TOP",
+    group: "south_america",
+  },
+  {
+    name: "Liga MX",
+    country: "Mexico",
+    leagueId: 444,
+    seasonId: 27050,              // TO CONFIRM via discover-seasons
+    leagueContext: "SA_TOP",
+    group: "south_america",
+  },
+  {
+    name: "MLS",
+    country: "USA",
+    leagueId: 1,
+    seasonId: 26920,              // TO CONFIRM via discover-seasons
     leagueContext: "SA_TOP",
     group: "south_america",
   },
@@ -174,6 +234,63 @@ const GLOBAL_LEAGUES: GlobalLeague[] = [
     leagueContext: "SA_MID",
     group: "south_america",
   },
+  {
+    name: "Primera División (Uruguay)",
+    country: "Uruguay",
+    leagueId: 649,
+    seasonId: 27020,              // TO CONFIRM via discover-seasons
+    leagueContext: "SA_MID",
+    group: "south_america",
+  },
+
+  // ── South America lower (volume ~28% below reference) ─────────────────────
+  {
+    name: "Liga 1 (Peru)",
+    country: "Peru",
+    leagueId: 659,
+    seasonId: 27010,              // TO CONFIRM via discover-seasons
+    leagueContext: "SA_LOWER",
+    group: "south_america",
+  },
+
+  // ── Africa top (volume ~25% below reference) ──────────────────────────────
+  // NOTE: Confirm IDs via discover-seasons. Mock data available via
+  //       `npm run seed:mock:players -- --group=africa`
+  {
+    name: "DStv Premiership",     // South Africa PSL
+    country: "South Africa",
+    leagueId: 672,
+    seasonId: 27100,              // TO CONFIRM via discover-seasons
+    leagueContext: "AFRICA_TOP",
+    group: "africa",
+  },
+  {
+    name: "Egyptian Premier League",
+    country: "Egypt",
+    leagueId: 237,
+    seasonId: 27110,              // TO CONFIRM via discover-seasons
+    leagueContext: "AFRICA_TOP",
+    group: "africa",
+  },
+  {
+    name: "Botola Pro",           // Morocco top division
+    country: "Morocco",
+    leagueId: 429,
+    seasonId: 27120,              // TO CONFIRM via discover-seasons
+    leagueContext: "AFRICA_TOP",
+    group: "africa",
+  },
+
+  // ── Africa mid (volume ~32% below reference) ──────────────────────────────
+  // Nigeria NPFL: limited API coverage — use mock mode recommended
+  {
+    name: "Nigeria Premier Football League",
+    country: "Nigeria",
+    leagueId: 479,
+    seasonId: 27130,              // TO CONFIRM via discover-seasons
+    leagueContext: "AFRICA_MID",
+    group: "africa",
+  },
 ];
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -192,7 +309,8 @@ function selectLeagues(): GlobalLeague[] {
   if (groupArg) {
     const matched = GLOBAL_LEAGUES.filter((l) => l.group === groupArg);
     if (matched.length === 0) {
-      console.error(`❌  Grupo inválido: "${groupArg}". Use: europe_top5, europe_mid, south_america`);
+      const validGroups = [...new Set(GLOBAL_LEAGUES.map((l) => l.group))].join(", ");
+      console.error(`❌  Grupo inválido: "${groupArg}". Use: ${validGroups}`);
       process.exit(1);
     }
     return matched;

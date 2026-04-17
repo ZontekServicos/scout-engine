@@ -57,6 +57,7 @@ import { prisma } from "../lib/prisma";
 import { fetchPlayerStatsMultiSeason } from "../integrations/sportmonks/sportmonks.client";
 import { normalizeStats, type RawStats } from "../integrations/sportmonks/pipeline/normalize-stats";
 import { calculateOverall, MIN_MINUTES_RELIABLE, type LeagueContext } from "../analytics/overall.engine";
+import { upsertPlayerSeason } from "../ingestion/player-season.service";
 
 // ---------------------------------------------------------------------------
 // CLI args
@@ -330,6 +331,17 @@ async function main(): Promise<void> {
         },
       };
 
+  // Resolve DB Season records for all season IDs upfront
+  const dbSeasons = await prisma.season.findMany({
+    where: { externalId: { in: SEASON_IDS } },
+    select: { id: true, externalId: true, name: true, year: true, isCurrent: true, leagueId: true },
+  });
+  const seasonDbMap = new Map(dbSeasons.map((s) => [s.externalId, s]));
+
+  // Resolve League DB id from the primary season
+  const primaryDbSeason = seasonDbMap.get(PRIMARY_SEASON_ID);
+  const primaryLeagueDbId = primaryDbSeason?.leagueId ?? null;
+
   const total = await prisma.player.count({ where });
   console.log(`  Jogadores elegíveis: ${total}`);
   console.log(`  League context     : ${LEAGUE_CONTEXT}`);
@@ -509,6 +521,48 @@ async function main(): Promise<void> {
                 dnaCalculatedAt:      new Date(),
               },
             });
+
+            // 7. Upsert PlayerSeason for each season where the player had minutes
+            for (let i = 0; i < SEASON_IDS.length; i++) {
+              const seasonId   = SEASON_IDS[i];
+              const dbSeason   = seasonDbMap.get(seasonId);
+              if (!dbSeason) continue;
+
+              const seasonStats= perSeason[i]?.stats;
+              if (!seasonStats || seasonStats.minutesPlayed <= 0) continue;
+
+              // For older seasons, use proportional overall (recency-decayed)
+              const seasonOverall = i === 0
+                ? overallResult.overall
+                : null; // don't retroactively assign blended overall to past seasons
+
+              // Resolve team from player's current team (best approximation for older seasons)
+              const playerRecord = await prisma.player.findUnique({
+                where: { id: player.id },
+                select: { teamDbId: true },
+              });
+
+              await upsertPlayerSeason({
+                playerId:      player.id,
+                seasonId:      dbSeason.id,
+                teamId:        i === 0 ? (playerRecord?.teamDbId ?? null) : null,
+                leagueId:      i === 0 ? primaryLeagueDbId : dbSeason.leagueId ?? null,
+                leagueName:    null, // will be filled by join when needed
+                seasonLabel:   dbSeason.name,
+                seasonYear:    dbSeason.year ?? null,
+                leagueContext: LEAGUE_CONTEXT,
+                overall:       seasonOverall,
+                potential:     i === 0 ? overallResult.potential : null,
+                dnaScore:      i === 0 ? (overallResult.dna as unknown as Record<string, unknown>) : null,
+                goals:         seasonStats.goals       > 0 ? seasonStats.goals       : null,
+                assists:       seasonStats.assists     > 0 ? seasonStats.assists     : null,
+                minutes:       seasonStats.minutesPlayed > 0 ? Math.round(seasonStats.minutesPlayed) : null,
+                appearances:   seasonStats.appearances > 0 ? Math.round(seasonStats.appearances) : null,
+                rating:        seasonStats.rating      > 0 ? seasonStats.rating      : null,
+                source:        "sportmonks_multiseason",
+                isCurrent:     i === 0 && (dbSeason.isCurrent ?? false),
+              });
+            }
 
             result.enriched++;
             await sleep(DELAY_MS);

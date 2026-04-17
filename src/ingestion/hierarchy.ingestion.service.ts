@@ -18,6 +18,7 @@ import {
 } from "../integrations/sportmonks/sportmonks.client";
 import { normalizeStats } from "../integrations/sportmonks/pipeline/normalize-stats";
 import { calculateOverall, type LeagueContext } from "../analytics/overall.engine";
+import { upsertPlayerSeason } from "./player-season.service";
 
 // ---------------------------------------------------------------------------
 // Country
@@ -250,6 +251,7 @@ export async function ingestPlayersByTeam(
   sportmonksSeasonId: number,
   leagueName?: string | null,
   leagueContext: LeagueContext = "DEFAULT",
+  leagueDbId?: string | null,  // DB UUID of the League record (for PlayerSeason FK)
 ) {
   // Ensure team and season exist
   const [team, season] = await Promise.all([
@@ -367,6 +369,33 @@ export async function ingestPlayersByTeam(
       },
     });
 
+    // PlayerSeason upsert — structured history record
+    if (season) {
+      // Derive year from season name (e.g. "2024/2025" → 2024)
+      const seasonYear = season.year ?? deriveYearFromLabel(season.name);
+      await upsertPlayerSeason({
+        playerId:      dbPlayer.id,
+        seasonId:      season.id,
+        teamId:        team.id,
+        leagueId:      leagueDbId ?? null,
+        teamName:      team.name,
+        leagueName:    leagueName ?? null,
+        seasonLabel:   season.name,
+        seasonYear,
+        leagueContext,
+        overall:       overallResult?.overall     ?? null,
+        potential:     overallResult?.potential   ?? null,
+        dnaScore:      (overallResult?.dna as unknown as Record<string, unknown>) ?? null,
+        goals:         normalized.goals       > 0 ? normalized.goals       : null,
+        assists:       normalized.assists     > 0 ? normalized.assists     : null,
+        minutes:       normalized.minutesPlayed > 0 ? normalized.minutesPlayed : null,
+        appearances:   normalized.appearances > 0 ? normalized.appearances : null,
+        rating:        normalized.rating      > 0 ? normalized.rating      : null,
+        source:        "sportmonks",
+        isCurrent:     season.isCurrent,
+      });
+    }
+
     // Stats snapshot — full field set
     await prisma.playerStats.create({
       data: {
@@ -434,6 +463,17 @@ export async function ingestPlayersByTeam(
 }
 
 // ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+/** Extracts the starting year from a season label like "2024/2025" or "2024". */
+function deriveYearFromLabel(label: string | null | undefined): number | null {
+  if (!label) return null;
+  const match = label.match(/(\d{4})/);
+  return match ? Number(match[1]) : null;
+}
+
+// ---------------------------------------------------------------------------
 // Direct cascade: League + known Season ID → Teams → Players
 //
 // Use this when fetchSeasonsByLeague returns 400 (filter not available on plan).
@@ -462,10 +502,16 @@ export async function ingestLeagueWithKnownSeason(
   // 3. Ingest teams for this season
   const teams = await ingestTeamsBySeason(sportmonksSeasonId);
 
-  // 4. Ingest players for each team (pass league name so it's stored on each player)
+  // 4. Ingest players for each team (pass league name + DB id for PlayerSeason FK)
   let totalPlayers = 0;
   for (const team of teams) {
-    const players = await ingestPlayersByTeam(team.externalId, sportmonksSeasonId, league.name, leagueContext);
+    const players = await ingestPlayersByTeam(
+      team.externalId,
+      sportmonksSeasonId,
+      league.name,
+      leagueContext,
+      league.id,
+    );
     totalPlayers += players.length;
   }
 
@@ -503,7 +549,13 @@ export async function ingestLeagueFull(sportmonksLeagueId: number, onlyCurrentSe
     let totalPlayers = 0;
 
     for (const team of teams) {
-      const players = await ingestPlayersByTeam(team.externalId, rawSeason.externalId);
+      const players = await ingestPlayersByTeam(
+        team.externalId,
+        rawSeason.externalId,
+        league.name,
+        "DEFAULT",
+        league.id,
+      );
       totalPlayers += players.length;
     }
 
