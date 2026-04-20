@@ -12,6 +12,7 @@ import { generatePlayerEvents } from "../services/synthetic-events.service";
 import { resolvePositionGroup } from "../analytics/soccermind-overall.engine";
 import { findHiddenGems } from "../services/hidden-gems.service";
 import { generatePlayerBio } from "../services/player-bio.service";
+import { getPlayerEvolution } from "../services/player-evolution.service";
 
 function getParam(value: string | string[] | undefined): string {
   if (Array.isArray(value)) return value[0] ?? "";
@@ -315,6 +316,20 @@ export async function getHiddenGemsController(req: Request, res: Response) {
   const limit = asNumber(req.query.limit) ?? 20;
   const gems  = await findHiddenGems(Math.min(limit, 50));
   return res.json(successResponse(gems, { total: gems.length }));
+}
+
+// ---------------------------------------------------------------------------
+// GET /player/:id/evolution
+// ---------------------------------------------------------------------------
+
+export async function getPlayerEvolutionController(req: Request, res: Response) {
+  const playerId = getParam(req.params.id);
+  const cacheKey = `player:evolution:${playerId}`;
+  const data     = await withCache(cacheKey, 180, () => getPlayerEvolution(playerId));
+  if (!data) {
+    return res.status(404).json({ success: false, data: null, error: "Player not found" });
+  }
+  return res.json(successResponse(data));
 }
 
 // ---------------------------------------------------------------------------

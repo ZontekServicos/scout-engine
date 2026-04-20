@@ -6,6 +6,7 @@ import {
   getHiddenGemsController,
   getPlayerBioController,
   getPlayerEventsController,
+  getPlayerEvolutionController,
   getPlayerProfileController,
   getPlayerProjectionController,
   getPlayerSimilarController,
@@ -35,6 +36,7 @@ router.post("/player/:id/notes", asyncHandler(createPlayerNoteController));
 
 router.get("/player/:id/true-performance", asyncHandler(getTruePerformanceController));
 router.get("/player/:id/bio",              asyncHandler(getPlayerBioController));
+router.get("/player/:id/evolution",        asyncHandler(getPlayerEvolutionController));
 
 router.get("/players/:id/events", asyncHandler(getPlayerEventsController));
 

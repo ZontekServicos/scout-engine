@@ -1,39 +1,39 @@
 /**
  * hidden-gems.service.ts
  *
- * Identifica jogadores com alto overall, jovens e com valor de mercado
- * abaixo da média — "joias escondidas" do mercado.
+ * Identifies players with strong overall, positive trend and favourable
+ * market value — "hidden gems" for scouting.
  *
- * Critérios:
- *   • overall  >= 70
- *   • idade    <= 24
- *   • marketValue < média do grupo (eficiência de mercado)
+ * v2 changes vs original:
+ *   • Uses PlayerSeason history to compute trend per player.
+ *   • Ranks by ScoutingScore (overall 40% + trend 30% + value 20% + ceiling 10%)
+ *     instead of just overall/valueScore.
+ *   • Keeps age ≤ 26 and overall ≥ 68 as entry gates (slightly wider than v1).
  *
- * Endpoint: GET /players/hidden-gems
+ * Endpoint: GET /api/players/hidden-gems
  */
 
-import { prisma } from "../lib/prisma";
-import type { PlayerSearchResult } from "../modules/player/player.search.service";
+import { prisma }                                            from "../lib/prisma";
+import { computePlayerTrend, type SeasonPoint }             from "../analytics/player-trend.engine";
+import { computeScoutingScore, type ScoutingScore }         from "../analytics/scouting-score.engine";
+import type { PlayerSearchResult }                          from "../modules/player/player.search.service";
 
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
+// ─── Extended result type ─────────────────────────────────────────────────────
 
-function computeValueScore(overall: number | null, marketValue: number | null): number | null {
-  if (overall == null || marketValue == null || marketValue <= 0) return null;
-  return Math.round((overall / (marketValue / 1_000_000)) * 10) / 10;
+export interface HiddenGemResult extends PlayerSearchResult {
+  scoutingScore:  ScoutingScore;
+  trendDirection: string;
+  trendDelta:     number;
+  seasonCount:    number;
 }
 
-// ---------------------------------------------------------------------------
-// Service
-// ---------------------------------------------------------------------------
+// ─── Service ──────────────────────────────────────────────────────────────────
 
-export async function findHiddenGems(limit = 20): Promise<PlayerSearchResult[]> {
-  // Buscar candidatos: overall ≥ 70 + idade ≤ 24 + tem marketValue
+export async function findHiddenGems(limit = 20): Promise<HiddenGemResult[]> {
   const candidates = await prisma.player.findMany({
     where: {
-      overall:     { gte: 70 },
-      age:         { lte: 24 },
+      overall:     { gte: 68 },
+      age:         { lte: 26 },
       marketValue: { not: null, gt: 0 },
     },
     select: {
@@ -49,42 +49,84 @@ export async function findHiddenGems(limit = 20): Promise<PlayerSearchResult[]> 
       marketValue: true,
       imagePath:   true,
       dnaScore:    true,
+      playerSeasons: {
+        orderBy: [{ seasonYear: "asc" }],
+        select: {
+          seasonYear:  true,
+          seasonLabel: true,
+          overall:     true,
+          goals:       true,
+          assists:     true,
+          minutes:     true,
+          rating:      true,
+          marketValue: true,
+          leagueName:  true,
+          teamName:    true,
+        },
+      },
     },
-    orderBy: [
-      { overall: "desc" },
-      { name:    "asc" },
-    ],
-    // Buscar até 500 para ter uma amostra representativa para o avg
-    take: 500,
+    take: 600,
   });
 
   if (candidates.length === 0) return [];
 
-  // Calcular valor de mercado médio do grupo
-  const totalValue = candidates.reduce((sum, p) => sum + (p.marketValue ?? 0), 0);
+  // Compute avg market value for the group (value-efficiency gate)
+  const totalValue = candidates.reduce((s, p) => s + (p.marketValue ?? 0), 0);
   const avgValue   = totalValue / candidates.length;
 
-  // Filtrar abaixo da média + enricher com valueScore
-  const gems: PlayerSearchResult[] = candidates
+  const scored = candidates
     .filter((p) => (p.marketValue ?? Infinity) < avgValue)
-    .map((p) => ({
-      id:          p.id,
-      name:        p.name,
-      team:        p.team,
-      league:      p.league,
-      nationality: p.nationality,
-      age:         p.age,
-      positions:   p.positions,
-      overall:     p.overall,
-      potential:   p.potential,
-      marketValue: p.marketValue,
-      imagePath:   p.imagePath,
-      dnaScore:    (p.dnaScore as Record<string, unknown> | null) ?? null,
-      valueScore:  computeValueScore(p.overall, p.marketValue),
-    }));
+    .map((p) => {
+      const seasonPoints: SeasonPoint[] = p.playerSeasons
+        .filter((s) => s.seasonYear != null)
+        .map((s) => ({
+          seasonYear:  s.seasonYear!,
+          seasonLabel: s.seasonLabel,
+          overall:     s.overall,
+          goals:       s.goals,
+          assists:     s.assists,
+          minutes:     s.minutes,
+          rating:      s.rating,
+          marketValue: s.marketValue,
+          leagueName:  s.leagueName,
+          teamName:    s.teamName,
+        }));
 
-  // Ordenar por valueScore desc (melhor custo-benefício primeiro)
-  gems.sort((a, b) => (b.valueScore ?? -1) - (a.valueScore ?? -1));
+      const trend        = computePlayerTrend(seasonPoints);
+      const scoutingScore = computeScoutingScore({
+        overall:     p.overall,
+        potential:   p.potential,
+        marketValue: p.marketValue,
+        age:         p.age,
+        trend,
+      });
 
-  return gems.slice(0, limit);
+      return {
+        id:             p.id,
+        name:           p.name,
+        team:           p.team,
+        league:         p.league,
+        nationality:    p.nationality,
+        age:            p.age,
+        positions:      p.positions,
+        overall:        p.overall,
+        potential:      p.potential,
+        marketValue:    p.marketValue,
+        imagePath:      p.imagePath,
+        dnaScore:       (p.dnaScore as Record<string, unknown> | null) ?? null,
+        valueScore:     scoutingScore.breakdown.valueScore,
+        scoutingScore,
+        trendDirection: trend.direction,
+        trendDelta:     trend.overallDelta,
+        seasonCount:    trend.seasonCount,
+      } satisfies HiddenGemResult;
+    });
+
+  // Sort by scoutingScore total desc, then by overall desc as tiebreaker
+  scored.sort((a, b) =>
+    b.scoutingScore.total - a.scoutingScore.total ||
+    (b.overall ?? 0) - (a.overall ?? 0),
+  );
+
+  return scored.slice(0, limit);
 }
