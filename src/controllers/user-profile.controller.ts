@@ -11,10 +11,11 @@ import {
 // ─── Validation schemas ───────────────────────────────────────────────────────
 
 const UpdateProfileSchema = z.object({
-  name:      z.string().min(1).max(100).optional(),
-  email:     z.string().email().optional(),
-  avatarUrl: z.string().url().optional(),
-  clubName:  z.string().max(120).optional(),
+  name:        z.string().min(1).max(100).optional(),
+  email:       z.string().email().optional(),
+  avatarUrl:   z.string().url().optional(),
+  clubName:    z.string().max(120).optional(),
+  clubLogoUrl: z.string().url().optional(),
 });
 
 const AdminUpdateSchema = UpdateProfileSchema.extend({

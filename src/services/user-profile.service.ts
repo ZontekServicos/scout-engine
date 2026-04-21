@@ -3,10 +3,11 @@ import { prisma } from "../lib/prisma";
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export interface UpdateProfileData {
-  name?: string;
-  email?: string;
-  avatarUrl?: string;
-  clubName?: string;
+  name?:        string;
+  email?:       string;
+  avatarUrl?:   string;
+  clubName?:    string;
+  clubLogoUrl?: string;
 }
 
 export interface AdminUpdateData extends UpdateProfileData {
@@ -48,10 +49,11 @@ export async function ensureUserProfile(
  */
 export async function updateUserProfile(userId: string, data: UpdateProfileData) {
   const filtered: UpdateProfileData = {};
-  if (data.name      !== undefined) filtered.name      = data.name;
-  if (data.email     !== undefined) filtered.email     = data.email;
-  if (data.avatarUrl !== undefined) filtered.avatarUrl = data.avatarUrl;
-  if (data.clubName  !== undefined) filtered.clubName  = data.clubName;
+  if (data.name        !== undefined) filtered.name        = data.name;
+  if (data.email       !== undefined) filtered.email       = data.email;
+  if (data.avatarUrl   !== undefined) filtered.avatarUrl   = data.avatarUrl;
+  if (data.clubName    !== undefined) filtered.clubName    = data.clubName;
+  if (data.clubLogoUrl !== undefined) filtered.clubLogoUrl = data.clubLogoUrl;
 
   return prisma.userProfile.update({
     where: { id: userId },

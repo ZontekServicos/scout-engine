@@ -31,6 +31,13 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "../lib/prisma";
 
+/** Extracts the starting year from "2024/2025" → 2024, or "2024" → 2024. */
+function deriveYearFromLabel(label: string | null | undefined): number | null {
+  if (!label) return null;
+  const match = label.match(/(\d{4})/);
+  return match ? Number(match[1]) : null;
+}
+
 // ─── Input type ───────────────────────────────────────────────────────────────
 
 export interface PlayerSeasonInput {
@@ -85,13 +92,16 @@ export async function upsertPlayerSeason(input: PlayerSeasonInput): Promise<void
     isCurrent = false,
   } = input;
 
+  // Always resolve seasonYear — fall back to label extraction if caller didn't provide it
+  const resolvedYear = seasonYear ?? deriveYearFromLabel(seasonLabel) ?? null;
+
   const data = {
     teamId:        teamId   ?? null,
     leagueId:      leagueId ?? null,
     teamName:      teamName   ?? null,
     leagueName:    leagueName ?? null,
     seasonLabel:   seasonLabel ?? null,
-    seasonYear:    seasonYear  ?? null,
+    seasonYear:    resolvedYear,
     leagueContext: leagueContext ?? null,
     overall:       overall   ?? null,
     potential:     potential ?? null,

@@ -160,6 +160,13 @@ function sleep(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));
 }
 
+/** Extracts the starting year from "2024/2025" → 2024, or "2024" → 2024. */
+function deriveYearFromLabel(label: string | null | undefined): number | null {
+  if (!label) return null;
+  const match = label.match(/(\d{4})/);
+  return match ? Number(match[1]) : null;
+}
+
 // ---------------------------------------------------------------------------
 // Recency weights: season[0]=1.0, season[1]=decay^1, season[2]=decay^2, …
 // ---------------------------------------------------------------------------
@@ -549,7 +556,7 @@ async function main(): Promise<void> {
                 leagueId:      i === 0 ? primaryLeagueDbId : dbSeason.leagueId ?? null,
                 leagueName:    null, // will be filled by join when needed
                 seasonLabel:   dbSeason.name,
-                seasonYear:    dbSeason.year ?? null,
+                seasonYear:    dbSeason.year ?? deriveYearFromLabel(dbSeason.name),
                 leagueContext: LEAGUE_CONTEXT,
                 overall:       seasonOverall,
                 potential:     i === 0 ? overallResult.potential : null,
