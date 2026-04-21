@@ -3,6 +3,7 @@ import { asyncHandler } from "../lib/asyncHandler";
 import {
   createPlayerNoteController,
   createPlayerReportController,
+  getEmergingImpactController,
   getHiddenGemsController,
   getPlayerBioController,
   getPlayerEventsController,
@@ -34,7 +35,8 @@ router.get("/player/:id/notes", asyncHandler(listPlayerNotesController));
 
 router.post("/player/:id/notes", asyncHandler(createPlayerNoteController));
 
-router.get("/player/:id/true-performance", asyncHandler(getTruePerformanceController));
+router.get("/player/:id/true-performance",  asyncHandler(getTruePerformanceController));
+router.get("/player/:id/emerging-impact",  asyncHandler(getEmergingImpactController));
 router.get("/player/:id/bio",              asyncHandler(getPlayerBioController));
 router.get("/player/:id/evolution",        asyncHandler(getPlayerEvolutionController));
 

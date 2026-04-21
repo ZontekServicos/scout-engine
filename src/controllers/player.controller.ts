@@ -13,6 +13,7 @@ import { resolvePositionGroup } from "../analytics/soccermind-overall.engine";
 import { findHiddenGems } from "../services/hidden-gems.service";
 import { generatePlayerBio } from "../services/player-bio.service";
 import { getPlayerEvolution } from "../services/player-evolution.service";
+import { calculateEmergingImpact } from "../analytics/emerging-impact.engine";
 
 function getParam(value: string | string[] | undefined): string {
   if (Array.isArray(value)) return value[0] ?? "";
@@ -330,6 +331,38 @@ export async function getPlayerEvolutionController(req: Request, res: Response) 
     return res.status(404).json({ success: false, data: null, error: "Player not found" });
   }
   return res.json(successResponse(data));
+}
+
+// ---------------------------------------------------------------------------
+// GET /player/:id/emerging-impact
+// ---------------------------------------------------------------------------
+
+export async function getEmergingImpactController(req: Request, res: Response) {
+  const playerId = getParam(req.params.id);
+
+  const [player, stats] = await Promise.all([
+    prisma.player.findUnique({
+      where:  { id: playerId },
+      select: { positions: true },
+    }),
+    prisma.playerStats.findFirst({
+      where:   { playerId },
+      orderBy: { createdAt: "desc" },
+      select: {
+        goals: true, assists: true, rating: true, minutes: true,
+        appearances: true, saves: true, cleanSheets: true,
+        duelsTotal: true, duelsWon: true,
+      },
+    }),
+  ]);
+
+  if (!player) {
+    return res.status(404).json({ success: false, data: null, error: "Player not found" });
+  }
+
+  const result = calculateEmergingImpact(stats ?? {}, player.positions[0] ?? null);
+
+  return res.json(successResponse(result));
 }
 
 // ---------------------------------------------------------------------------

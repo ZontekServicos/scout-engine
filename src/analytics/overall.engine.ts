@@ -896,10 +896,12 @@ function calculateOverallFallback(
   const normalizedRating = clamp(((rating - 5.5) / 2.5) * 100, 0, 100);
 
   const minutesFactor =
-    minutes < 90  ? 0.4 :
-    minutes < 300 ? 0.6 :
-    minutes < 900 ? 0.8 : 1.0;
+    minutes < 90  ? 0.30 :
+    minutes < 300 ? 0.50 :
+    minutes < 900 ? 0.75 : 1.0;
 
+  // consistency already encodes "games played" signal — used in lieu of
+  // a separate sampleFactor multiplier to avoid compounding penalties
   const consistency = Math.min(100, 50 + matches * 2);
 
   const goalsPer90   = Math.min(stats.goals   && minutes > 0 ? (stats.goals   / minutes) * 90 : 0, 1.5);
@@ -914,11 +916,11 @@ function calculateOverallFallback(
     const cleanSheetFactor = stats.cleanSheets ? Math.min(stats.cleanSheets / 10, 1) * 100 : 50;
 
     raw =
-      50 +
+      30 +
       normalizedRating * 0.4  +
       savesFactor      * 0.2  +
       cleanSheetFactor * 0.2  +
-      consistency      * 0.2;
+      consistency      * 0.15;
 
     breakdown = {
       pace:          10,
@@ -935,10 +937,10 @@ function calculateOverallFallback(
     };
   } else if (broadPos === "Attacker") {
     raw =
-      45 +
-      normalizedRating * 0.5  +
-      goalsPer90       * 25   +
-      assistsPer90     * 10   +
+      35 +
+      normalizedRating * 0.4  +
+      goalsPer90       * 15   +
+      assistsPer90     * 8    +
       consistency      * 0.1;
 
     breakdown = {
@@ -951,11 +953,10 @@ function calculateOverallFallback(
     };
   } else if (broadPos === "Midfielder") {
     raw =
-      45 +
-      normalizedRating * 0.55 +
-      assistsPer90     * 15   +
-      consistency      * 0.2  +
-      minutesFactor    * 10;
+      35 +
+      normalizedRating * 0.4  +
+      assistsPer90     * 10   +
+      consistency      * 0.2;
 
     breakdown = {
       pace:      10,
@@ -968,10 +969,9 @@ function calculateOverallFallback(
   } else {
     // Defender
     raw =
-      45 +
-      normalizedRating * 0.6  +
-      consistency      * 0.25 +
-      minutesFactor    * 10;
+      35 +
+      normalizedRating * 0.4  +
+      consistency      * 0.2;
 
     breakdown = {
       pace:      10,
@@ -983,16 +983,16 @@ function calculateOverallFallback(
     };
   }
 
-  // ── Minutes and sample penalties ──────────────────────────────────────────
-  raw = raw * minutesFactor;
-  const sampleFactor = clamp(matches / 10, 0.5, 1.0);
-  raw = raw * sampleFactor;
+  // ── Minutes penalty — linear blend avoids bimodal clamp effect ──────────────
+  // Blends between baseline (40) and full computed value based on minutes played.
+  // Equivalent to: "you earn minutesFactor fraction of your quality above the floor."
+  raw = 40 + (raw - 40) * minutesFactor;
 
   // ── Clamp to professional range ───────────────────────────────────────────
   const overall = Math.round(
     broadPos === "Goalkeeper"
-      ? clamp(raw, 45, 88)
-      : clamp(raw, 50, 88),
+      ? clamp(raw, 45, 83)
+      : clamp(raw, 50, 85),
   );
 
   // ── DNA scores ─────────────────────────────────────────────────────────────
