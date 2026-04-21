@@ -831,120 +831,49 @@ export function hasAdvancedStats(stats: StatsInput): boolean {
 // ---------------------------------------------------------------------------
 
 /**
- * Maps Sportmonks match rating (0–10) to a 0–100 scale using a piecewise
- * curve calibrated to real football rating distributions:
- *   ≤ 5.5  → 30–40  (poor)
- *   5.5–6.5 → 40–60  (below average → acceptable)
- *   6.5–7.0 → 60–72  (good)
- *   7.0–7.5 → 72–83  (very good)
- *   7.5–8.0 → 83–92  (elite)
- *   8.0+    → 92–97  (exceptional, capped)
+ * Maps Sportmonks match rating (0–10) to 0–100 on a linear scale
+ * anchored at real football rating bounds: 5.5 = floor, 8.0 = ceiling.
+ *   5.5 →   0   6.5 →  40   7.0 →  60   7.5 →  80   8.0 → 100
  */
 export function normalizeRating(rating: number): number {
-  if (rating <= 0)   return 0;
-  if (rating < 5.5)  return Math.round(clamp(30 + (rating / 5.5) * 10, 0, 40));
-  if (rating < 6.5)  return Math.round(40 + ((rating - 5.5) / 1.0) * 20);
-  if (rating < 7.0)  return Math.round(60 + ((rating - 6.5) / 0.5) * 12);
-  if (rating < 7.5)  return Math.round(72 + ((rating - 7.0) / 0.5) * 11);
-  if (rating < 8.0)  return Math.round(83 + ((rating - 7.5) / 0.5) * 9);
-  return Math.round(clamp(92 + (rating - 8.0) * 10, 92, 97));
-}
-
-/**
- * Minutes played factor for fallback scoring (0–100).
- *   < 500 min  → penalized (0–50)
- *   500–1500   → medium   (50–85)
- *   > 1500     → ideal    (85–100)
- */
-function calcMinutesFactor(minutes: number | null | undefined): number {
-  const min = minutes ?? 0;
-  if (min <= 0)    return 0;
-  if (min < 500)   return Math.round((min / 500) * 50);
-  if (min <= 1500) return Math.round(50 + ((min - 500) / 1000) * 35);
-  return Math.round(Math.min(100, 85 + ((min - 1500) / 1000) * 15));
-}
-
-/**
- * Consistency score for the fallback model.
- * Uses Sportmonks rating (60 %) + minutes-per-game ratio (40 %).
- * Returns neutral 60 when no data is available.
- */
-function calcFallbackConsistency(stats: StatsInput): number {
-  if (!stats.rating && !stats.appearances) return 60;
-
-  const ratingScore = stats.rating ? normalizeRating(stats.rating) : 60;
-
-  const mpa =
-    stats.appearances && stats.appearances > 0 && stats.minutes
-      ? stats.minutes / stats.appearances
-      : 0;
-
-  const mpaScore =
-    mpa <= 0    ? 50
-    : mpa >= 85 ? 100
-    : mpa >= 70 ? Math.round(60 + ((mpa - 70) / 15) * 40)
-    : Math.round((mpa / 70) * 60);
-
-  return Math.round(clamp(ratingScore * 0.60 + mpaScore * 0.40, 0, 100));
+  return clamp(((rating - 5.5) / 2.5) * 100, 0, 100);
 }
 
 // ---------------------------------------------------------------------------
-// Fallback model — position-sensitive weights
+// Fallback model
 // ---------------------------------------------------------------------------
 
-interface FallbackWeights {
-  rating:      number;
-  goals:       number;
-  assists:     number;
-  minutes:     number;
-  consistency: number;
-}
-
 /**
- * Returns position-aware weights for the fallback formula.
- * All weights sum to 1.0.
- *
- * ATT (ST/CF/SS/W)  — more offensive weight
- * MID (CM/CAM/etc.) — balanced
- * DEF (CB/FB/etc.)  — rating + minutes + consistency primary
- * GK                — handled separately
+ * Maps a detailed PositionGroup to one of four broad categories used by
+ * the fallback formula.
  */
-function getFallbackWeights(positionGroup: PositionGroup): FallbackWeights {
-  switch (positionGroup) {
-    case "ST": case "CF":
-      return { rating: 0.45, goals: 0.24, assists: 0.10, minutes: 0.10, consistency: 0.11 };
-    case "SS": case "W":
-      return { rating: 0.47, goals: 0.18, assists: 0.16, minutes: 0.10, consistency: 0.09 };
-    case "CAM":
-      return { rating: 0.50, goals: 0.12, assists: 0.18, minutes: 0.10, consistency: 0.10 };
-    case "CM": case "MEZ":
-      return { rating: 0.52, goals: 0.08, assists: 0.14, minutes: 0.12, consistency: 0.14 };
-    case "WM":
-      return { rating: 0.50, goals: 0.10, assists: 0.16, minutes: 0.12, consistency: 0.12 };
-    case "CDM":
-      return { rating: 0.55, goals: 0.05, assists: 0.10, minutes: 0.15, consistency: 0.15 };
-    case "CB": case "SW":
-      return { rating: 0.58, goals: 0.03, assists: 0.05, minutes: 0.17, consistency: 0.17 };
-    case "FB": case "WB":
-      return { rating: 0.55, goals: 0.05, assists: 0.10, minutes: 0.15, consistency: 0.15 };
-    default:
-      return { rating: 0.52, goals: 0.10, assists: 0.12, minutes: 0.13, consistency: 0.13 };
-  }
+function broadPositionGroup(
+  pg: PositionGroup,
+): "Goalkeeper" | "Attacker" | "Midfielder" | "Defender" {
+  if (pg === "GK")                                                              return "Goalkeeper";
+  if (pg === "ST" || pg === "CF" || pg === "SS" || pg === "W")                 return "Attacker";
+  if (pg === "CM" || pg === "CAM" || pg === "CDM" || pg === "MEZ" || pg === "WM") return "Midfielder";
+  return "Defender";
 }
 
 /**
- * Lightweight overall for players with only basic Sportmonks stats.
+ * Lightweight overall for players with only basic Sportmonks stats
+ * (no xG, carries, progressive passes, distance, or sprints).
  *
- * FORMULA (outfield — position-sensitive weights)
- *   rating_norm × w.rating  +  goals_p90_norm × w.goals
- *   + assists_p90_norm × w.assists  +  minutesFactor × w.minutes
- *   + consistencyScore × w.consistency
- *   Clamped to [50, 88] — professional baseline / cap for sparse data.
+ * FORMULA
+ *   All positions:
+ *     • normalizedRating = ((rating − 5.5) / 2.5) × 100   [0–100]
+ *     • minutesFactor    = stepped 0.4 / 0.6 / 0.8 / 1.0  [< 90 / 300 / 900 / 900+]
+ *     • consistency      = min(100, 50 + appearances × 2)
+ *     • sampleFactor     = clamp(appearances / 10, 0.5, 1.0) — anti-1-game penalty
  *
- * FORMULA (GK)
- *   normalizeRating×0.60 + saves_p90_norm×0.20 + cleanSheetRate×0.10
- *   + minutesFactor×0.05 + consistencyScore×0.05
- *   Clamped to [45, 88].
+ *   Attacker  : 45 + rating×0.50 + goalsPer90×25 + assistsPer90×10 + consistency×0.10
+ *   Midfielder: 45 + rating×0.55 + assistsPer90×15 + consistency×0.20 + minutesFactor×10
+ *   Defender  : 45 + rating×0.60 + consistency×0.25 + minutesFactor×10
+ *   Goalkeeper: 50 + rating×0.40 + saves×0.20 + cleanSheets×0.20 + consistency×0.20
+ *
+ *   After formula: × minutesFactor × sampleFactor
+ *   Clamp: outfield [50, 88] · GK [45, 88]
  */
 function calculateOverallFallback(
   stats:       StatsInput,
@@ -954,38 +883,49 @@ function calculateOverallFallback(
   playerId?:   string,
 ): OverallResult {
   const positionGroup = classifyPosition(positionRaw);
-  const min     = stats.minutes ?? 0;
-  const reliable = min >= MIN_MINUTES_RELIABLE;
-  const ls      = LEAGUE_VOLUME_SCALE[leagueCtx];
+  const broadPos      = broadPositionGroup(positionGroup);
+  const min           = stats.minutes ?? 0;
+  const reliable      = min >= MIN_MINUTES_RELIABLE;
+  const ls            = LEAGUE_VOLUME_SCALE[leagueCtx];
 
-  const ratingNorm    = stats.rating ? normalizeRating(stats.rating) : 55;
-  const minutesFactor = calcMinutesFactor(min);
-  const consistency   = calcFallbackConsistency(stats);
+  // ── Shared inputs ──────────────────────────────────────────────────────────
+  const rating  = stats.rating      ?? 6.5;
+  const minutes = stats.minutes     ?? 0;
+  const matches = stats.appearances ?? 1;
 
-  let overall: number;
+  const normalizedRating = clamp(((rating - 5.5) / 2.5) * 100, 0, 100);
+
+  const minutesFactor =
+    minutes < 90  ? 0.4 :
+    minutes < 300 ? 0.6 :
+    minutes < 900 ? 0.8 : 1.0;
+
+  const consistency = Math.min(100, 50 + matches * 2);
+
+  const goalsPer90   = Math.min(stats.goals   && minutes > 0 ? (stats.goals   / minutes) * 90 : 0, 1.5);
+  const assistsPer90 = Math.min(stats.assists && minutes > 0 ? (stats.assists / minutes) * 90 : 0, 1.0);
+
+  // ── Position-specific formula ──────────────────────────────────────────────
+  let raw: number;
   let breakdown: OverallBreakdown;
 
-  if (positionGroup === "GK") {
-    const savesNorm   = score(p90(stats.saves,       min),               "saves_p90",    ls);
-    const cleanShNorm = score(pct(stats.cleanSheets, stats.appearances), "cleanSheetRate");
+  if (broadPos === "Goalkeeper") {
+    const savesFactor      = stats.saves       ? Math.min(stats.saves       / 5,  1) * 100 : 50;
+    const cleanSheetFactor = stats.cleanSheets ? Math.min(stats.cleanSheets / 10, 1) * 100 : 50;
 
-    overall = clamp(
-      Math.round(
-        ratingNorm    * 0.60 +
-        savesNorm     * 0.20 +
-        cleanShNorm   * 0.10 +
-        minutesFactor * 0.05 +
-        consistency   * 0.05,
-      ),
-      45, 88,  // professional GK baseline / cap for sparse data
-    );
+    raw =
+      50 +
+      normalizedRating * 0.4  +
+      savesFactor      * 0.2  +
+      cleanSheetFactor * 0.2  +
+      consistency      * 0.2;
 
     breakdown = {
       pace:          10,
       shooting:      10,
       passing:       calcGkKicking(stats, min, ls),
       dribbling:     10,
-      defending:     Math.round(cleanShNorm * 0.60 + savesNorm * 0.40),
+      defending:     Math.round(cleanSheetFactor * 0.6 + savesFactor * 0.4),
       physical:      10,
       gkDiving:      calcGkDiving(stats, min, ls),
       gkHandling:    calcGkHandling(stats),
@@ -993,25 +933,49 @@ function calculateOverallFallback(
       gkReflex:      calcGkReflex(stats, min, ls),
       gkPositioning: calcGkPositioning(stats, min),
     };
-  } else {
-    const w           = getFallbackWeights(positionGroup);
-    const goalsNorm   = score(p90(stats.goals,   min), "goals_p90",   ls);
-    const assistsNorm = score(p90(stats.assists, min), "assists_p90", ls);
-
-    overall = clamp(
-      Math.round(
-        ratingNorm    * w.rating      +
-        goalsNorm     * w.goals       +
-        assistsNorm   * w.assists     +
-        minutesFactor * w.minutes     +
-        consistency   * w.consistency,
-      ),
-      50, 88,  // professional outfield baseline / cap for sparse data
-    );
+  } else if (broadPos === "Attacker") {
+    raw =
+      45 +
+      normalizedRating * 0.5  +
+      goalsPer90       * 25   +
+      assistsPer90     * 10   +
+      consistency      * 0.1;
 
     breakdown = {
       pace:      10,
-      shooting:  Math.round(goalsNorm * 0.60 + ratingNorm * 0.40),
+      shooting:  Math.round(clamp(goalsPer90 * 99, 10, 99)),
+      passing:   calcPassing(stats, min, ls),
+      dribbling: 10,
+      defending: 10,
+      physical:  10,
+    };
+  } else if (broadPos === "Midfielder") {
+    raw =
+      45 +
+      normalizedRating * 0.55 +
+      assistsPer90     * 15   +
+      consistency      * 0.2  +
+      minutesFactor    * 10;
+
+    breakdown = {
+      pace:      10,
+      shooting:  10,
+      passing:   calcPassing(stats, min, ls),
+      dribbling: 10,
+      defending: calcDefending(stats, min, ls),
+      physical:  10,
+    };
+  } else {
+    // Defender
+    raw =
+      45 +
+      normalizedRating * 0.6  +
+      consistency      * 0.25 +
+      minutesFactor    * 10;
+
+    breakdown = {
+      pace:      10,
+      shooting:  10,
       passing:   calcPassing(stats, min, ls),
       dribbling: 10,
       defending: calcDefending(stats, min, ls),
@@ -1019,7 +983,19 @@ function calculateOverallFallback(
     };
   }
 
-  // DNA scores
+  // ── Minutes and sample penalties ──────────────────────────────────────────
+  raw = raw * minutesFactor;
+  const sampleFactor = clamp(matches / 10, 0.5, 1.0);
+  raw = raw * sampleFactor;
+
+  // ── Clamp to professional range ───────────────────────────────────────────
+  const overall = Math.round(
+    broadPos === "Goalkeeper"
+      ? clamp(raw, 45, 88)
+      : clamp(raw, 50, 88),
+  );
+
+  // ── DNA scores ─────────────────────────────────────────────────────────────
   const impact       = calcDnaImpact(stats, min, ls);
   const intelligence = calcDnaIntelligence(stats, min, ls);
   const defensiveIQ  = calcDnaDefensiveIQ(stats, min, ls);
@@ -1035,9 +1011,8 @@ function calculateOverallFallback(
     potential,
   };
 
-  // Debug log — enable via OVERALL_DEBUG=1
   if (process.env.OVERALL_DEBUG === "1") {
-    console.log({ playerId, model: "fallback", rating: stats.rating, overall });
+    console.log({ playerId, model: "fallback", broadPos, rating, overall });
   }
 
   return { overall, breakdown, positionGroup, reliable, dna, potential };
