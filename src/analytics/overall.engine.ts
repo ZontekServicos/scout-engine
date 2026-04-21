@@ -809,6 +809,182 @@ function calcDnaPotential(currentOverall: number, age: number): number {
 }
 
 // ---------------------------------------------------------------------------
+// Data quality detection
+// ---------------------------------------------------------------------------
+
+/**
+ * Returns true when at least one advanced stat field is present.
+ * Absence of all these fields signals a basic Sportmonks plan — use fallback.
+ */
+export function hasAdvancedStats(stats: StatsInput): boolean {
+  return (
+    (stats.xG                != null && stats.xG                > 0) ||
+    (stats.progressivePasses != null && stats.progressivePasses > 0) ||
+    (stats.carries           != null && stats.carries           > 0) ||
+    (stats.distanceCovered   != null && stats.distanceCovered   > 0) ||
+    (stats.sprints           != null && stats.sprints           > 0)
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Fallback helpers
+// ---------------------------------------------------------------------------
+
+/** Maps Sportmonks match rating (0–10) linearly to 0–100. */
+export function normalizeRating(rating: number): number {
+  return clamp((rating / 10) * 100, 0, 100);
+}
+
+/**
+ * Minutes played factor for fallback scoring (0–100).
+ *   < 500 min  → penalized (0–50)
+ *   500–1500   → medium   (50–85)
+ *   > 1500     → ideal    (85–100)
+ */
+function calcMinutesFactor(minutes: number | null | undefined): number {
+  const min = minutes ?? 0;
+  if (min <= 0)    return 0;
+  if (min < 500)   return Math.round((min / 500) * 50);
+  if (min <= 1500) return Math.round(50 + ((min - 500) / 1000) * 35);
+  return Math.round(Math.min(100, 85 + ((min - 1500) / 1000) * 15));
+}
+
+/**
+ * Consistency score for the fallback model.
+ * Uses Sportmonks rating (60 %) + minutes-per-game ratio (40 %).
+ * Returns neutral 60 when no data is available.
+ */
+function calcFallbackConsistency(stats: StatsInput): number {
+  if (!stats.rating && !stats.appearances) return 60;
+
+  const ratingScore = stats.rating ? normalizeRating(stats.rating) : 60;
+
+  const mpa =
+    stats.appearances && stats.appearances > 0 && stats.minutes
+      ? stats.minutes / stats.appearances
+      : 0;
+
+  const mpaScore =
+    mpa <= 0    ? 50
+    : mpa >= 85 ? 100
+    : mpa >= 70 ? Math.round(60 + ((mpa - 70) / 15) * 40)
+    : Math.round((mpa / 70) * 60);
+
+  return Math.round(clamp(ratingScore * 0.60 + mpaScore * 0.40, 0, 100));
+}
+
+// ---------------------------------------------------------------------------
+// Fallback model
+// ---------------------------------------------------------------------------
+
+/**
+ * Lightweight overall for players with only basic Sportmonks stats.
+ *
+ * FORMULA (outfield)
+ *   normalizeRating×0.55 + goals_p90_norm×0.15 + assists_p90_norm×0.10
+ *   + minutesFactor×0.10 + consistencyScore×0.10
+ *
+ * FORMULA (GK)
+ *   normalizeRating×0.60 + saves_p90_norm×0.20 + cleanSheetRate×0.10
+ *   + minutesFactor×0.05 + consistencyScore×0.05
+ */
+function calculateOverallFallback(
+  stats:       StatsInput,
+  positionRaw: string | null | undefined,
+  age?:        number | null,
+  leagueCtx:   LeagueContext = "DEFAULT",
+  playerId?:   string,
+): OverallResult {
+  const positionGroup = classifyPosition(positionRaw);
+  const min     = stats.minutes ?? 0;
+  const reliable = min >= MIN_MINUTES_RELIABLE;
+  const ls      = LEAGUE_VOLUME_SCALE[leagueCtx];
+
+  const ratingNorm    = stats.rating ? normalizeRating(stats.rating) : 55;
+  const minutesFactor = calcMinutesFactor(min);
+  const consistency   = calcFallbackConsistency(stats);
+
+  let overall: number;
+  let breakdown: OverallBreakdown;
+
+  if (positionGroup === "GK") {
+    const savesNorm   = score(p90(stats.saves,       min),                    "saves_p90",    ls);
+    const cleanShNorm = score(pct(stats.cleanSheets, stats.appearances),      "cleanSheetRate");
+
+    overall = clamp(
+      Math.round(
+        ratingNorm    * 0.60 +
+        savesNorm     * 0.20 +
+        cleanShNorm   * 0.10 +
+        minutesFactor * 0.05 +
+        consistency   * 0.05,
+      ),
+      1, 99,
+    );
+
+    breakdown = {
+      pace:          10,
+      shooting:      10,
+      passing:       calcGkKicking(stats, min, ls),
+      dribbling:     10,
+      defending:     Math.round(cleanShNorm * 0.60 + savesNorm * 0.40),
+      physical:      10,
+      gkDiving:      calcGkDiving(stats, min, ls),
+      gkHandling:    calcGkHandling(stats),
+      gkKicking:     calcGkKicking(stats, min, ls),
+      gkReflex:      calcGkReflex(stats, min, ls),
+      gkPositioning: calcGkPositioning(stats, min),
+    };
+  } else {
+    const goalsNorm   = score(p90(stats.goals,   min), "goals_p90",   ls);
+    const assistsNorm = score(p90(stats.assists, min), "assists_p90", ls);
+
+    overall = clamp(
+      Math.round(
+        ratingNorm    * 0.55 +
+        goalsNorm     * 0.15 +
+        assistsNorm   * 0.10 +
+        minutesFactor * 0.10 +
+        consistency   * 0.10,
+      ),
+      1, 99,
+    );
+
+    breakdown = {
+      pace:      10,
+      shooting:  Math.round(goalsNorm * 0.60 + ratingNorm * 0.40),
+      passing:   calcPassing(stats, min, ls),
+      dribbling: 10,
+      defending: calcDefending(stats, min, ls),
+      physical:  10,
+    };
+  }
+
+  // DNA scores
+  const impact       = calcDnaImpact(stats, min, ls);
+  const intelligence = calcDnaIntelligence(stats, min, ls);
+  const defensiveIQ  = calcDnaDefensiveIQ(stats, min, ls);
+  const consistDna   = calcDnaConsistency(stats);
+  const playerAge    = typeof age === "number" && age > 0 ? age : 25;
+  const potential    = calcDnaPotential(overall, playerAge);
+
+  const dna: DnaScore = {
+    impact:       clamp(impact,       10, 99),
+    intelligence: clamp(intelligence, 10, 99),
+    defensiveIQ:  clamp(defensiveIQ,  10, 99),
+    consistency:  clamp(consistDna,   10, 99),
+    potential,
+  };
+
+  // Debug log — enable via OVERALL_DEBUG=1
+  if (process.env.OVERALL_DEBUG === "1") {
+    console.log({ playerId, model: "fallback", rating: stats.rating, overall });
+  }
+
+  return { overall, breakdown, positionGroup, reliable, dna, potential };
+}
+
+// ---------------------------------------------------------------------------
 // Main export
 // ---------------------------------------------------------------------------
 
@@ -819,7 +995,13 @@ export function calculateOverall(
   positionRaw:   string | null | undefined,
   age?:          number | null,
   leagueCtx:     LeagueContext = "DEFAULT",
+  playerId?:     string,
 ): OverallResult {
+  // Route to lightweight fallback when advanced stats are unavailable
+  if (!hasAdvancedStats(stats)) {
+    return calculateOverallFallback(stats, positionRaw, age, leagueCtx, playerId);
+  }
+
   const positionGroup = classifyPosition(positionRaw);
   const min     = stats.minutes ?? 0;
   const reliable = min >= MIN_MINUTES_RELIABLE;
@@ -899,6 +1081,11 @@ export function calculateOverall(
     consistency:  clamp(consistency,  10, 99),
     potential,
   };
+
+  // Debug log — enable via OVERALL_DEBUG=1
+  if (process.env.OVERALL_DEBUG === "1") {
+    console.log({ playerId, model: "full", rating: stats.rating, overall });
+  }
 
   return {
     overall,
