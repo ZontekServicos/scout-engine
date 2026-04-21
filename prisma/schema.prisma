@@ -615,10 +615,15 @@ enum AnalysisStatus {
 // ---------------------------------------------------------------------------
 
 model UserProfile {
-  id        String   @id
-  role      String   @default("scout")
+  id        String   @id                    // UUID do usuário Supabase (auth.users.id)
+  name      String?
+  email     String?
+  avatarUrl String?  @map("avatar_url")
+  role      String   @default("scout")      // admin | scout | viewer
   plan      String   @default("free")
+  clubName  String?  @map("club_name")
   createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
 
   @@map("users_profile")
 }

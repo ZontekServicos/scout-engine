@@ -80,8 +80,9 @@ export async function getScoutingRanking(
 
   // Build Prisma where clause
   const where: Prisma.PlayerWhereInput = {
-    overall: { gte: overallMin },
-    age:     { lte: ageMax, ...(ageMin != null ? { gte: ageMin } : {}) },
+    overall:       { gte: overallMin },
+    age:           { lte: ageMax, ...(ageMin != null ? { gte: ageMin } : {}) },
+    playerSeasons: { some: {} },
     ...(position  ? { positions:       { has: position } } : {}),
     ...(leagueId  ? { currentLeagueId: leagueId         } : {}),
   };

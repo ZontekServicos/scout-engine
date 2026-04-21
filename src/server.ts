@@ -24,6 +24,8 @@ import filterRoutes from "./routes/filter.routes";
 import mapsRoutes from "./routes/maps.routes";
 import playerVideoRoutes from "./routes/player-video.routes";
 import scoutingRoutes from "./routes/scouting.routes";
+import userRoutes from "./routes/user.routes";
+import adminRoutes from "./routes/admin.routes";
 import { logger } from "./lib/logger";
 import { errorMiddleware } from "./middleware/error.middleware";
 import { requestLogger } from "./middleware/request-logger.middleware";
@@ -71,6 +73,8 @@ app.use("/api/watchlist", authMiddleware, watchlistRoutes);
 app.use("/api/filter", authMiddleware, filterRoutes);
 app.use("/api/maps", authMiddleware, mapsRoutes);
 app.use("/api/scouting", authMiddleware, scoutingRoutes);
+app.use("/api/user",    authMiddleware, userRoutes);
+app.use("/api/admin",   authMiddleware, adminRoutes);
 
 // Rotas abertas (ingestão, health, docs — não expostas ao usuário final)
 app.use("/api/ingest", ingestRoutes);
