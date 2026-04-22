@@ -988,11 +988,11 @@ function calculateOverallFallback(
   // Equivalent to: "you earn minutesFactor fraction of your quality above the floor."
   raw = 40 + (raw - 40) * minutesFactor;
 
-  // ── Clamp to professional range ───────────────────────────────────────────
+  // ── Global lift (+8) + clamp to professional range ───────────────────────
   const overall = Math.round(
     broadPos === "Goalkeeper"
-      ? clamp(raw, 45, 83)
-      : clamp(raw, 50, 85),
+      ? clamp(raw + 8, 45, 83)
+      : clamp(raw + 8, 50, 85),
   );
 
   // ── DNA scores ─────────────────────────────────────────────────────────────
