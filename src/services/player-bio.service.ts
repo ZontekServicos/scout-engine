@@ -190,7 +190,14 @@ function buildProfileParagraph(
 export async function generatePlayerBio(playerId: string): Promise<PlayerBio> {
   const player = await prisma.player.findUnique({
     where:  { id: playerId },
-    select: { name: true, age: true, positions: true, overall: true, dnaScore: true },
+    select: {
+      name: true, age: true, positions: true, overall: true, dnaScore: true,
+      playerSeasons: {
+        orderBy: [{ seasonYear: "desc" }],
+        take: 1,
+        select: { overall: true },
+      },
+    },
   });
 
   if (!player) throw new Error("Player not found");
@@ -216,11 +223,13 @@ export async function generatePlayerBio(playerId: string): Promise<PlayerBio> {
 
   const archetype = deriveArchetype(dims, posGroup);
 
+  const currentOverall = player.playerSeasons[0]?.overall ?? player.overall;
+
   const profile = buildProfileParagraph(
     player.name,
     player.positions,
     player.age,
-    player.overall,
+    currentOverall,
     dims,
     posGroup,
   );

@@ -42,6 +42,7 @@ export async function getPlayerEvolution(playerId: string): Promise<PlayerEvolut
           seasonYear:  true,
           seasonLabel: true,
           overall:     true,
+          potential:   true,
           goals:       true,
           assists:     true,
           minutes:     true,
@@ -73,9 +74,15 @@ export async function getPlayerEvolution(playerId: string): Promise<PlayerEvolut
 
   const trend = computePlayerTrend(seasonPoints);
 
+  // Use the most recent season's overall/potential — fall back to Player-level fields
+  const seasonsWithOverall = player.playerSeasons.filter((s) => s.overall != null);
+  const latestSeason = seasonsWithOverall[seasonsWithOverall.length - 1] ?? null;
+  const currentOverall  = latestSeason?.overall   ?? player.overall;
+  const currentPotential = latestSeason?.potential ?? player.potential;
+
   const scoutingScore = computeScoutingScore({
-    overall:     player.overall,
-    potential:   player.potential,
+    overall:     currentOverall,
+    potential:   currentPotential,
     marketValue: player.marketValue,
     age:         player.age,
     trend,
@@ -86,7 +93,7 @@ export async function getPlayerEvolution(playerId: string): Promise<PlayerEvolut
     playerName:     player.name,
     age:            player.age,
     positions:      player.positions,
-    currentOverall: player.overall,
+    currentOverall,
     trend,
     scoutingScore,
   };

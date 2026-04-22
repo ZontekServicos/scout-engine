@@ -100,31 +100,49 @@ export async function filterPlayers(input: PlayerFilterInput): Promise<PlayerFil
         dbTeam: {
           select: { id: true, name: true },
         },
+        playerSeasons: {
+          orderBy: [{ seasonYear: "desc" }],
+          take: 1,
+          select: { overall: true },
+        },
       },
     }),
     prisma.player.count({ where }),
   ]);
 
+  const mapped = players.map((p) => {
+    const latest = p.statsSnapshots[0] ?? null;
+    return {
+      id: p.id,
+      slug: p.slug,
+      name: p.name,
+      positions: p.positions,
+      age: p.age,
+      nationality: p.nationality,
+      team: p.team,
+      league: p.league,
+      overall: p.playerSeasons[0]?.overall ?? p.overall,
+      marketValue: p.marketValue,
+      imagePath: p.imagePath,
+      latestRating: latest?.rating ?? null,
+      latestMinutes: latest?.minutes ?? null,
+      latestSeason: latest?.season ?? null,
+    };
+  });
+
+  // Re-sort by overall desc when sorting by overall/default — the DB orderBy uses the stale
+  // Player.overall column because Prisma can't order by nested relation fields.
+  if (!input.sortBy || input.sortBy === "overall" || input.sortBy === "rating") {
+    const dir = input.sortDir ?? "desc";
+    mapped.sort((a, b) =>
+      dir === "asc"
+        ? (a.overall ?? 0) - (b.overall ?? 0)
+        : (b.overall ?? 0) - (a.overall ?? 0),
+    );
+  }
+
   return {
-    players: players.map((p) => {
-      const latest = p.statsSnapshots[0] ?? null;
-      return {
-        id: p.id,
-        slug: p.slug,
-        name: p.name,
-        positions: p.positions,
-        age: p.age,
-        nationality: p.nationality,
-        team: p.team,
-        league: p.league,
-        overall: p.overall,
-        marketValue: p.marketValue,
-        imagePath: p.imagePath,
-        latestRating: latest?.rating ?? null,
-        latestMinutes: latest?.minutes ?? null,
-        latestSeason: latest?.season ?? null,
-      };
-    }),
+    players: mapped,
     total,
     page,
     pageSize,

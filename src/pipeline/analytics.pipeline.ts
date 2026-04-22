@@ -45,6 +45,11 @@ export async function runAnalyticsPipeline(limit = 200): Promise<PipelineItem[]>
       overallDribbling: true,
       overallDefending: true,
       overallPhysical: true,
+      playerSeasons: {
+        orderBy: [{ seasonYear: "desc" }],
+        take: 1,
+        select: { overall: true },
+      },
     },
   });
 
@@ -62,10 +67,11 @@ export async function runAnalyticsPipeline(limit = 200): Promise<PipelineItem[]>
     };
     const categoryIndex = buildCategoryIndex(attrs);
     const performanceScore = calculateRankingScore(fifa as any, weights);
-    // Prefer overall persisted by the enrichment pipeline (computed from raw Sportmonks stats
-    // via analytics/overall.engine). Fall back to the old attribute-based engine only for
-    // players that have not yet been enriched.
-    const persistedOverall = typeof player.overall === "number" && player.overall > 0 ? player.overall : null;
+    // Prefer PlayerSeason.overall (most recent season) → Player.overall fallback → attribute engine
+    const persistedOverall =
+      (typeof player.playerSeasons[0]?.overall === "number" && player.playerSeasons[0].overall > 0)
+        ? player.playerSeasons[0].overall
+        : (typeof player.overall === "number" && player.overall > 0 ? player.overall : null);
     const overall = persistedOverall !== null
       ? { overall: persistedOverall }
       : calculateOverallRating({
