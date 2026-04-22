@@ -85,6 +85,7 @@ export type PlayerSummarySource = {
   metricsSnapshots?: LatestMetricsSnapshot[];
   financialSnapshots?: LatestFinancialSnapshot[];
   riskSnapshots?: LatestRiskSnapshot[];
+  playerSeasons?: Array<{ overall: number | null; potential: number | null; seasonYear: number | null }>;
 };
 
 export const PLAYER_SNAPSHOT_INCLUDE = {
@@ -224,6 +225,11 @@ async function findPlayersWithSnapshots(args: {
         attributes: true,
         contractEnd: true,
         updatedAt: true,
+        playerSeasons: {
+          orderBy: [{ seasonYear: "desc" }],
+          take: 1,
+          select: { overall: true, potential: true, seasonYear: true },
+        },
         ...PLAYER_SNAPSHOT_SELECT,
       },
     });
@@ -250,6 +256,11 @@ async function findPlayersWithSnapshots(args: {
         attributes: true,
         contractEnd: true,
         updatedAt: true,
+        playerSeasons: {
+          orderBy: [{ seasonYear: "desc" }],
+          take: 1,
+          select: { overall: true, potential: true, seasonYear: true },
+        },
       },
     });
   }
@@ -597,18 +608,23 @@ export function buildPlayerSummary(player: PlayerSummarySource) {
   const fifa = snapshotFifa ?? resolveFifa(rawAttributes, playerPosition);
   const categoryIndex = buildCategoryIndex(fifa);
   const performanceScore = calculateRankingScore(fifa, weights);
-  // Prefer player.overall (written by the enrichment script / calculateOverall)
-  // over latestMetrics.overall (older snapshot) so DNA-based ratings are used.
-  const persistedOverall = hasFiniteNumber(player.overall)
-    ? clampFifaCore(player.overall)
-    : latestMetrics
-      ? clampFifaCore(latestMetrics.overall)
-      : null;
-  const persistedPotential = hasFiniteNumber(player.potential)
-    ? clampFifaCore(player.potential)
-    : latestMetrics
-      ? clampFifaCore(latestMetrics.potential)
-      : null;
+  const seasonOverall   = player.playerSeasons?.[0]?.overall;
+  const seasonPotential = player.playerSeasons?.[0]?.potential;
+
+  const persistedOverall = hasFiniteNumber(seasonOverall)
+    ? clampFifaCore(seasonOverall)
+    : hasFiniteNumber(player.overall)
+      ? clampFifaCore(player.overall)
+      : latestMetrics
+        ? clampFifaCore(latestMetrics.overall)
+        : null;
+  const persistedPotential = hasFiniteNumber(seasonPotential)
+    ? clampFifaCore(seasonPotential)
+    : hasFiniteNumber(player.potential)
+      ? clampFifaCore(player.potential)
+      : latestMetrics
+        ? clampFifaCore(latestMetrics.potential)
+        : null;
   const storedDetailedStats = resolveStoredDetailedStats(rawAttributes);
   const shouldReusePersistedProfile =
     fifa !== null &&
@@ -1271,7 +1287,9 @@ export async function listPlayers(params: ListPlayersParams = {}) {
     getPlayerFilterOptions(),
   ]);
 
-  const items = players.map((player) => buildPlayerSummary(player as PlayerSummarySource).player);
+  const items = players
+    .map((player) => buildPlayerSummary(player as PlayerSummarySource).player)
+    .sort((a, b) => (b.overall ?? 0) - (a.overall ?? 0) || a.name.localeCompare(b.name));
 
   return {
     items,

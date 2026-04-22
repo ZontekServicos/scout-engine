@@ -1,5 +1,4 @@
 import { prisma } from "../lib/prisma";
-import { calculateRankingScore } from "./ranking.engine";
 import { POSITION_WEIGHTS } from "./ranking.weights";
 import { getPrimaryPosition } from "../utils/positions";
 
@@ -16,6 +15,18 @@ export async function getRankingByPosition(position: string, page: number = 1, l
       where: { positions: { has: position } },
       skip,
       take: limit,
+      select: {
+        id: true,
+        name: true,
+        archetype: true,
+        positions: true,
+        overall: true,
+        playerSeasons: {
+          orderBy: [{ seasonYear: "desc" }],
+          take: 1,
+          select: { overall: true },
+        },
+      },
     }),
     prisma.player.count({
       where: { positions: { has: position } },
@@ -28,9 +39,9 @@ export async function getRankingByPosition(position: string, page: number = 1, l
       playerKey: player.id,
       name: player.name,
       nomeJogador: player.name,
-      position: getPrimaryPosition(player),
+      position: getPrimaryPosition(player as any),
       archetype: player.archetype,
-      score: calculateRankingScore(player.attributes as any, weights),
+      score: player.playerSeasons[0]?.overall ?? player.overall ?? 0,
     }))
     .sort((a, b) => b.score - a.score);
 
@@ -47,13 +58,24 @@ export async function getLeaderboard(position?: string, limit: number = 10) {
 
   const players = await prisma.player.findMany({
     where,
+    select: {
+      id: true,
+      name: true,
+      archetype: true,
+      positions: true,
+      overall: true,
+      playerSeasons: {
+        orderBy: [{ seasonYear: "desc" }],
+        take: 1,
+        select: { overall: true },
+      },
+    },
   });
 
   const ranking = players
     .map((player) => {
-      const primaryPosition = getPrimaryPosition(player);
-      const weights = POSITION_WEIGHTS[primaryPosition];
-      if (!weights) return null;
+      const primaryPosition = getPrimaryPosition(player as any);
+      if (!POSITION_WEIGHTS[primaryPosition]) return null;
 
       return {
         id: player.id,
@@ -62,7 +84,7 @@ export async function getLeaderboard(position?: string, limit: number = 10) {
         nomeJogador: player.name,
         position: primaryPosition,
         archetype: player.archetype,
-        score: calculateRankingScore(player.attributes as any, weights),
+        score: player.playerSeasons[0]?.overall ?? player.overall ?? 0,
       };
     })
     .filter(Boolean)

@@ -421,17 +421,31 @@ export function buildPlayerIntelligenceProfile({
   const growthOutlook = getGrowthOutlook(growthIndex, expectedPeak, overall);
   const upsideGap = Math.max(0, potential - overall);
   const confidence = Math.round(clamp(58 + overall * 0.32 + upsideGap * 2.5, 55, 96));
+  // Position-aware attribute blend — weights the attributes most relevant to the position family
+  const posFamily = resolvePositionFamily(position);
+  const attrPace      = toNumber(playerProfile.attributes?.pace, overall);
+  const attrShooting  = toNumber(playerProfile.attributes?.shooting, overall);
+  const attrPassing   = toNumber(playerProfile.attributes?.passing, overall);
+  const attrDribbling = toNumber(playerProfile.attributes?.dribbling, overall);
+  const attrDefending = toNumber(playerProfile.attributes?.defending, overall);
+  const attrPhysical  = toNumber(playerProfile.attributes?.physical, overall);
+  const mentalVision   = toNumber(playerProfile.mental?.vision, overall);
+  const mentalComposure = toNumber(playerProfile.mental?.composure, overall);
+
+  const tacticalMatch =
+    posFamily === "attack"
+      ? average([attrShooting, attrPace, attrDribbling, mentalVision])
+      : posFamily === "midfield"
+        ? average([attrPassing, attrDribbling, mentalVision, mentalComposure])
+        : posFamily === "defense"
+          ? average([attrDefending, attrPhysical, mentalComposure, attrPassing])
+          : average([attrDefending, mentalComposure, attrPhysical, attrPassing]);
+
+  // Uses PlayerSeason overall (already resolved upstream) as the dominant weight
   const tacticalFitScore = clamp(
-    average([
-      playerProfile.attributes?.passing,
-      playerProfile.attributes?.dribbling,
-      playerProfile.attributes?.defending,
-      playerProfile.attributes?.physical,
-      playerProfile.mental?.vision,
-      playerProfile.mental?.composure,
-    ]),
-    32,
-    96,
+    overall * 0.5 + tacticalMatch * 0.3 + potential * 0.2,
+    40,
+    100,
   );
   const upsideScore = clamp(46 + upsideGap * 8 + Math.max(0, 24 - toNumber(playerProfile.age, 24)) * 1.4, 20, 97);
   const recommendation =
@@ -503,8 +517,8 @@ export function buildPlayerIntelligenceProfile({
   );
 
   const tacticalAdaptationRisk = toBand(
-    100 - tacticalFitScore >= 68 ? "High Context Risk" : 100 - tacticalFitScore >= 48 ? "Needs Structure" : "Plug-In Ready",
-    clamp(100 - tacticalFitScore + 12, 18, 90),
+    tacticalFitScore < 55 ? "High Context Risk" : tacticalFitScore < 70 ? "Needs Structure" : "Plug-In Ready",
+    clamp(100 - tacticalFitScore, 18, 90),
     "Rates how much coaching structure is needed before the player reaches expected output.",
   );
 
@@ -533,9 +547,9 @@ export function buildPlayerIntelligenceProfile({
   );
 
   const tacticalFit = toBand(
-    tacticalFitScore >= 78 ? "System Ready" : tacticalFitScore >= 60 ? "Context Dependent" : "Scheme Risk",
+    tacticalFitScore >= 80 ? "PERFECT" : tacticalFitScore >= 70 ? "GOOD" : tacticalFitScore >= 60 ? "MEDIUM" : "LOW",
     tacticalFitScore,
-    "Blend of technical security, transition value and positional suitability for structured football.",
+    "Blend of overall level, position-relevant attributes and potential ceiling.",
   );
 
   const valueBand = toBand(
