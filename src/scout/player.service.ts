@@ -1280,9 +1280,10 @@ export async function listPlayers(params: ListPlayersParams = {}) {
   const where = whereClauses.length > 0 ? { AND: whereClauses } : {};
 
   // Phase 1 — lightweight query to get correct cross-page ordering.
-  // DB can't order by nested PlayerSeason.overall, so we fetch all IDs + effective
-  // overall (PlayerSeason first, fallback to Player.overall), sort in memory, then
-  // paginate before the expensive buildPlayerSummary phase.
+  // DB can't order by nested PlayerSeason.overall, so we fetch minimal fields for all
+  // matching players, compute a composite scout score in memory (overall + potential
+  // upside × youth factor + market value efficiency), sort descending, then paginate
+  // before the expensive buildPlayerSummary phase.
   const [allIdRows, filterOptions] = await Promise.all([
     prisma.player.findMany({
       where,
@@ -1290,29 +1291,67 @@ export async function listPlayers(params: ListPlayersParams = {}) {
         id: true,
         name: true,
         overall: true,
+        potential: true,
+        age: true,
+        marketValue: true,
         playerSeasons: {
           orderBy: [{ seasonYear: "desc" }],
           take: 1,
-          select: { overall: true },
+          select: { overall: true, potential: true },
         },
       },
-      orderBy: [{ name: "asc" }], // stable secondary sort before effective-overall sort
+      orderBy: [{ name: "asc" }],
     }),
     getPlayerFilterOptions(),
   ]);
 
-  // Sort by effective overall (PlayerSeason wins, fallback to Player.overall, 0 = no data)
-  const effectiveOverall = (row: { overall: number | null; playerSeasons: Array<{ overall: number | null }> }) => {
-    const s = row.playerSeasons[0]?.overall;
-    if (typeof s === "number" && s > 0) return s;
-    const p = row.overall;
-    if (typeof p === "number" && p > 0) return p;
+  type LightRow = typeof allIdRows[number];
+
+  function pickPositive(a: number | null | undefined, b: number | null | undefined): number {
+    if (typeof a === "number" && a > 0) return a;
+    if (typeof b === "number" && b > 0) return b;
     return 0;
-  };
+  }
+
+  /**
+   * Lightweight scout composite (no trend — needs historical data unavailable here).
+   * Weights mirror scouting-score.engine with trend redistributed:
+   *   overall  55%  (was 40%, absorbs the trend 30% partial)
+   *   ceiling  30%  potential-gap × youth-factor (was 10%)
+   *   value    15%  quality per M€ (was 20%)
+   *
+   * This ensures players with same overall are differentiated by potential upside,
+   * youth, and market efficiency — matching the "scout automático" intent.
+   */
+  function lightScoutScore(row: LightRow): number {
+    const ovr = pickPositive(row.playerSeasons[0]?.overall, row.overall);
+    const pot = pickPositive(row.playerSeasons[0]?.potential, row.potential);
+    const age = row.age ?? 25;
+    const mv  = row.marketValue ?? 0;
+
+    // Normalise overall [40-99] → [0-100]
+    const overallScore = ovr > 0
+      ? Math.max(0, Math.min(100, ((ovr - 40) / 59) * 100))
+      : 0;
+
+    // Ceiling: potential gap × youth factor (age 16 = 1.0, age 30 = 0)
+    const gap    = pot > 0 && ovr > 0 ? Math.max(0, Math.min(20, pot - ovr)) : 0;
+    const youth  = Math.max(0, 1 - (age - 16) / 14);
+    const ceilingScore = (gap / 20) * youth * 100;
+
+    // Value efficiency: overall / market-value-in-M€, scaled to 100 at 8pts/M€
+    const mvM        = mv / 1_000_000;
+    const valueScore = ovr > 0 && mvM > 0
+      ? Math.min(100, ((ovr / mvM) / 8) * 100)
+      : 0;
+
+    return overallScore * 0.55 + ceilingScore * 0.30 + valueScore * 0.15;
+  }
+
   allIdRows.sort((a, b) => {
-    const oa = effectiveOverall(a);
-    const ob = effectiveOverall(b);
-    return ob !== oa ? ob - oa : a.name.localeCompare(b.name);
+    const sa = lightScoutScore(a);
+    const sb = lightScoutScore(b);
+    return sb !== sa ? sb - sa : a.name.localeCompare(b.name);
   });
 
   const total = allIdRows.length;
