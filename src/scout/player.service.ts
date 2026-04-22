@@ -611,18 +611,21 @@ export function buildPlayerSummary(player: PlayerSummarySource) {
   const seasonOverall   = player.playerSeasons?.[0]?.overall;
   const seasonPotential = player.playerSeasons?.[0]?.potential;
 
-  const persistedOverall = hasFiniteNumber(seasonOverall)
+  // Treat 0 as "no data" — 0 is the default unset value in the DB, not a real rating.
+  const hasRealOverall = (v: unknown): v is number => hasFiniteNumber(v) && (v as number) > 0;
+
+  const persistedOverall = hasRealOverall(seasonOverall)
     ? clampFifaCore(seasonOverall)
-    : hasFiniteNumber(player.overall)
+    : hasRealOverall(player.overall)
       ? clampFifaCore(player.overall)
-      : latestMetrics
+      : latestMetrics && latestMetrics.overall > 0
         ? clampFifaCore(latestMetrics.overall)
         : null;
-  const persistedPotential = hasFiniteNumber(seasonPotential)
+  const persistedPotential = hasRealOverall(seasonPotential)
     ? clampFifaCore(seasonPotential)
-    : hasFiniteNumber(player.potential)
+    : hasRealOverall(player.potential)
       ? clampFifaCore(player.potential)
-      : latestMetrics
+      : latestMetrics && latestMetrics.potential > 0
         ? clampFifaCore(latestMetrics.potential)
         : null;
   const storedDetailedStats = resolveStoredDetailedStats(rawAttributes);
@@ -1276,20 +1279,56 @@ export async function listPlayers(params: ListPlayersParams = {}) {
 
   const where = whereClauses.length > 0 ? { AND: whereClauses } : {};
 
-  const [total, players, filterOptions] = await Promise.all([
-    prisma.player.count({ where }),
-    findPlayersWithSnapshots({
+  // Phase 1 — lightweight query to get correct cross-page ordering.
+  // DB can't order by nested PlayerSeason.overall, so we fetch all IDs + effective
+  // overall (PlayerSeason first, fallback to Player.overall), sort in memory, then
+  // paginate before the expensive buildPlayerSummary phase.
+  const [allIdRows, filterOptions] = await Promise.all([
+    prisma.player.findMany({
       where,
-      skip,
-      take: limit,
-      orderBy: [{ overall: "desc" }, { name: "asc" }],
+      select: {
+        id: true,
+        name: true,
+        overall: true,
+        playerSeasons: {
+          orderBy: [{ seasonYear: "desc" }],
+          take: 1,
+          select: { overall: true },
+        },
+      },
+      orderBy: [{ name: "asc" }], // stable secondary sort before effective-overall sort
     }),
     getPlayerFilterOptions(),
   ]);
 
-  const items = players
-    .map((player) => buildPlayerSummary(player as PlayerSummarySource).player)
-    .sort((a, b) => (b.overall ?? 0) - (a.overall ?? 0) || a.name.localeCompare(b.name));
+  // Sort by effective overall (PlayerSeason wins, fallback to Player.overall, 0 = no data)
+  const effectiveOverall = (row: { overall: number | null; playerSeasons: Array<{ overall: number | null }> }) => {
+    const s = row.playerSeasons[0]?.overall;
+    if (typeof s === "number" && s > 0) return s;
+    const p = row.overall;
+    if (typeof p === "number" && p > 0) return p;
+    return 0;
+  };
+  allIdRows.sort((a, b) => {
+    const oa = effectiveOverall(a);
+    const ob = effectiveOverall(b);
+    return ob !== oa ? ob - oa : a.name.localeCompare(b.name);
+  });
+
+  const total = allIdRows.length;
+  const pageIds = allIdRows.slice(skip, skip + limit).map((r) => r.id);
+
+  // Phase 2 — fetch full data for only the current page
+  const pagePlayers = pageIds.length > 0
+    ? await findPlayersWithSnapshots({ where: { id: { in: pageIds } } })
+    : [];
+
+  // Re-order to match the sorted pageIds
+  const idOrder = new Map(pageIds.map((id, i) => [id, i]));
+  pagePlayers.sort((a, b) => (idOrder.get(a.id) ?? 999) - (idOrder.get(b.id) ?? 999));
+
+  const items = pagePlayers
+    .map((player) => buildPlayerSummary(player as PlayerSummarySource).player);
 
   return {
     items,
