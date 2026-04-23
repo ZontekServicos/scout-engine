@@ -61,6 +61,29 @@ export interface ScoutingRankingEntry {
   };
 }
 
+// ─── Position code → DB value mapping ────────────────────────────────────────
+
+const POSITION_CODE_MAP: Record<string, string[]> = {
+  GK:  ["Goalkeeper"],
+  CB:  ["Centre Back", "Defender"],
+  LB:  ["Left Back"],
+  RB:  ["Right Back"],
+  CDM: ["Defensive Midfield"],
+  CM:  ["Central Midfield", "Midfielder"],
+  CAM: ["Attacking Midfield"],
+  LW:  ["Left Wing", "Attacker"],
+  RW:  ["Right Wing", "Attacker"],
+  SS:  ["Attacking Midfield", "Attacker"],
+  CF:  ["Centre Forward", "Attacker"],
+  ST:  ["Centre Forward", "Attacker"],
+  FW:  ["Attacker", "Centre Forward"],
+};
+
+function resolvePositionFilter(position: string): string[] {
+  // If it's a known short code, expand it; otherwise use as-is
+  return POSITION_CODE_MAP[position.toUpperCase()] ?? [position];
+}
+
 // ─── Service ──────────────────────────────────────────────────────────────────
 
 export async function getScoutingRanking(
@@ -79,12 +102,14 @@ export async function getScoutingRanking(
   const cappedLimit = Math.min(limit, 100);
 
   // Build Prisma where clause
+  const positionDbValues = position ? resolvePositionFilter(position) : null;
+
   const where: Prisma.PlayerWhereInput = {
     overall:       { gte: overallMin },
     age:           { lte: ageMax, ...(ageMin != null ? { gte: ageMin } : {}) },
     playerSeasons: { some: {} },
-    ...(position  ? { positions:       { has: position } } : {}),
-    ...(leagueId  ? { currentLeagueId: leagueId         } : {}),
+    ...(positionDbValues ? { positions: { hasSome: positionDbValues } } : {}),
+    ...(leagueId  ? { currentLeagueId: leagueId } : {}),
   };
 
   // Fetch candidates — we over-fetch to allow label post-filter
