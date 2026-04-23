@@ -611,21 +611,21 @@ export function buildPlayerSummary(player: PlayerSummarySource) {
   const seasonOverall   = player.playerSeasons?.[0]?.overall;
   const seasonPotential = player.playerSeasons?.[0]?.potential;
 
-  // Treat 0 as "no data" — 0 is the default unset value in the DB, not a real rating.
-  const hasRealOverall = (v: unknown): v is number => hasFiniteNumber(v) && (v as number) > 0;
+  // Treat values ≤50 as "no data" — 0 is DB default, 40 is the import minimum clamp, neither is real.
+  const hasRealOverall = (v: unknown): v is number => hasFiniteNumber(v) && (v as number) > 50;
 
   const persistedOverall = hasRealOverall(seasonOverall)
     ? clampFifaCore(seasonOverall)
     : hasRealOverall(player.overall)
       ? clampFifaCore(player.overall)
-      : latestMetrics && latestMetrics.overall > 0
+      : latestMetrics && latestMetrics.overall > 50
         ? clampFifaCore(latestMetrics.overall)
         : null;
   const persistedPotential = hasRealOverall(seasonPotential)
     ? clampFifaCore(seasonPotential)
     : hasRealOverall(player.potential)
       ? clampFifaCore(player.potential)
-      : latestMetrics && latestMetrics.potential > 0
+      : latestMetrics && latestMetrics.potential > 50
         ? clampFifaCore(latestMetrics.potential)
         : null;
   const storedDetailedStats = resolveStoredDetailedStats(rawAttributes);
@@ -645,7 +645,7 @@ export function buildPlayerSummary(player: PlayerSummarySource) {
         rawAttributes,
       });
 
-  const finalOverall = persistedOverall ?? computedOverall?.overall ?? 60;
+  const finalOverall = persistedOverall ?? (computedOverall?.overall && computedOverall.overall > 50 ? computedOverall.overall : null) ?? 65;
   const potential = persistedPotential ?? resolvePotential(finalOverall);
   const detailedStats =
     storedDetailedStats ??
