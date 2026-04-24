@@ -8,6 +8,7 @@ import {
   type CreateComparisonAnalysisInput,
   type ListAnalysesFilters,
 } from "../analysis/analysis.service";
+import { emit } from "../services/user-event.service";
 
 type ValidatedRequest<T = unknown> = Request & {
   validated?: {
@@ -34,6 +35,14 @@ export async function getAnalysisByIdController(req: Request, res: Response) {
 export async function createComparisonAnalysisController(req: Request, res: Response) {
   const payload = ((req as ValidatedRequest<CreateComparisonAnalysisInput>).validated?.body ?? req.body) as CreateComparisonAnalysisInput;
   const analysis = await createComparisonAnalysis(payload);
+
+  if (req.user?.id) {
+    emit({
+      userId: req.user.id,
+      type: "REPORT_GENERATED",
+      payload: { analysisId: (analysis as { id?: string })?.id, title: (analysis as { title?: string })?.title },
+    });
+  }
 
   return res.status(201).json(successResponse(analysis));
 }

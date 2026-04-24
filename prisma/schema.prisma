@@ -610,6 +610,23 @@ enum AnalysisStatus {
 
 
 // ---------------------------------------------------------------------------
+// User activity event log (Event Sourcing — fire-and-forget)
+// One row per meaningful action: view, compare, search, report, gem-open.
+// ---------------------------------------------------------------------------
+
+model UserEvent {
+  id        String   @id @default(uuid())
+  userId    String
+  type      String   // PLAYER_VIEWED | PLAYER_COMPARED | SEARCH_PERFORMED | REPORT_GENERATED | GEM_OPENED
+  payload   Json
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([type])
+  @@index([userId, createdAt])
+}
+
+// ---------------------------------------------------------------------------
 // Auth — perfil complementar ao usuário Supabase Auth
 // id = UUID do usuário no Supabase (auth.users.id)
 // ---------------------------------------------------------------------------

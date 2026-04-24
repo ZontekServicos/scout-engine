@@ -7,6 +7,7 @@ import { getOrIngestPlayer } from "../ingestion/player.ingestion.service";
 import { comparePlayers } from "../analysis-engine/comparators/player.comparator";
 import { generateComparisonReport } from "../analysis-engine/report-generator/comparison.report";
 import { compareParamsSchema } from "../validators/compare.validators";
+import { emit } from "../services/user-event.service";
 import type { NormalizedPlayerStats } from "../analysis-engine/types";
 
 // ---------------------------------------------------------------------------
@@ -49,6 +50,19 @@ export async function compareEngineByIdsController(req: Request, res: Response) 
 
   const raw = comparePlayers(statsA, statsB);
   const result = generateComparisonReport(raw);
+
+  if (req.user?.id) {
+    emit({
+      userId: req.user.id,
+      type: "PLAYER_COMPARED",
+      payload: {
+        playerIdA: statsA.playerId,
+        playerNameA: statsA.playerName,
+        playerIdB: statsB.playerId,
+        playerNameB: statsB.playerName,
+      },
+    });
+  }
 
   return res.json(successResponse(result));
 }

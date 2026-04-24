@@ -19,6 +19,7 @@ import smartMatchRoutes from "./routes/smart-match.routes";
 import teamRoutes from "./routes/team.routes";
 import validationRoutes from "./routes/validation.routes";
 import watchlistRoutes from "./routes/watchlist.routes";
+import eventsRoutes from "./routes/events.routes";
 import ingestRoutes from "./routes/ingest.routes";
 import filterRoutes from "./routes/filter.routes";
 import mapsRoutes from "./routes/maps.routes";
@@ -75,6 +76,8 @@ app.use("/api/maps", authMiddleware, mapsRoutes);
 app.use("/api/scouting", authMiddleware, scoutingRoutes);
 app.use("/api/user",    authMiddleware, userRoutes);
 app.use("/api/admin",   authMiddleware, adminRoutes);
+
+app.use("/api/events", authMiddleware, eventsRoutes);
 
 // Rotas abertas (ingestão, health, docs — não expostas ao usuário final)
 app.use("/api/ingest", ingestRoutes);

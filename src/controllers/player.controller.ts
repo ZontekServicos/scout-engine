@@ -14,6 +14,7 @@ import { findHiddenGems } from "../services/hidden-gems.service";
 import { generatePlayerBio } from "../services/player-bio.service";
 import { getPlayerEvolution } from "../services/player-evolution.service";
 import { calculateEmergingImpact } from "../analytics/emerging-impact.engine";
+import { emit } from "../services/user-event.service";
 
 function getParam(value: string | string[] | undefined): string {
   if (Array.isArray(value)) return value[0] ?? "";
@@ -100,8 +101,10 @@ export async function searchPlayersController(req: Request, res: Response) {
     ? (sortByRaw as SortBy)
     : undefined;
 
+  const query = getStringQuery(req, "search", "q");
+
   const results = await searchPlayers({
-    search:          getStringQuery(req, "search", "q"),
+    search:          query,
     name:            getStringQuery(req, "name"),
     team:            getStringQuery(req, "team"),
     position:        getStringQuery(req, "position"),
@@ -119,6 +122,10 @@ export async function searchPlayersController(req: Request, res: Response) {
     limit:           getNumericQuery(req, "limit"),
   });
 
+  if (req.user?.id) {
+    emit({ userId: req.user.id, type: "SEARCH_PERFORMED", payload: { query } });
+  }
+
   return res.json(
     successResponse(results, { total: results.length }),
   );
@@ -128,6 +135,12 @@ export async function getPlayerProfileController(req: Request, res: Response) {
   const playerId = getParam(req.params.id);
   const cacheKey = `player:profile:${playerId}`;
   const data = await withCache(cacheKey, 120, () => getPlayerProfile(playerId));
+
+  if (req.user?.id) {
+    const playerName = (data as { name?: string })?.name;
+    emit({ userId: req.user.id, type: "PLAYER_VIEWED", payload: { playerId, playerName } });
+  }
+
   return res.json(successResponse(data));
 }
 
@@ -316,6 +329,11 @@ export async function getPlayerEventsController(req: Request, res: Response) {
 export async function getHiddenGemsController(req: Request, res: Response) {
   const limit = asNumber(req.query.limit) ?? 20;
   const gems  = await findHiddenGems(Math.min(limit, 50));
+
+  if (req.user?.id) {
+    emit({ userId: req.user.id, type: "GEM_OPENED", payload: { count: gems.length } });
+  }
+
   return res.json(successResponse(gems, { total: gems.length }));
 }
 
