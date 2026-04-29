@@ -11,8 +11,12 @@ export interface UpdateProfileData {
 }
 
 export interface AdminUpdateData extends UpdateProfileData {
-  role?: string;
-  plan?: string;
+  role?:           string;
+  plan?:           string;
+  isTrial?:        boolean;
+  trialEndsAt?:    Date | null;
+  trialGrantedAt?: Date | null;
+  jobTitle?:       string | null;
 }
 
 // ─── Service functions ────────────────────────────────────────────────────────
@@ -69,5 +73,44 @@ export async function adminUpdateUser(userId: string, data: AdminUpdateData) {
     where: { id: userId },
     create: { id: userId, ...data },
     update: data,
+  });
+}
+
+/**
+ * Activates trial for a user for the given number of days.
+ */
+export async function grantTrial(userId: string, days: number) {
+  const now = new Date();
+  const trialEndsAt = new Date(now.getTime() + days * 24 * 60 * 60 * 1000);
+  return prisma.userProfile.upsert({
+    where: { id: userId },
+    create: {
+      id: userId,
+      isTrial: true,
+      trialGrantedAt: now,
+      trialEndsAt,
+      plan: "trial",
+    },
+    update: {
+      isTrial: true,
+      trialGrantedAt: now,
+      trialEndsAt,
+      plan: "trial",
+    },
+  });
+}
+
+/**
+ * Revokes trial access for a user immediately.
+ */
+export async function revokeTrial(userId: string) {
+  return prisma.userProfile.update({
+    where: { id: userId },
+    data: {
+      isTrial: false,
+      trialGrantedAt: null,
+      trialEndsAt: null,
+      plan: "free",
+    },
   });
 }

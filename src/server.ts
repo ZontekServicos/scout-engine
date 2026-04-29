@@ -32,6 +32,7 @@ import { errorMiddleware } from "./middleware/error.middleware";
 import { requestLogger } from "./middleware/request-logger.middleware";
 import { secureHeaders } from "./middleware/security.middleware";
 import { authMiddleware } from "./middleware/auth.middleware";
+import { accessGuardMiddleware } from "./middleware/access-guard.middleware";
 
 const app = express();
 
@@ -55,29 +56,32 @@ app.use(
 app.options(/.*/, cors());
 app.use(limiter);
 
-// Rotas protegidas por autenticação Supabase
-app.use("/api/scout", authMiddleware, scoutRoutes);
-app.use("/api/analysis", authMiddleware, analysisRoutes);
-app.use("/api/compare", authMiddleware, compareRoutes);
-app.use("/api/ranking", authMiddleware, rankingRoutes);
-app.use("/api/reports", authMiddleware, reportsRoutes);
-app.use("/api/smart-match", authMiddleware, smartMatchRoutes);
-app.use("/api/leaderboard", authMiddleware, leaderboardRoutes);
-app.use("/api/analytics", authMiddleware, analyticsRoutes);
-app.use("/api/alerts", authMiddleware, alertsRoutes);
-app.use("/api/simulation", authMiddleware, simulationRoutes);
-app.use("/api/team", authMiddleware, teamRoutes);
-app.use("/api/validation", authMiddleware, validationRoutes);
-app.use("/api", authMiddleware, playerRoutes);
-app.use("/api", authMiddleware, playerVideoRoutes);
-app.use("/api/watchlist", authMiddleware, watchlistRoutes);
-app.use("/api/filter", authMiddleware, filterRoutes);
-app.use("/api/maps", authMiddleware, mapsRoutes);
-app.use("/api/scouting", authMiddleware, scoutingRoutes);
-app.use("/api/user",    authMiddleware, userRoutes);
-app.use("/api/admin",   authMiddleware, adminRoutes);
+const auth = [authMiddleware, accessGuardMiddleware];
 
-app.use("/api/events", authMiddleware, eventsRoutes);
+// Rotas protegidas por autenticação Supabase + controle de acesso (trial)
+app.use("/api/scout",       ...auth, scoutRoutes);
+app.use("/api/analysis",    ...auth, analysisRoutes);
+app.use("/api/compare",     ...auth, compareRoutes);
+app.use("/api/ranking",     ...auth, rankingRoutes);
+app.use("/api/reports",     ...auth, reportsRoutes);
+app.use("/api/smart-match", ...auth, smartMatchRoutes);
+app.use("/api/leaderboard", ...auth, leaderboardRoutes);
+app.use("/api/analytics",   ...auth, analyticsRoutes);
+app.use("/api/alerts",      ...auth, alertsRoutes);
+app.use("/api/simulation",  ...auth, simulationRoutes);
+app.use("/api/team",        ...auth, teamRoutes);
+app.use("/api/validation",  ...auth, validationRoutes);
+app.use("/api",             ...auth, playerRoutes);
+app.use("/api",             ...auth, playerVideoRoutes);
+app.use("/api/watchlist",   ...auth, watchlistRoutes);
+app.use("/api/filter",      ...auth, filterRoutes);
+app.use("/api/maps",        ...auth, mapsRoutes);
+app.use("/api/scouting",    ...auth, scoutingRoutes);
+app.use("/api/user",        ...auth, userRoutes);
+app.use("/api/events",      ...auth, eventsRoutes);
+
+// Admin — apenas autenticação (admins não têm trial)
+app.use("/api/admin", authMiddleware, adminRoutes);
 
 // Rotas abertas (ingestão, health, docs — não expostas ao usuário final)
 app.use("/api/ingest", ingestRoutes);

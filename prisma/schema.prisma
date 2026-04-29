@@ -638,7 +638,11 @@ model UserProfile {
   avatarUrl    String?  @map("avatar_url")
   role         String   @default("scout")      // admin | scout | viewer
   plan         String   @default("free")
-  clubName     String?  @map("club_name")
+  isTrial         Boolean   @default(false) @map("is_trial")
+  trialEndsAt     DateTime? @map("trial_ends_at")
+  trialGrantedAt  DateTime? @map("trial_granted_at")
+  jobTitle        String?   @map("job_title")
+  clubName        String?   @map("club_name")
   clubLogoUrl  String?  @map("club_logo_url")
   createdAt    DateTime @default(now()) @map("created_at")
   updatedAt    DateTime @updatedAt @map("updated_at")

@@ -6,6 +6,8 @@ import {
   ensureUserProfile,
   updateUserProfile,
   adminUpdateUser,
+  grantTrial,
+  revokeTrial,
 } from "../services/user-profile.service";
 
 // ─── Validation schemas ───────────────────────────────────────────────────────
@@ -19,21 +21,48 @@ const UpdateProfileSchema = z.object({
 });
 
 const AdminUpdateSchema = UpdateProfileSchema.extend({
-  role: z.enum(["admin", "scout", "viewer"]).optional(),
-  plan: z.string().max(50).optional(),
+  role:    z.enum(["admin", "scout", "viewer"]).optional(),
+  plan:    z.string().max(50).optional(),
+  isTrial: z.boolean().optional(),
+  jobTitle: z.string().max(120).nullable().optional(),
 });
 
-// ─── GET /api/user/profile ────────────────────────────────────────────────────
+const GrantTrialSchema = z.object({
+  days: z.number().int().min(1).max(365),
+});
+
+// ─── Trial status helper ──────────────────────────────────────────────────────
+
+function computeTrialFields(isTrial: boolean, trialEndsAt: Date | null) {
+  if (!isTrial || !trialEndsAt) {
+    return { trialDaysRemaining: null, trialStatus: null };
+  }
+  const msLeft = trialEndsAt.getTime() - Date.now();
+  const daysRemaining = Math.ceil(msLeft / (1000 * 60 * 60 * 24));
+  const trialStatus =
+    daysRemaining <= 0 ? "expired" : daysRemaining <= 2 ? "expiring_soon" : "active";
+  return { trialDaysRemaining: Math.max(0, daysRemaining), trialStatus };
+}
+
+// ─── GET /api/user/profile  (alias: GET /api/user/me) ────────────────────────
 
 export async function getProfileController(req: Request, res: Response): Promise<void> {
   const userId = req.user!.id;
 
-  // Auto-create profile on first access using JWT data
   const profile = await ensureUserProfile(userId, {
     email: req.user!.email || undefined,
   });
 
-  res.json(successResponse(profile));
+  const { trialDaysRemaining, trialStatus } = computeTrialFields(
+    profile.isTrial,
+    profile.trialEndsAt,
+  );
+
+  res.json(successResponse({
+    ...profile,
+    trialDaysRemaining,
+    trialStatus,
+  }));
 }
 
 // ─── PATCH /api/user/profile ──────────────────────────────────────────────────
@@ -99,4 +128,50 @@ export async function adminGetUserController(req: Request, res: Response): Promi
   }
 
   res.json(successResponse(profile));
+}
+
+// ─── POST /api/admin/users/:id/grant-trial ────────────────────────────────────
+
+export async function grantTrialController(req: Request, res: Response): Promise<void> {
+  if (req.user!.role !== "admin") {
+    res.status(403).json(errorResponse("Acesso restrito a administradores"));
+    return;
+  }
+
+  const targetId = req.params["id"] as string;
+  if (!targetId) {
+    res.status(400).json(errorResponse("ID do usuário não fornecido"));
+    return;
+  }
+
+  const parsed = GrantTrialSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json(errorResponse(parsed.error.issues[0]?.message ?? "Dados inválidos"));
+    return;
+  }
+
+  const profile = await grantTrial(targetId, parsed.data.days);
+  res.json(successResponse(profile));
+}
+
+// ─── POST /api/admin/users/:id/revoke-trial ───────────────────────────────────
+
+export async function revokeTrialController(req: Request, res: Response): Promise<void> {
+  if (req.user!.role !== "admin") {
+    res.status(403).json(errorResponse("Acesso restrito a administradores"));
+    return;
+  }
+
+  const targetId = req.params["id"] as string;
+  if (!targetId) {
+    res.status(400).json(errorResponse("ID do usuário não fornecido"));
+    return;
+  }
+
+  try {
+    const profile = await revokeTrial(targetId);
+    res.json(successResponse(profile));
+  } catch {
+    res.status(404).json(errorResponse("Usuário não encontrado"));
+  }
 }

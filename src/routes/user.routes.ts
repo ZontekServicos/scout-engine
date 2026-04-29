@@ -5,6 +5,7 @@ import { getProfileController, updateProfileController } from "../controllers/us
 const router = Router();
 
 router.get("/profile", asyncHandler(getProfileController));
+router.get("/me", asyncHandler(getProfileController));
 router.patch("/profile", asyncHandler(updateProfileController));
 
 export default router;

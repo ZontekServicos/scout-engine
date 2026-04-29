@@ -1,0 +1,3 @@
+ALTER TABLE "users_profile"
+ADD COLUMN IF NOT EXISTS "is_trial" BOOLEAN NOT NULL DEFAULT false,
+ADD COLUMN IF NOT EXISTS "trial_ends_at" TIMESTAMP(3);
