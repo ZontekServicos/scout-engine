@@ -8,7 +8,7 @@ import {
   type CreateComparisonAnalysisInput,
   type ListAnalysesFilters,
 } from "../analysis/analysis.service";
-import { emit } from "../services/user-event.service";
+import { emit } from "../services/event.service";
 
 type ValidatedRequest<T = unknown> = Request & {
   validated?: {

@@ -41,6 +41,8 @@ model Player {
 
   marketValue     Float?
   contractEnd     DateTime?
+  agencyName      String?  // empresa de gestão de carreira (ex: "Jorge Mendes / GestiFute")
+
   // Mock-enriched contract details: { club, from, until, salary, buyoutClause }
   contractMock    Json?
   // Mock club history: [{ club, country, season, appearances, goals, assists }]
@@ -614,7 +616,7 @@ enum AnalysisStatus {
 // One row per meaningful action: view, compare, search, report, gem-open.
 // ---------------------------------------------------------------------------
 
-model UserEvent {
+model Event {
   id        String   @id @default(uuid())
   userId    String
   type      String   // PLAYER_VIEWED | PLAYER_COMPARED | SEARCH_PERFORMED | REPORT_GENERATED | GEM_OPENED
@@ -623,7 +625,8 @@ model UserEvent {
 
   @@index([userId])
   @@index([type])
-  @@index([userId, createdAt])
+  @@index([userId, createdAt(sort: Desc)])
+  @@map("events")
 }
 
 // ---------------------------------------------------------------------------

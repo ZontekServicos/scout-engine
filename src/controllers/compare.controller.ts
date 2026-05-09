@@ -2,7 +2,7 @@ import { Request, Response } from "express";
 import { successResponse } from "../lib/apiResponse";
 import { compareByIds, compareByNames } from "../scout/compare.service";
 import { compareByNameParamsSchema, compareParamsSchema } from "../validators/compare.validators";
-import { emit } from "../services/user-event.service";
+import { emit } from "../services/event.service";
 
 export async function compareByNamesController(req: Request, res: Response) {
   const { nameA, nameB } = compareByNameParamsSchema.parse(req.params);
@@ -20,7 +20,16 @@ export async function compareByIdsController(req: Request, res: Response) {
   const result = await compareByIds(idA, idB);
 
   if (req.user?.id) {
-    emit({ userId: req.user.id, type: "PLAYER_COMPARED", payload: { playerIdA: idA, playerIdB: idB } });
+    emit({
+      userId: req.user.id,
+      type: "PLAYER_COMPARED",
+      payload: {
+        playerIdA:   idA,
+        playerIdB:   idB,
+        playerNameA: result.playerAProfile.identity.name,
+        playerNameB: result.playerBProfile.identity.name,
+      },
+    });
   }
 
   return res.json(successResponse(result));

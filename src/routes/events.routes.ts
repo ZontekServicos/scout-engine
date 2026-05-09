@@ -1,9 +1,9 @@
 import { Router } from "express";
 import { asyncHandler } from "../lib/asyncHandler";
-import { getUserEventHistoryController } from "../controllers/user-event.controller";
+import { getEventHistoryController } from "../controllers/event.controller";
 
 const router = Router();
 
-router.get("/history", asyncHandler(getUserEventHistoryController));
+router.get("/history", asyncHandler(getEventHistoryController));
 
 export default router;

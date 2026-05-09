@@ -996,7 +996,10 @@ export async function getPlayerProfile(id: string) {
     position: summary.position,
     team: refreshedPlayer.team ?? null,
     league: refreshedPlayer.league ?? null,
+    currentClub: refreshedPlayer.team ?? null,
+    currentLeague: refreshedPlayer.league ?? null,
     marketValue: summary.player.marketValue ?? null,
+    estimatedValue: summary.player.marketValue ?? null,
     contractEnd: refreshedPlayer.contractEnd ? String(refreshedPlayer.contractEnd) : null,
     overall: summary.overall.overall,
     tier: summary.overall.tier,
@@ -1013,6 +1016,11 @@ export async function getPlayerProfile(id: string) {
     financialRiskNormalized: normalizedRisk.financialRisk,
     liquidityNormalized: normalizedRisk.liquidity,
     image: refreshedPlayer.imagePath ?? null,
+    height: refreshedPlayer.height ?? null,
+    weight: refreshedPlayer.weight ?? null,
+    foot: refreshedPlayer.foot ?? null,
+    dominantFoot: refreshedPlayer.foot ?? null,
+    agencyName: refreshedPlayer.agencyName ?? null,
   };
 
   const [projection, similarPlayers] = await Promise.all([

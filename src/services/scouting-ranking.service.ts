@@ -25,13 +25,14 @@ import type { ScoutingLabel }                    from "../analytics/scouting-sco
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export interface ScoutingRankingParams {
-  position?:   string;
-  leagueId?:   string;
-  ageMin?:     number;
-  ageMax?:     number;
-  overallMin?: number;
-  label?:      ScoutingLabel;
-  limit?:      number;
+  position?:    string;
+  leagueId?:    string;
+  nationality?: string;
+  ageMin?:      number;
+  ageMax?:      number;
+  overallMin?:  number;
+  label?:       ScoutingLabel;
+  limit?:       number;
 }
 
 export interface ScoutingRankingEntry {
@@ -92,6 +93,7 @@ export async function getScoutingRanking(
   const {
     position,
     leagueId,
+    nationality,
     ageMin,
     ageMax    = 99,
     overallMin = 55,
@@ -100,6 +102,7 @@ export async function getScoutingRanking(
   } = params;
 
   const cappedLimit = Math.min(limit, 100);
+  const nationalityFilter = nationality?.trim();
 
   // Build Prisma where clause
   const positionDbValues = position ? resolvePositionFilter(position) : null;
@@ -109,7 +112,8 @@ export async function getScoutingRanking(
     age:           { lte: ageMax, ...(ageMin != null ? { gte: ageMin } : {}) },
     playerSeasons: { some: {} },
     ...(positionDbValues ? { positions: { hasSome: positionDbValues } } : {}),
-    ...(leagueId  ? { currentLeagueId: leagueId } : {}),
+    ...(leagueId     ? { currentLeagueId: leagueId } : {}),
+    ...(nationalityFilter ? { nationality: { contains: nationalityFilter, mode: "insensitive" } } : {}),
   };
 
   // Fetch candidates — we over-fetch to allow label post-filter

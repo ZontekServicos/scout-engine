@@ -7,7 +7,7 @@ import { getOrIngestPlayer } from "../ingestion/player.ingestion.service";
 import { comparePlayers } from "../analysis-engine/comparators/player.comparator";
 import { generateComparisonReport } from "../analysis-engine/report-generator/comparison.report";
 import { compareParamsSchema } from "../validators/compare.validators";
-import { emit } from "../services/user-event.service";
+import { emit } from "../services/event.service";
 import type { NormalizedPlayerStats } from "../analysis-engine/types";
 
 // ---------------------------------------------------------------------------

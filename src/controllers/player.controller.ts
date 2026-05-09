@@ -14,7 +14,7 @@ import { findHiddenGems } from "../services/hidden-gems.service";
 import { generatePlayerBio } from "../services/player-bio.service";
 import { getPlayerEvolution } from "../services/player-evolution.service";
 import { calculateEmergingImpact } from "../analytics/emerging-impact.engine";
-import { emit } from "../services/user-event.service";
+import { emit } from "../services/event.service";
 
 function getParam(value: string | string[] | undefined): string {
   if (Array.isArray(value)) return value[0] ?? "";
@@ -175,6 +175,19 @@ export async function createPlayerReportController(req: Request, res: Response) 
   const data = await generatePlayerReportAnalysis(playerId, {
     analyst: typeof req.body?.analyst === "string" ? req.body.analyst : undefined,
   });
+
+  if (req.user?.id) {
+    emit({
+      userId: req.user.id,
+      type: "REPORT_GENERATED",
+      payload: {
+        playerId,
+        playerName: data.player?.name ?? data.player?.nomeJogador,
+        analysisId: data.analysisId,
+        title: data.player?.name ? `Relatorio Executivo - ${data.player.name}` : undefined,
+      },
+    });
+  }
 
   return res.status(201).json(successResponse(data));
 }
