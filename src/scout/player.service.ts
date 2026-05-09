@@ -327,16 +327,42 @@ function resolveStoredFifaCore(attributes: any): FifaCore | null {
   };
 }
 
-function resolveFifa(attributes: any, position: string) {
-  const storedCore = resolveStoredFifaCore(attributes);
-  if (storedCore) {
-    return storedCore;
-  }
+// Blends whatever FIFA fields exist in attributes with position-weight estimates for missing ones.
+// Returns null only when attributes has zero numeric fields (fully empty record).
+function resolvePartialFifaCore(attributes: any, position: string): FifaCore | null {
+  const candidate = attributes?.core && typeof attributes.core === "object" ? attributes.core : attributes;
+  const fields: (keyof FifaCore)[] = ["pace", "shooting", "passing", "dribbling", "defending", "physical"];
+  if (!fields.some((f) => hasFiniteNumber(candidate?.[f]))) return null;
 
-  const fallbackOverall = Number(attributes?.overall);
-  if (Number.isFinite(fallbackOverall) && fallbackOverall > 0) {
-    return generateAttributesFromOverall(fallbackOverall, position);
-  }
+  const attrOverall = Number(candidate?.overall ?? attributes?.overall);
+  const base = Number.isFinite(attrOverall) && attrOverall > 0
+    ? generateAttributesFromOverall(attrOverall, position)
+    : generateAttributesFromOverall(60, position);
+
+  return {
+    pace:      hasFiniteNumber(candidate?.pace)      ? clampFifaCore(candidate.pace)      : base.pace,
+    shooting:  hasFiniteNumber(candidate?.shooting)  ? clampFifaCore(candidate.shooting)  : base.shooting,
+    passing:   hasFiniteNumber(candidate?.passing)   ? clampFifaCore(candidate.passing)   : base.passing,
+    dribbling: hasFiniteNumber(candidate?.dribbling) ? clampFifaCore(candidate.dribbling) : base.dribbling,
+    defending: hasFiniteNumber(candidate?.defending) ? clampFifaCore(candidate.defending) : base.defending,
+    physical:  hasFiniteNumber(candidate?.physical)  ? clampFifaCore(candidate.physical)  : base.physical,
+  };
+}
+
+function resolveFifa(attributes: any, position: string, playerOverall?: number | null): FifaCore {
+  const storedCore = resolveStoredFifaCore(attributes);
+  if (storedCore) return storedCore;
+
+  const partialCore = resolvePartialFifaCore(attributes, position);
+  if (partialCore) return partialCore;
+
+  const attrOverall = Number(attributes?.overall);
+  if (Number.isFinite(attrOverall) && attrOverall > 0)
+    return generateAttributesFromOverall(attrOverall, position);
+
+  // Use the player's persisted overall column so two players at different ratings diverge.
+  if (playerOverall != null && Number.isFinite(playerOverall) && playerOverall > 50)
+    return generateAttributesFromOverall(playerOverall, position);
 
   return generateAttributesFromOverall(60, position);
 }
@@ -455,49 +481,65 @@ function flattenDetailedStats(detailedStats: ReturnType<typeof calculateOverallR
   };
 }
 
-function resolveStoredDetailedStats(attributes: any): DetailedStats | null {
-  const candidate = attributes && typeof attributes === "object" ? attributes : null;
-  if (!candidate) return null;
+// Always returns a full DetailedStats object. Real attribute values take precedence; fields that
+// are absent or non-finite fall back to position-aware proxies derived from the FIFA core so that
+// different FIFA profiles produce visibly different radar shapes (no flat homogenisation).
+function resolveStoredDetailedStats(attributes: any, fifa: FifaCore, position: string): DetailedStats {
+  const c = attributes && typeof attributes === "object" ? attributes : {};
+  const clamp = (v: number) => Math.max(40, Math.min(99, Math.round(v)));
 
-  const values: DetailedStats = {
-    crossing: Number(candidate.crossing),
-    finishing: Number(candidate.finishing),
-    headingAccuracy: Number(candidate.headingAccuracy),
-    shortPassing: Number(candidate.shortPassing),
-    volleys: Number(candidate.volleys),
-    dribbling: Number(candidate.dribbling),
-    curve: Number(candidate.curve),
-    fkAccuracy: Number(candidate.fkAccuracy),
-    longPassing: Number(candidate.longPassing),
-    ballControl: Number(candidate.ballControl),
-    acceleration: Number(candidate.acceleration),
-    sprintSpeed: Number(candidate.sprintSpeed),
-    agility: Number(candidate.agility),
-    reactions: Number(candidate.reactions),
-    balance: Number(candidate.balance),
-    shotPower: Number(candidate.shotPower),
-    jumping: Number(candidate.jumping),
-    stamina: Number(candidate.stamina),
-    strength: Number(candidate.strength),
-    longShots: Number(candidate.longShots),
-    aggression: Number(candidate.aggression),
-    interceptions: Number(candidate.interceptions),
-    attackPosition: Number(candidate.attackPosition),
-    vision: Number(candidate.vision),
-    penalties: Number(candidate.penalties),
-    composure: Number(candidate.composure),
-    defensiveAwareness: Number(candidate.defensiveAwareness),
-    standingTackle: Number(candidate.standingTackle),
-    slidingTackle: Number(candidate.slidingTackle),
-    gkDiving: Number(candidate.gkDiving),
-    gkHandling: Number(candidate.gkHandling),
-    gkKicking: Number(candidate.gkKicking),
-    gkPositioning: Number(candidate.gkPositioning),
-    gkReflexes: Number(candidate.gkReflexes),
+  // Returns stored value when finite and plausible, otherwise the positional proxy.
+  function field(key: string, proxy: number): number {
+    const v = Number(c[key]);
+    return Number.isFinite(v) && v >= 1 ? clamp(v) : clamp(proxy);
+  }
+
+  const isGk = position === "GK";
+  const mental = (fifa.passing + fifa.dribbling) / 2;
+
+  return {
+    // Attacking
+    crossing:           field("crossing",           fifa.passing   * 0.95),
+    finishing:          field("finishing",           fifa.shooting  * 0.97),
+    headingAccuracy:    field("headingAccuracy",     (fifa.physical + fifa.shooting) / 2 * 0.88),
+    shortPassing:       field("shortPassing",        fifa.passing   * 0.98),
+    volleys:            field("volleys",             fifa.shooting  * 0.87),
+    // Skill
+    dribbling:          field("dribbling",           fifa.dribbling * 0.97),
+    curve:              field("curve",               fifa.passing   * 0.88),
+    fkAccuracy:         field("fkAccuracy",          fifa.passing   * 0.84),
+    longPassing:        field("longPassing",         fifa.passing   * 0.93),
+    ballControl:        field("ballControl",         fifa.dribbling * 0.96),
+    // Movement
+    acceleration:       field("acceleration",        fifa.pace      * 0.95),
+    sprintSpeed:        field("sprintSpeed",         fifa.pace      * 0.97),
+    agility:            field("agility",             fifa.dribbling * 0.92),
+    reactions:          field("reactions",           mental         * 0.96),
+    balance:            field("balance",             fifa.dribbling * 0.89),
+    // Power
+    shotPower:          field("shotPower",           fifa.shooting  * 0.96),
+    jumping:            field("jumping",             fifa.physical  * 0.91),
+    stamina:            field("stamina",             fifa.physical  * 0.95),
+    strength:           field("strength",            fifa.physical  * 0.93),
+    longShots:          field("longShots",           fifa.shooting  * 0.87),
+    // Mentality
+    aggression:         field("aggression",          (fifa.defending + fifa.physical) / 2 * 0.93),
+    interceptions:      field("interceptions",       fifa.defending * 0.95),
+    attackPosition:     field("attackPosition",      fifa.shooting  * 0.95),
+    vision:             field("vision",              fifa.passing   * 0.92),
+    penalties:          field("penalties",           fifa.shooting  * 0.89),
+    composure:          field("composure",           mental         * 0.94),
+    // Defending
+    defensiveAwareness: field("defensiveAwareness",  fifa.defending * 0.97),
+    standingTackle:     field("standingTackle",      fifa.defending * 0.96),
+    slidingTackle:      field("slidingTackle",       fifa.defending * 0.89),
+    // Goalkeeping
+    gkDiving:           isGk ? field("gkDiving",     mental * 0.96) : 40,
+    gkHandling:         isGk ? field("gkHandling",   mental * 0.93) : 40,
+    gkKicking:          isGk ? field("gkKicking",    mental * 0.87) : 40,
+    gkPositioning:      isGk ? field("gkPositioning",mental * 0.94) : 40,
+    gkReflexes:         isGk ? field("gkReflexes",   mental * 0.97) : 40,
   };
-
-  const validCount = Object.values(values).filter((value) => Number.isFinite(value)).length;
-  return validCount >= 10 ? values : null;
 }
 
 function resolvePotential(overall: number) {
@@ -605,7 +647,7 @@ export function buildPlayerSummary(player: PlayerSummarySource) {
         physical: latestMetrics.physical,
       }
     : null;
-  const fifa = snapshotFifa ?? resolveFifa(rawAttributes, playerPosition);
+  const fifa = snapshotFifa ?? resolveFifa(rawAttributes, playerPosition, player.overall);
   const categoryIndex = buildCategoryIndex(fifa);
   const performanceScore = calculateRankingScore(fifa, weights);
   const seasonOverall   = player.playerSeasons?.[0]?.overall;
@@ -628,11 +670,10 @@ export function buildPlayerSummary(player: PlayerSummarySource) {
       : latestMetrics && latestMetrics.potential > 50
         ? clampFifaCore(latestMetrics.potential)
         : null;
-  const storedDetailedStats = resolveStoredDetailedStats(rawAttributes);
+  const storedDetailedStats = resolveStoredDetailedStats(rawAttributes, fifa, playerPosition);
   const shouldReusePersistedProfile =
     fifa !== null &&
-    persistedOverall !== null &&
-    storedDetailedStats !== null;
+    persistedOverall !== null;
 
   const computedOverall = shouldReusePersistedProfile
     ? null
@@ -647,46 +688,11 @@ export function buildPlayerSummary(player: PlayerSummarySource) {
 
   const finalOverall = persistedOverall ?? (computedOverall?.overall && computedOverall.overall > 50 ? computedOverall.overall : null) ?? 65;
   const potential = persistedPotential ?? resolvePotential(finalOverall);
+  // storedDetailedStats is always non-null: real values where stored, unique proxies elsewhere.
+  // computedOverall path kept only for players without any persisted overall (very sparse data).
   const detailedStats =
     storedDetailedStats ??
-    (computedOverall
-      ? flattenDetailedStats(computedOverall.fifaStyle.detailedStats)
-      : {
-          crossing: fifa.passing,
-          finishing: fifa.shooting,
-          headingAccuracy: fifa.physical,
-          shortPassing: fifa.passing,
-          volleys: fifa.shooting,
-          dribbling: fifa.dribbling,
-          curve: fifa.passing,
-          fkAccuracy: fifa.passing,
-          longPassing: fifa.passing,
-          ballControl: fifa.dribbling,
-          acceleration: fifa.pace,
-          sprintSpeed: fifa.pace,
-          agility: fifa.dribbling,
-          reactions: finalOverall,
-          balance: fifa.dribbling,
-          shotPower: fifa.shooting,
-          jumping: fifa.physical,
-          stamina: fifa.physical,
-          strength: fifa.physical,
-          longShots: fifa.shooting,
-          aggression: fifa.defending,
-          interceptions: fifa.defending,
-          attackPosition: fifa.shooting,
-          vision: fifa.passing,
-          penalties: fifa.shooting,
-          composure: finalOverall,
-          defensiveAwareness: fifa.defending,
-          standingTackle: fifa.defending,
-          slidingTackle: fifa.defending,
-          gkDiving: playerPosition === "GK" ? finalOverall : 40,
-          gkHandling: playerPosition === "GK" ? finalOverall : 40,
-          gkKicking: playerPosition === "GK" ? finalOverall : 40,
-          gkPositioning: playerPosition === "GK" ? finalOverall : 40,
-          gkReflexes: playerPosition === "GK" ? finalOverall : 40,
-        });
+    (computedOverall ? flattenDetailedStats(computedOverall.fifaStyle.detailedStats) : storedDetailedStats);
   const overall = {
     ...(computedOverall ?? {
       tier: resolveTier(finalOverall),

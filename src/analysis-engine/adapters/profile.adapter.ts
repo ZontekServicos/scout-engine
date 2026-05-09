@@ -2,18 +2,12 @@ import type { PlayerIntelligenceProfile } from "../../domain/player-intelligence
 import { normalizeFromPlain } from "../normalizers/stats.normalizer";
 import type { NormalizedPlayerStats } from "../types";
 
-// ---------------------------------------------------------------------------
-// Converts a PlayerIntelligenceProfile (block scores 0-100) into
-// NormalizedPlayerStats for the analysis-engine comparator.
-//
-// Scaling rationale:
-//   block scores are 0-100; we scale to realistic per-season counts so that
-//   the comparator's internal per-game rates produce meaningful deltas.
-//   All values are relative — what matters is the ratio between players.
-// ---------------------------------------------------------------------------
+// Converts a PlayerIntelligenceProfile into isolated NormalizedPlayerStats for
+// the analysis-engine comparator. The generated ratios are intentionally not
+// constant; otherwise different profiles collapse after per-game normalization.
 
 function pct(score: number, max: number): number {
-  return Math.round((score / 100) * max);
+  return Math.round((score / 100) * max * 100) / 100;
 }
 
 export function profileToNormalized(
@@ -22,35 +16,27 @@ export function profileToNormalized(
   const tech = profile.technical;
   const phys = profile.physical;
   const tac  = profile.tactical;
-  const mkt  = profile.market;
   const proj = profile.projection;
 
-  // Derive appearances / minutes from physical stamina
-  const appearances = Math.max(1, pct(phys.stamina, 36));
-  const minutesPlayed = appearances * Math.round(60 + (phys.stamina / 100) * 30);
+  const appearances = 30;
+  const minutesPerGame = 55 + (phys.overall / 100) * 35;
+  const minutesPlayed = Math.round(appearances * minutesPerGame);
 
-  // Goals: ballStriking drives goal rate (scale: top striker ~25/season)
-  const goals      = pct(tech.ballStriking, 26);
-  // Assists: creativity drives assist rate (scale: top creator ~18/season)
-  const assists    = pct(tech.creativity, 18);
-  // Shots: ballStriking + carrying (up to ~100/season)
-  const shots      = pct((tech.ballStriking + tech.carrying) / 2, 90);
-  // Shots on target: efficiency proxy
-  const shotsOnTarget = Math.round(shots * (0.35 + (tech.ballStriking / 100) * 0.25));
-  // Key passes: creativity (top ~90/season)
-  const keyPasses  = pct(tech.creativity, 88);
-  // Passes total: passing quality × appearances (top ~2500/season)
-  const passes     = pct(tech.passing, 70) * appearances;
-  // Pass accuracy: use passing block directly (it's already 0-100 scaled)
-  const passAccuracy = 55 + (tech.passing / 100) * 40; // range: 55–95%
-  // xG / xA: proportional to goals/assists with slight efficiency discount
-  const xG         = Math.round(goals * 0.85);
-  const xA         = Math.round(assists * 0.85);
-  // Defensive: defensiveAwareness drives tackles/interceptions
-  const tackles       = pct(tac.defensiveAwareness, 80);
-  const interceptions = pct(tac.defensiveAwareness, 60);
-  const pressures     = pct((tac.defensiveAwareness + tac.roleDiscipline) / 2, 400);
-  // Rating: derived from currentOverall (proj range 60-99 → rating 6.2-8.5)
+  const goals = pct(tech.ballStriking, 24);
+  const assists = pct(tech.creativity, 18);
+  const shots = Math.max(goals + 1, pct((tech.ballStriking + tech.carrying) / 2, 92));
+  const shotAccuracy = 0.28 + (tech.ballStriking / 100) * 0.38;
+  const shotsOnTarget = Math.min(shots, Math.round(shots * shotAccuracy * 100) / 100);
+  const keyPasses = pct(tech.creativity, 90);
+  const passes = Math.round(tech.passing * appearances * 0.72);
+  const passAccuracy = 50 + (tech.passing / 100) * 45;
+  const goalEfficiency = 0.78 + (tech.ballStriking / 100) * 0.34;
+  const assistEfficiency = 0.78 + (tech.creativity / 100) * 0.3;
+  const xG = Math.round((goals / goalEfficiency) * 100) / 100;
+  const xA = Math.round((assists / assistEfficiency) * 100) / 100;
+  const tackles = pct(tac.defensiveAwareness, 88);
+  const interceptions = pct(tac.defensiveAwareness, 68);
+  const pressures = pct((tac.defensiveAwareness + tac.roleDiscipline) / 2, 420);
   const rating = 5.0 + (proj.currentOverall / 100) * 3.5;
 
   return normalizeFromPlain(

@@ -16,6 +16,7 @@ import type { NormalizedPlayerStats } from "../analysis-engine/types";
 // instead of re-running the full pipeline on every request.
 // ---------------------------------------------------------------------------
 const USE_DB_CACHE = process.env.USE_DB_CACHE === "true";
+const COMPARE_DEBUG = process.env.COMPARE_DEBUG === "true";
 
 async function resolveStats(id: string): Promise<NormalizedPlayerStats> {
   if (USE_DB_CACHE) {
@@ -50,6 +51,27 @@ export async function compareEngineByIdsController(req: Request, res: Response) 
 
   const raw = comparePlayers(statsA, statsB);
   const result = generateComparisonReport(raw);
+
+  if (COMPARE_DEBUG) {
+    console.log("[compare-engine] raw normalized metrics", {
+      requested: { idA, idB },
+      playerA: statsA,
+      playerB: statsB,
+    });
+    console.log("[compare-engine] calculated metrics", {
+      dimensions: raw.dimensions,
+      scoreA: raw.scoreA,
+      scoreB: raw.scoreB,
+      betterOverall: raw.betterOverall,
+    });
+    console.log("[compare-engine] final payload", {
+      playerAId: result.playerA.playerId,
+      playerBId: result.playerB.playerId,
+      scoreA: result.scoreA,
+      scoreB: result.scoreB,
+      dimensions: result.dimensions,
+    });
+  }
 
   if (req.user?.id) {
     emit({

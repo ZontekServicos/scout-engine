@@ -40,6 +40,38 @@ function round(value: number) {
   return Number(value.toFixed(2));
 }
 
+const COMPARE_DEBUG = process.env.COMPARE_DEBUG === "true";
+
+function debugProfile(label: "A" | "B", profile: PlayerIntelligenceProfile) {
+  return {
+    side: label,
+    id: profile.identity.id,
+    name: profile.identity.name,
+    technical: profile.technical,
+    physical: profile.physical,
+    tactical: profile.tactical,
+    projection: profile.projection,
+    risk: {
+      overall: profile.risk.overall.score,
+      physical: profile.risk.physical.score,
+      tactical: profile.risk.tactical.score,
+      financial: profile.risk.financial.score,
+    },
+  };
+}
+
+function debugCalculatedScores(profile: PlayerIntelligenceProfile) {
+  return {
+    technical: round(scoreTechnical(profile)),
+    physical: round(scorePhysical(profile)),
+    tactical: round(scoreTactical(profile)),
+    market: round(scoreMarket(profile)),
+    risk: round(scoreRisk(profile)),
+    projection: round(scoreProjection(profile)),
+    dna: round(scoreDna(profile)),
+  };
+}
+
 // TASK 2 — core compareBlock helper
 function compareBlock(a: number, b: number, invert = false): WinnerKey {
   if (Math.abs(a - b) < 0.01) return "tie";
@@ -377,11 +409,33 @@ export async function comparePlayers(playerAId: string, playerBId: string): Prom
     buildPlayerIntelligenceProfile(playerBId),
   ]);
 
-  return {
+  const comparison = buildComparison(playerAProfile, playerBProfile);
+  const result = {
     playerAProfile,
     playerBProfile,
-    comparison: buildComparison(playerAProfile, playerBProfile),
+    comparison,
   };
+
+  if (COMPARE_DEBUG) {
+    console.log("[compare] raw profiles", {
+      requested: { playerAId, playerBId },
+      playerA: debugProfile("A", playerAProfile),
+      playerB: debugProfile("B", playerBProfile),
+    });
+    console.log("[compare] calculated metrics", {
+      playerA: debugCalculatedScores(playerAProfile),
+      playerB: debugCalculatedScores(playerBProfile),
+      winnersByBlock: comparison.winnersByBlock,
+    });
+    console.log("[compare] final payload", {
+      playerAId: result.playerAProfile.identity.id,
+      playerBId: result.playerBProfile.identity.id,
+      finalDecision: result.comparison.finalDecision,
+      summaryInsights: result.comparison.summaryInsights,
+    });
+  }
+
+  return result;
 }
 
 export async function comparePlayersByName(playerAName: string, playerBName: string): Promise<PlayerComparisonResult> {
