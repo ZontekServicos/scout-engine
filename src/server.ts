@@ -19,7 +19,8 @@ import smartMatchRoutes from "./routes/smart-match.routes";
 import teamRoutes from "./routes/team.routes";
 import validationRoutes from "./routes/validation.routes";
 import watchlistRoutes from "./routes/watchlist.routes";
-import eventsRoutes from "./routes/events.routes";
+import eventsRoutes        from "./routes/events.routes";
+import searchHistoryRoutes from "./routes/search-history.routes";
 import ingestRoutes from "./routes/ingest.routes";
 import filterRoutes from "./routes/filter.routes";
 import mapsRoutes from "./routes/maps.routes";
@@ -78,7 +79,8 @@ app.use("/api/filter",      ...auth, filterRoutes);
 app.use("/api/maps",        ...auth, mapsRoutes);
 app.use("/api/scouting",    ...auth, scoutingRoutes);
 app.use("/api/user",        ...auth, userRoutes);
-app.use("/api/events",      ...auth, eventsRoutes);
+app.use("/api/events",         ...auth, eventsRoutes);
+app.use("/api/search-history", ...auth, searchHistoryRoutes);
 
 // Admin — apenas autenticação (admins não têm trial)
 app.use("/api/admin", authMiddleware, adminRoutes);

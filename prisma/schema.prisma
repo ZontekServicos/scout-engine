@@ -630,6 +630,42 @@ model Event {
 }
 
 // ---------------------------------------------------------------------------
+// Search History — Google-like per-user search history with deduplication
+//
+// Dedup key: (userId, queryNormalized)
+//   On repeated search → increment searchCount + refresh lastSearchedAt.
+//   On first search   → insert new row.
+//
+// queryNormalized: lowercase + trim + collapse spaces — never shown to user.
+// query:           raw text as typed — used for display.
+// filters:         JSON snapshot of active filters at search time
+//                  (position, leagueId, ageMin, ageMax, overallMin, nationality)
+//                  Enables future personalisation: "users who filter by LB also search X".
+// resultCount:     last known result count — powers empty-result suppression
+//                  and recommendation signals ("what searches returned 0 results?").
+// ---------------------------------------------------------------------------
+
+model SearchHistory {
+  id              String   @id @default(uuid())
+  userId          String
+
+  query           String
+  queryNormalized String
+
+  filters         Json?
+  searchCount     Int      @default(1)
+  resultCount     Int?
+
+  lastSearchedAt  DateTime @default(now())
+  createdAt       DateTime @default(now())
+
+  @@unique([userId, queryNormalized])
+  @@index([userId, lastSearchedAt(sort: Desc)])
+  @@index([userId, searchCount(sort: Desc)])
+  @@map("search_history")
+}
+
+// ---------------------------------------------------------------------------
 // Auth — perfil complementar ao usuário Supabase Auth
 // id = UUID do usuário no Supabase (auth.users.id)
 // ---------------------------------------------------------------------------

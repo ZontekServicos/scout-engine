@@ -14,7 +14,8 @@ import { findHiddenGems } from "../services/hidden-gems.service";
 import { generatePlayerBio } from "../services/player-bio.service";
 import { getPlayerEvolution } from "../services/player-evolution.service";
 import { calculateEmergingImpact } from "../analytics/emerging-impact.engine";
-import { emit } from "../services/event.service";
+import { emit }                   from "../services/event.service";
+import { SearchHistoryService }  from "../services/search-history.service";
 
 function getParam(value: string | string[] | undefined): string {
   if (Array.isArray(value)) return value[0] ?? "";
@@ -123,7 +124,22 @@ export async function searchPlayersController(req: Request, res: Response) {
   });
 
   if (req.user?.id) {
-    emit({ userId: req.user.id, type: "SEARCH_PERFORMED", payload: { query } });
+    const userId = req.user.id;
+    if (query) {
+      SearchHistoryService.record({
+        userId,
+        query,
+        filters: {
+          position:    getStringQuery(req, "position") ?? undefined,
+          nationality: getStringQuery(req, "nationality") ?? undefined,
+          ageMin:      getNumericQuery(req, "ageMin"),
+          ageMax:      getNumericQuery(req, "ageMax"),
+          overallMin:  getNumericQuery(req, "overallMin"),
+        },
+        resultCount: results.length,
+      }).catch((err) => console.error("[search-history] record failed:", err));
+    }
+    emit({ userId, type: "SEARCH_PERFORMED", payload: { query } });
   }
 
   return res.json(
