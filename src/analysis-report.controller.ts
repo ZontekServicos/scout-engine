@@ -11,7 +11,7 @@ type ValidatedRequest<T = unknown> = Request & {
 
 export async function createReportAnalysisController(req: Request, res: Response) {
   const payload = ((req as ValidatedRequest<CreateReportAnalysisInput>).validated?.body ?? req.body) as CreateReportAnalysisInput;
-  const analysis = await createReportAnalysis(payload);
+  const analysis = await createReportAnalysis(payload, req.user?.id);
 
   if (req.user?.id) {
     emit({

@@ -133,6 +133,9 @@ export type CreateReportAnalysisInput = {
   playerIds: string[];
 };
 
+// Shared context injected by the controller for every write/delete operation.
+export type AnalysisUserContext = { userId?: string };
+
 function createHttpError(message: string, statusCode: number) {
   const error = new Error(message) as Error & { statusCode?: number };
   error.statusCode = statusCode;
@@ -571,7 +574,7 @@ async function assertAnalysisRuntimeReady() {
   return runtime;
 }
 
-async function listAnalysisEntries(filters: ListAnalysesFilters) {
+async function listAnalysisEntries(filters: ListAnalysesFilters, userId?: string) {
   await normalizeLegacyAnalysisTypes();
   const runtime = await getAnalysisRuntimeStatus();
   if (!runtime.ready) {
@@ -580,8 +583,11 @@ async function listAnalysisEntries(filters: ListAnalysesFilters) {
 
   const analyses = await prisma.analysis.findMany({
     where: {
-      ...(filters.type ? { type: validateAnalysisType(filters.type) } : {}),
-      ...(filters.status ? { status: filters.status } : {}),
+      ...(filters.type   ? { type:   validateAnalysisType(filters.type) } : {}),
+      ...(filters.status ? { status: filters.status }                     : {}),
+      // Tenant isolation: scope to caller's userId when provided.
+      // Rows with null userId are legacy (pre-isolation) — excluded by design.
+      userId: userId ?? null,
     },
     orderBy: { createdAt: "desc" },
     select: {
@@ -593,9 +599,7 @@ async function listAnalysisEntries(filters: ListAnalysesFilters) {
       analyst: true,
       createdAt: true,
       comparisons: {
-        include: {
-          player: true,
-        },
+        include: { player: true },
       },
     },
   });
@@ -603,14 +607,14 @@ async function listAnalysisEntries(filters: ListAnalysesFilters) {
   return analyses.map(mapAnalysisToViewModel);
 }
 
-export async function listAnalyses(filters: ListAnalysesFilters = {}) {
-  const analyses = await listAnalysisEntries(filters);
+export async function listAnalyses(filters: ListAnalysesFilters = {}, userId?: string) {
+  const analyses = await listAnalysisEntries(filters, userId);
   return analyses.sort(
     (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
   );
 }
 
-export async function getAnalysisById(id: string): Promise<AnalysisDetailViewModel> {
+export async function getAnalysisById(id: string, userId?: string): Promise<AnalysisDetailViewModel> {
   await normalizeLegacyAnalysisTypes();
   const runtime = await getAnalysisRuntimeStatus();
   if (!runtime.ready) {
@@ -621,6 +625,7 @@ export async function getAnalysisById(id: string): Promise<AnalysisDetailViewMod
     where: { id },
     select: {
       id: true,
+      userId: true,
       title: true,
       description: true,
       type: true,
@@ -628,9 +633,7 @@ export async function getAnalysisById(id: string): Promise<AnalysisDetailViewMod
       analyst: true,
       createdAt: true,
       comparisons: {
-        include: {
-          player: true,
-        },
+        include: { player: true },
       },
     },
   });
@@ -639,151 +642,120 @@ export async function getAnalysisById(id: string): Promise<AnalysisDetailViewMod
     throw createHttpError("Analysis not found", 404);
   }
 
+  // Ownership guard: owned rows are only accessible by their creator.
+  // Null-userId rows are legacy — accessible without restriction.
+  if (analysis.userId !== null && userId && analysis.userId !== userId) {
+    throw createHttpError("Forbidden", 403);
+  }
+
   const viewModel = mapAnalysisToViewModel(analysis);
 
   return {
     ...viewModel,
     reportContent:
-      viewModel.type === PLAYER_REPORT_TYPE ? await buildReportContent(viewModel.players, viewModel.description) : null,
+      viewModel.type === PLAYER_REPORT_TYPE
+        ? await buildReportContent(viewModel.players, viewModel.description)
+        : null,
   };
 }
 
-export async function createComparisonAnalysis(input: CreateComparisonAnalysisInput) {
+export async function createComparisonAnalysis(
+  input: CreateComparisonAnalysisInput,
+  userId?: string,
+) {
   await assertAnalysisRuntimeReady();
 
-  const playerIds = input.playerIds.filter((playerId, index, array) => array.indexOf(playerId) === index);
-
+  const playerIds = input.playerIds.filter((id, i, arr) => arr.indexOf(id) === i);
   if (playerIds.length < 2) {
     throw createHttpError("At least two unique players are required", 400);
   }
 
   const players = await prisma.player.findMany({
-    where: {
-      id: {
-        in: playerIds,
-      },
-    },
-    select: {
-      id: true,
-      name: true,
-    },
+    where: { id: { in: playerIds } },
+    select: { id: true, name: true },
   });
 
   if (players.length !== playerIds.length) {
     throw createHttpError("One or more players were not found", 400);
   }
 
-  const playersById = new Map(players.map((player) => [player.id, player]));
+  const playersById = new Map(players.map((p) => [p.id, p]));
   const title =
     normalizeText(input.title) ||
-    `Comparacao - ${playerIds.map((playerId) => playersById.get(playerId)?.name ?? playerId).join(" vs ")}`;
+    `Comparacao - ${playerIds.map((id) => playersById.get(id)?.name ?? id).join(" vs ")}`;
 
   const type = validateAnalysisType(PLAYER_COMPARISON_TYPE);
   const analysis = await prisma.analysis.create({
     data: {
       type,
       title,
+      userId:      userId ?? null,
       description: normalizeText(input.description) || null,
-      analyst: normalizeText(input.analyst, "Analista SoccerMind"),
-      status: input.status ?? "COMPLETED",
-      payload: buildAnalysisPayload(type, playerIds, {
-        createdBy: "manual_comparison",
-      }),
+      analyst:     normalizeText(input.analyst, "Analista SoccerMind"),
+      status:      input.status ?? "COMPLETED",
+      payload:     buildAnalysisPayload(type, playerIds, { createdBy: "manual_comparison" }),
       comparisons: {
-        create: playerIds.map((playerId, index) => ({
-          playerId,
-          order: index,
-        })),
+        create: playerIds.map((playerId, index) => ({ playerId, order: index })),
       },
     },
     select: {
-      id: true,
-      title: true,
-      description: true,
-      type: true,
-      status: true,
-      analyst: true,
-      createdAt: true,
-      comparisons: {
-        include: {
-          player: true,
-        },
-      },
+      id: true, title: true, description: true, type: true,
+      status: true, analyst: true, createdAt: true,
+      comparisons: { include: { player: true } },
     },
   });
 
   return mapAnalysisToViewModel(analysis);
 }
 
-export async function createReportAnalysis(input: CreateReportAnalysisInput) {
+export async function createReportAnalysis(
+  input: CreateReportAnalysisInput,
+  userId?: string,
+) {
   await assertAnalysisRuntimeReady();
 
-  const playerIds = input.playerIds.filter((playerId, index, array) => array.indexOf(playerId) === index);
-
+  const playerIds = input.playerIds.filter((id, i, arr) => arr.indexOf(id) === i);
   if (playerIds.length < 1) {
     throw createHttpError("At least one player is required", 400);
   }
 
   const players = await prisma.player.findMany({
-    where: {
-      id: {
-        in: playerIds,
-      },
-    },
-    select: {
-      id: true,
-      name: true,
-    },
+    where: { id: { in: playerIds } },
+    select: { id: true, name: true },
   });
 
   if (players.length !== playerIds.length) {
     throw createHttpError("One or more players were not found", 400);
   }
 
-  const playersById = new Map(players.map((player) => [player.id, player]));
+  const playersById    = new Map(players.map((p) => [p.id, p]));
   const orderedPlayers = playerIds
-    .map((playerId) => playersById.get(playerId))
-    .filter((player): player is { id: string; name: string } => Boolean(player))
-    .map((player) => ({
-      ...player,
-      name: getPlayerDisplayName(player.name),
-    }));
+    .map((id) => playersById.get(id))
+    .filter((p): p is { id: string; name: string } => Boolean(p))
+    .map((p) => ({ ...p, name: getPlayerDisplayName(p.name) }));
 
   const title =
     normalizeText(input.title) ||
-    `Relatorio Executivo - ${orderedPlayers.map((player) => player.name).join(" vs ")}`;
+    `Relatorio Executivo - ${orderedPlayers.map((p) => p.name).join(" vs ")}`;
 
   const type = validateAnalysisType(PLAYER_REPORT_TYPE);
   const analysis = await prisma.analysis.create({
     data: {
       type,
       title,
+      userId:      userId ?? null,
       description: normalizeText(input.description) || (await buildReportAnalysisDescription(orderedPlayers)),
-      analyst: normalizeText(input.analyst, "Analista SoccerMind"),
-      status: input.status ?? "COMPLETED",
-      payload: buildAnalysisPayload(type, playerIds, {
-        createdBy: "manual_report",
-      }),
+      analyst:     normalizeText(input.analyst, "Analista SoccerMind"),
+      status:      input.status ?? "COMPLETED",
+      payload:     buildAnalysisPayload(type, playerIds, { createdBy: "manual_report" }),
       comparisons: {
-        create: playerIds.map((playerId, index) => ({
-          playerId,
-          order: index,
-        })),
+        create: playerIds.map((playerId, index) => ({ playerId, order: index })),
       },
     },
     select: {
-      id: true,
-      title: true,
-      description: true,
-      type: true,
-      status: true,
-      analyst: true,
-      createdAt: true,
-      comparisons: {
-        include: {
-          player: true,
-        },
-      },
+      id: true, title: true, description: true, type: true,
+      status: true, analyst: true, createdAt: true,
+      comparisons: { include: { player: true } },
     },
   });
 
@@ -807,27 +779,25 @@ export { compareByIds as generateComparisonAnalysis };
 export const saveComparisonAnalysis = createComparisonAnalysis;
 export const saveReportAnalysis     = createReportAnalysis;
 
-export async function deleteAnalysis(id: string) {
+export async function deleteAnalysis(id: string, userId?: string) {
   await normalizeLegacyAnalysisTypes();
   await assertAnalysisRuntimeReady();
 
-  const existingAnalysis = await prisma.analysis.findUnique({
-    where: { id },
-    select: {
-      id: true,
-    },
+  const existing = await prisma.analysis.findUnique({
+    where:  { id },
+    select: { id: true, userId: true },
   });
 
-  if (!existingAnalysis) {
+  if (!existing) {
     throw createHttpError("Analysis not found", 404);
   }
 
-  await prisma.analysis.delete({
-    where: { id },
-  });
+  // Ownership guard: only the creator can delete their own analysis.
+  if (existing.userId !== null && userId && existing.userId !== userId) {
+    throw createHttpError("Forbidden", 403);
+  }
 
-  return {
-    id,
-    message: "Analysis deleted successfully",
-  };
+  await prisma.analysis.delete({ where: { id } });
+
+  return { id, message: "Analysis deleted successfully" };
 }

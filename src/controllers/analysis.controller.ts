@@ -20,21 +20,21 @@ type ValidatedRequest<T = unknown> = Request & {
 
 export async function listAnalysesController(req: Request, res: Response) {
   const filters = (req as ValidatedRequest).validated?.query ?? {};
-  const analyses = await listAnalyses(filters);
+  const analyses = await listAnalyses(filters, req.user?.id);
 
   return res.json(successResponse(analyses));
 }
 
 export async function getAnalysisByIdController(req: Request, res: Response) {
   const { id } = ((req as ValidatedRequest).validated?.params ?? req.params) as { id: string };
-  const analysis = await getAnalysisById(id);
+  const analysis = await getAnalysisById(id, req.user?.id);
 
   return res.json(successResponse(analysis));
 }
 
 export async function createComparisonAnalysisController(req: Request, res: Response) {
   const payload = ((req as ValidatedRequest<CreateComparisonAnalysisInput>).validated?.body ?? req.body) as CreateComparisonAnalysisInput;
-  const analysis = await createComparisonAnalysis(payload);
+  const analysis = await createComparisonAnalysis(payload, req.user?.id);
 
   if (req.user?.id) {
     emit({
@@ -49,7 +49,7 @@ export async function createComparisonAnalysisController(req: Request, res: Resp
 
 export async function deleteAnalysisController(req: Request, res: Response) {
   const { id } = ((req as ValidatedRequest).validated?.params ?? req.params) as { id: string };
-  const result = await deleteAnalysis(id);
+  const result = await deleteAnalysis(id, req.user?.id);
 
   return res.json(successResponse(result));
 }

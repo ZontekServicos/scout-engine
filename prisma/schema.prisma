@@ -168,11 +168,16 @@ model Analysis {
   status      AnalysisStatus     @default(COMPLETED)
   analyst     String?
 
+  // Tenant isolation — null means legacy/unowned row (pre-isolation era).
+  // All new rows must have userId. Queries always scope by userId when present.
+  userId      String?
+
   comparisons AnalysisComparison[]
 
   @@index([type])
   @@index([createdAt])
   @@index([status])
+  @@index([userId, createdAt(sort: Desc)])
 }
 
 model AnalysisComparison {
