@@ -100,11 +100,6 @@ export async function generateAIReport(data: AIReportInput): Promise<string | nu
 }
 
 export async function generatePlayerNarrativeReport(data: PlayerNarrativeInput): Promise<PlayerNarrativeResult> {
-  console.log("OPENAI_API_KEY existe?", !!process.env.OPENAI_API_KEY);
-  console.log(
-    "OPENAI_API_KEY primeiros 8 chars:",
-    process.env.OPENAI_API_KEY?.substring(0, 8),
-  );
   const client = getOpenAIClient();
 
   const cacheKey = `player_report_${data.name}_${data.position}_${data.overall}_${data.potential}_${data.riskScore.toFixed(1)}`;

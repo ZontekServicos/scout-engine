@@ -32,7 +32,7 @@ import { logger } from "./lib/logger";
 import { errorMiddleware } from "./middleware/error.middleware";
 import { requestLogger } from "./middleware/request-logger.middleware";
 import { secureHeaders } from "./middleware/security.middleware";
-import { authMiddleware } from "./middleware/auth.middleware";
+import { authMiddleware, requireAdmin } from "./middleware/auth.middleware";
 import { accessGuardMiddleware } from "./middleware/access-guard.middleware";
 
 const app = express();
@@ -83,10 +83,10 @@ app.use("/api/events",         ...auth, eventsRoutes);
 app.use("/api/search-history", ...auth, searchHistoryRoutes);
 
 // Admin — apenas autenticação (admins não têm trial)
-app.use("/api/admin", authMiddleware, adminRoutes);
+app.use("/api/admin", authMiddleware, requireAdmin, adminRoutes);
 
 // Rotas abertas (ingestão, health, docs — não expostas ao usuário final)
-app.use("/api/ingest", ingestRoutes);
+app.use("/api/ingest", authMiddleware, requireAdmin, ingestRoutes);
 app.use("/api/health", healthRoutes);
 app.use("/api/docs", docsRoutes);
 

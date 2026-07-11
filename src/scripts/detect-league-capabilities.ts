@@ -194,7 +194,7 @@ async function runDetectionMode(): Promise<void> {
   const limit = pLimit(2);   // max 2 concurrent API calls — respect rate limits
 
   console.log(`\n[detect] Detectando ${UNIQUE_LEAGUES.length} liga(s)${FLAG_REFRESH ? " (--refresh: ignora TTL)" : ""}…`);
-  console.log("[detect] Concorrência: 2 | Token: …" + process.env.SPORTMONKS_API_TOKEN?.slice(-8));
+  console.log("[detect] Concorrencia: 2 | credencial Sportmonks configurada");
 
   const results: Array<{ league: string; caps: LeagueCapabilities | null }> = [];
 
