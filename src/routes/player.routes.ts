@@ -3,43 +3,17 @@ import { asyncHandler } from "../lib/asyncHandler";
 import {
   createPlayerNoteController,
   createPlayerReportController,
-  getEmergingImpactController,
-  getHiddenGemsController,
-  getPlayerBioController,
-  getPlayerEventsController,
-  getPlayerEvolutionController,
-  getPlayerProfileController,
-  getPlayerProjectionController,
-  getPlayerSimilarController,
-  getTruePerformanceController,
   listPlayerNotesController,
-  listPlayersController,
-  searchPlayersController,
 } from "../controllers/player.controller";
 
+// Rotas privadas de jogador: geram custo (relatorio com IA) ou gravam dados
+// ligados ao usuario autenticado (notas de scouting). Requerem autenticacao —
+// ver mount em server.ts. Leitura publica esta em player-public.routes.ts.
 const router = Router();
-
-router.get("/players",             asyncHandler(listPlayersController));
-router.get("/players/search",      asyncHandler(searchPlayersController));
-router.get("/players/hidden-gems", asyncHandler(getHiddenGemsController));
-
-router.get("/player/:id", asyncHandler(getPlayerProfileController));
 
 router.post("/player/:id/report", asyncHandler(createPlayerReportController));
 
-router.get("/player/:id/projection", asyncHandler(getPlayerProjectionController));
-
-router.get("/player/:id/similar", asyncHandler(getPlayerSimilarController));
-
 router.get("/player/:id/notes", asyncHandler(listPlayerNotesController));
-
 router.post("/player/:id/notes", asyncHandler(createPlayerNoteController));
-
-router.get("/player/:id/true-performance",  asyncHandler(getTruePerformanceController));
-router.get("/player/:id/emerging-impact",  asyncHandler(getEmergingImpactController));
-router.get("/player/:id/bio",              asyncHandler(getPlayerBioController));
-router.get("/player/:id/evolution",        asyncHandler(getPlayerEvolutionController));
-
-router.get("/players/:id/events", asyncHandler(getPlayerEventsController));
 
 export default router;
